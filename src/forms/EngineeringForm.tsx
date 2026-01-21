@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
+import { ColumnFilter } from '@/components/ColumnFilter'
 
 interface EngineeringFormData {
   // Fields for creating new records
@@ -39,6 +40,8 @@ type EditingCell = {
 type SortField = 'dgt_dtfid' | 'dgt_transmittalref' | 'dgt_transmittalsubject' | 'dgt_discipline' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
 type SortDirection = 'asc' | 'desc'
 
+
+
 export function EngineeringForm() {
   const [data, setData] = useState<Engineering[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,7 +55,22 @@ export function EngineeringForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Column filters
+  const [filters, setFilters] = useState({
+    dgt_dtfid: '',
+    dgt_transmittalref: '',
+    dgt_discipline: '',
+    dgt_actualsubmissiondate: '',
+    dgt_actualreturndate: '',
+    dgt_revision: '',
+    dgt_status: '',
+  })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+
+  const updateFilter = (field: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [field]: value }))
+    setCurrentPage(1)
+  }
 
   const {
     register,
@@ -83,7 +101,7 @@ export function EngineeringForm() {
   const filteredAndSortedData = useMemo(() => {
     let result = data
 
-    // Filter
+    // Text search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
@@ -93,6 +111,29 @@ export function EngineeringForm() {
           item.dgt_transmittalsubject?.toLowerCase().includes(term) ||
           item.dgt_discipline?.toString().includes(term)
       )
+    }
+
+    // Column filters
+    if (filters.dgt_dtfid) {
+      result = result.filter((item) => item.dgt_dtfid === filters.dgt_dtfid)
+    }
+    if (filters.dgt_transmittalref) {
+      result = result.filter((item) => item.dgt_transmittalref === filters.dgt_transmittalref)
+    }
+    if (filters.dgt_discipline) {
+      result = result.filter((item) => item.dgt_discipline?.toString() === filters.dgt_discipline)
+    }
+    if (filters.dgt_actualsubmissiondate) {
+      result = result.filter((item) => item.dgt_actualsubmissiondate === filters.dgt_actualsubmissiondate)
+    }
+    if (filters.dgt_actualreturndate) {
+      result = result.filter((item) => item.dgt_actualreturndate === filters.dgt_actualreturndate)
+    }
+    if (filters.dgt_revision) {
+      result = result.filter((item) => item.dgt_revision?.toString() === filters.dgt_revision)
+    }
+    if (filters.dgt_status) {
+      result = result.filter((item) => item.dgt_status === filters.dgt_status)
     }
 
     // Sort
@@ -117,7 +158,7 @@ export function EngineeringForm() {
     }
 
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -321,80 +362,101 @@ export function EngineeringForm() {
           <div className="overflow-x-auto">
             <table className="w-full divide-y divide-gray-200 table-fixed">
               <thead className="bg-gray-50">
-                <tr>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-24 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_dtfid')}
-                  >
-                    <div className="flex items-center gap-1">
+                <tr className="border-b border-gray-200">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_dtfid')}
+                    >
                       DTF ID
                       <SortIcon field="dgt_dtfid" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_dtfid" value={filters.dgt_dtfid} onChange={(v) => updateFilter('dgt_dtfid', v)} label="DTF ID" />
+                    </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-40 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_transmittalref')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-36">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_transmittalref')}
+                    >
                       Trans. Ref
                       <SortIcon field="dgt_transmittalref" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_transmittalref" value={filters.dgt_transmittalref} onChange={(v) => updateFilter('dgt_transmittalref', v)} label="Trans. Ref" />
+                    </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_transmittalsubject')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_transmittalsubject')}
+                    >
                       Subject
                       <SortIcon field="dgt_transmittalsubject" />
                     </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_discipline')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-24">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_discipline')}
+                    >
                       Disc.
                       <SortIcon field="dgt_discipline" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" />
+                    </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-28 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_actualsubmissiondate')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_actualsubmissiondate')}
+                    >
                       Submission
                       <SortIcon field="dgt_actualsubmissiondate" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Submission" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-28 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_actualreturndate')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_actualreturndate')}
+                    >
                       Return
                       <SortIcon field="dgt_actualreturndate" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Return" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-16 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_revision')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-20">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_revision')}
+                    >
                       Rev
                       <SortIcon field="dgt_revision" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_revision" value={filters.dgt_revision} onChange={(v) => updateFilter('dgt_revision', v)} label="Revision" />
+                    </div>
                   </th>
-                  <th
-                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-24 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_status')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_status')}
+                    >
                       Status
                       <SortIcon field="dgt_status" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
+                    </div>
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">
+                  <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
                     Actions
                   </th>
                 </tr>
@@ -409,20 +471,20 @@ export function EngineeringForm() {
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd041engineeringid} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-sm text-gray-900 truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
                         {record.dgt_dtfid || '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_transmittalref || '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
                         {record.dgt_transmittalsubject || '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_discipline || '-'}
                       </td>
                       {/* Actual Submission Date - Editable */}
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_actualsubmissiondate' ? (
                           <input
                             type="datetime-local"
@@ -443,7 +505,7 @@ export function EngineeringForm() {
                         )}
                       </td>
                       {/* Actual Return Date - Editable */}
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_actualreturndate' ? (
                           <input
                             type="datetime-local"
@@ -464,7 +526,7 @@ export function EngineeringForm() {
                         )}
                       </td>
                       {/* Revision - Editable */}
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_revision' ? (
                           <input
                             type="number"
@@ -485,7 +547,7 @@ export function EngineeringForm() {
                         )}
                       </td>
                       {/* Status - Display only */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         <span
                           className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
                             record.dgt_status === 'Approved'
@@ -501,7 +563,7 @@ export function EngineeringForm() {
                         </span>
                       </td>
                       {/* Actions */}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2.5">
                         {deleteConfirm === record.dgt_dbp6bd041engineeringid ? (
                           <div className="flex items-center gap-1">
                             <button

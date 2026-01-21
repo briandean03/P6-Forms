@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
+import { ColumnFilter } from '@/components/ColumnFilter'
 
 interface QaqcHseFormData {
   dgt_docid: string
@@ -47,7 +48,22 @@ export function QaqcHseForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Column filters
+  const [filters, setFilters] = useState({
+    dgt_docid: '',
+    dgt_docref: '',
+    dgt_discipline: '',
+    dgt_documenttype: '',
+    dgt_submissiondate: '',
+    dgt_responsedate: '',
+    dgt_status: '',
+  })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+
+  const updateFilter = (field: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [field]: value }))
+    setCurrentPage(1)
+  }
 
   const {
     register,
@@ -78,7 +94,7 @@ export function QaqcHseForm() {
   const filteredAndSortedData = useMemo(() => {
     let result = data
 
-    // Filter
+    // Text search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
@@ -89,6 +105,29 @@ export function QaqcHseForm() {
           item.dgt_discipline?.toString().includes(term) ||
           item.dgt_documenttype?.toLowerCase().includes(term)
       )
+    }
+
+    // Column filters
+    if (filters.dgt_docid) {
+      result = result.filter((item) => item.dgt_docid === filters.dgt_docid)
+    }
+    if (filters.dgt_docref) {
+      result = result.filter((item) => item.dgt_docref === filters.dgt_docref)
+    }
+    if (filters.dgt_discipline) {
+      result = result.filter((item) => item.dgt_discipline?.toString() === filters.dgt_discipline)
+    }
+    if (filters.dgt_documenttype) {
+      result = result.filter((item) => item.dgt_documenttype === filters.dgt_documenttype)
+    }
+    if (filters.dgt_submissiondate) {
+      result = result.filter((item) => item.dgt_submissiondate === filters.dgt_submissiondate)
+    }
+    if (filters.dgt_responsedate) {
+      result = result.filter((item) => item.dgt_responsedate === filters.dgt_responsedate)
+    }
+    if (filters.dgt_status) {
+      result = result.filter((item) => item.dgt_status === filters.dgt_status)
     }
 
     // Sort
@@ -113,7 +152,7 @@ export function QaqcHseForm() {
     }
 
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -301,80 +340,101 @@ export function QaqcHseForm() {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
-                <tr>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_docid')}
-                  >
-                    <div className="flex items-center gap-1">
+                <tr className="border-b border-gray-200">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_docid')}
+                    >
                       Doc ID
                       <SortIcon field="dgt_docid" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_docid" value={filters.dgt_docid} onChange={(v) => updateFilter('dgt_docid', v)} label="Doc ID" />
+                    </div>
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_docref')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_docref')}
+                    >
                       Doc Ref
                       <SortIcon field="dgt_docref" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_docref" value={filters.dgt_docref} onChange={(v) => updateFilter('dgt_docref', v)} label="Doc Ref" />
+                    </div>
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_documentsubject')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_documentsubject')}
+                    >
                       Subject
                       <SortIcon field="dgt_documentsubject" />
                     </div>
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_discipline')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_discipline')}
+                    >
                       Discipline
                       <SortIcon field="dgt_discipline" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" />
+                    </div>
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_documenttype')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Document Type
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_documenttype')}
+                    >
+                      Doc Type
                       <SortIcon field="dgt_documenttype" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" />
+                    </div>
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_submissiondate')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Submission Date
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_submissiondate')}
+                    >
+                      Submission
                       <SortIcon field="dgt_submissiondate" />
                     </div>
-                  </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_responsedate')}
-                  >
-                    <div className="flex items-center gap-1">
-                      Response Date
-                      <SortIcon field="dgt_responsedate" />
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_submissiondate" value={filters.dgt_submissiondate} onChange={(v) => updateFilter('dgt_submissiondate', v)} label="Submission" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
                     </div>
                   </th>
-                  <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_status')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_responsedate')}
+                    >
+                      Response
+                      <SortIcon field="dgt_responsedate" />
+                    </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_responsedate" value={filters.dgt_responsedate} onChange={(v) => updateFilter('dgt_responsedate', v)} label="Response" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
+                  </th>
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_status')}
+                    >
                       Status
                       <SortIcon field="dgt_status" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
                     Actions
                   </th>
                 </tr>
@@ -389,29 +449,29 @@ export function QaqcHseForm() {
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd0402qaqchseid} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docid || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docref || '-'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 max-w-xs truncate">
                         {record.dgt_documentsubject || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_discipline || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_documenttype || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(record.dgt_submissiondate)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(record.dgt_responsedate)}
                       </td>
                       {/* Status - Editable */}
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         {editingCell?.recordId === record.dgt_dbp6bd0402qaqchseid && editingCell?.field === 'dgt_status' ? (
                           <input
                             type="text"
@@ -440,7 +500,7 @@ export function QaqcHseForm() {
                         )}
                       </td>
                       {/* Actions */}
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         {deleteConfirm === record.dgt_dbp6bd0402qaqchseid ? (
                           <div className="flex items-center gap-1">
                             <button

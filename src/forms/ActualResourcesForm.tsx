@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
+import { ColumnFilter } from '@/components/ColumnFilter'
 
 interface ActualResourcesFormData {
   resource_name: string
@@ -43,7 +44,20 @@ export function ActualResourcesForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Column filters
+  const [filters, setFilters] = useState({
+    resource_name: '',
+    dgt_resourcediscipline: '',
+    dgt_resourcetype: '',
+    dgt_resourcecount: '',
+    dgt_sequential: '',
+  })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+
+  const updateFilter = (field: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [field]: value }))
+    setCurrentPage(1)
+  }
 
   const {
     register,
@@ -74,7 +88,7 @@ export function ActualResourcesForm() {
   const filteredAndSortedData = useMemo(() => {
     let result = data
 
-    // Filter
+    // Text search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
@@ -83,6 +97,23 @@ export function ActualResourcesForm() {
           item.dgt_resourcediscipline?.toString().includes(term) ||
           item.dgt_resourcetype?.toString().includes(term)
       )
+    }
+
+    // Column filters
+    if (filters.resource_name) {
+      result = result.filter((item) => item.resource_name === filters.resource_name)
+    }
+    if (filters.dgt_resourcediscipline) {
+      result = result.filter((item) => item.dgt_resourcediscipline?.toString() === filters.dgt_resourcediscipline)
+    }
+    if (filters.dgt_resourcetype) {
+      result = result.filter((item) => item.dgt_resourcetype?.toString() === filters.dgt_resourcetype)
+    }
+    if (filters.dgt_resourcecount) {
+      result = result.filter((item) => item.dgt_resourcecount?.toString() === filters.dgt_resourcecount)
+    }
+    if (filters.dgt_sequential) {
+      result = result.filter((item) => item.dgt_sequential?.toString() === filters.dgt_sequential)
     }
 
     // Sort
@@ -107,7 +138,7 @@ export function ActualResourcesForm() {
     }
 
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -291,52 +322,67 @@ export function ActualResourcesForm() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('resource_name')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('resource_name')}
+                    >
                       Resource Name
                       <SortIcon field="resource_name" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="resource_name" value={filters.resource_name} onChange={(v) => updateFilter('resource_name', v)} label="Resource Name" />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_resourcediscipline')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_resourcediscipline')}
+                    >
                       Discipline
                       <SortIcon field="dgt_resourcediscipline" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_resourcediscipline" value={filters.dgt_resourcediscipline} onChange={(v) => updateFilter('dgt_resourcediscipline', v)} label="Discipline" />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_resourcetype')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_resourcetype')}
+                    >
                       Type
                       <SortIcon field="dgt_resourcetype" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_resourcetype" value={filters.dgt_resourcetype} onChange={(v) => updateFilter('dgt_resourcetype', v)} label="Type" />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_resourcecount')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-24">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_resourcecount')}
+                    >
                       Count
                       <SortIcon field="dgt_resourcecount" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_resourcecount" value={filters.dgt_resourcecount} onChange={(v) => updateFilter('dgt_resourcecount', v)} label="Count" />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-24 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_sequential')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_sequential')}
+                    >
                       Sequential
                       <SortIcon field="dgt_sequential" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_sequential" value={filters.dgt_sequential} onChange={(v) => updateFilter('dgt_sequential', v)} label="Sequential" />
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                  <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
                     Actions
                   </th>
                 </tr>
@@ -351,17 +397,17 @@ export function ActualResourcesForm() {
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6ud0501actualresourcesid} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
                         {record.resource_name || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_resourcediscipline || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_resourcetype || '-'}
                       </td>
                       {/* Count - Editable */}
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-3 py-2.5 text-sm">
                         {editingCell?.recordId === record.dgt_dbp6ud0501actualresourcesid && editingCell?.field === 'dgt_resourcecount' ? (
                           <input
                             type="number"
@@ -381,11 +427,11 @@ export function ActualResourcesForm() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_sequential || '-'}
                       </td>
                       {/* Actions */}
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         {deleteConfirm === record.dgt_dbp6ud0501actualresourcesid ? (
                           <div className="flex items-center gap-1">
                             <button

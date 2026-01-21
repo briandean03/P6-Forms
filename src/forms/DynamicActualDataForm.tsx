@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
+import { ColumnFilter } from '@/components/ColumnFilter'
 
 interface DynamicActualDataFormData {
   dgt_activityid: string
@@ -43,7 +44,20 @@ export function DynamicActualDataForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Column filters
+  const [filters, setFilters] = useState({
+    dgt_activityid: '',
+    dgt_projectid: '',
+    dgt_actualstart: '',
+    dgt_actualfinish: '',
+    dgt_pctcomplete: '',
+  })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+
+  const updateFilter = (field: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [field]: value }))
+    setCurrentPage(1)
+  }
 
   const {
     register,
@@ -74,7 +88,7 @@ export function DynamicActualDataForm() {
   const filteredAndSortedData = useMemo(() => {
     let result = data
 
-    // Filter
+    // Text search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
@@ -82,6 +96,23 @@ export function DynamicActualDataForm() {
           item.dgt_activityid?.toLowerCase().includes(term) ||
           item.dgt_projectid?.toLowerCase().includes(term)
       )
+    }
+
+    // Column filters
+    if (filters.dgt_activityid) {
+      result = result.filter((item) => item.dgt_activityid === filters.dgt_activityid)
+    }
+    if (filters.dgt_projectid) {
+      result = result.filter((item) => item.dgt_projectid === filters.dgt_projectid)
+    }
+    if (filters.dgt_actualstart) {
+      result = result.filter((item) => item.dgt_actualstart === filters.dgt_actualstart)
+    }
+    if (filters.dgt_actualfinish) {
+      result = result.filter((item) => item.dgt_actualfinish === filters.dgt_actualfinish)
+    }
+    if (filters.dgt_pctcomplete) {
+      result = result.filter((item) => item.dgt_pctcomplete?.toString() === filters.dgt_pctcomplete)
     }
 
     // Sort
@@ -106,7 +137,7 @@ export function DynamicActualDataForm() {
     }
 
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -312,52 +343,67 @@ export function DynamicActualDataForm() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_activityid')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_activityid')}
+                    >
                       Activity ID
                       <SortIcon field="dgt_activityid" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_activityid" value={filters.dgt_activityid} onChange={(v) => updateFilter('dgt_activityid', v)} label="Activity ID" />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_projectid')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_projectid')}
+                    >
                       Project ID
                       <SortIcon field="dgt_projectid" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_projectid" value={filters.dgt_projectid} onChange={(v) => updateFilter('dgt_projectid', v)} label="Project ID" />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_actualstart')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_actualstart')}
+                    >
                       Actual Start
                       <SortIcon field="dgt_actualstart" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_actualstart" value={filters.dgt_actualstart} onChange={(v) => updateFilter('dgt_actualstart', v)} label="Actual Start" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-28 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_actualfinish')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_actualfinish')}
+                    >
                       Actual Finish
                       <SortIcon field="dgt_actualfinish" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_actualfinish" value={filters.dgt_actualfinish} onChange={(v) => updateFilter('dgt_actualfinish', v)} label="Actual Finish" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-36 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSort('dgt_pctcomplete')}
-                  >
-                    <div className="flex items-center gap-1">
+                  <th className="px-3 py-2 text-left align-top w-36">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_pctcomplete')}
+                    >
                       % Complete
                       <SortIcon field="dgt_pctcomplete" />
                     </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_pctcomplete" value={filters.dgt_pctcomplete} onChange={(v) => updateFilter('dgt_pctcomplete', v)} label="% Complete" formatValue={(v) => `${v}%`} />
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider w-20">
+                  <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
                     Actions
                   </th>
                 </tr>
@@ -372,14 +418,14 @@ export function DynamicActualDataForm() {
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-xs text-gray-900 truncate font-mono">
+                      <td className="px-3 py-2.5 text-xs text-gray-900 truncate font-mono">
                         {record.dgt_activityid || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
                         {record.dgt_projectid || '-'}
                       </td>
                       {/* Actual Start - Editable */}
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualstart' ? (
                           <input
                             type="datetime-local"
@@ -400,7 +446,7 @@ export function DynamicActualDataForm() {
                         )}
                       </td>
                       {/* Actual Finish - Editable */}
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualfinish' ? (
                           <input
                             type="datetime-local"
@@ -421,7 +467,7 @@ export function DynamicActualDataForm() {
                         )}
                       </td>
                       {/* % Complete - Editable */}
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-3 py-2.5 text-sm">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_pctcomplete' ? (
                           <input
                             type="number"
@@ -455,7 +501,7 @@ export function DynamicActualDataForm() {
                         )}
                       </td>
                       {/* Actions */}
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         {deleteConfirm === record.dgt_dbp6bd06dynamicactualdataid ? (
                           <div className="flex items-center gap-1">
                             <button
