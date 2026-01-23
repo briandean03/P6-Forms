@@ -379,12 +379,47 @@ export function DynamicActualDataForm() {
       )}
 
       <div className="flex flex-col sm:flex-row justify-between gap-3">
-        <div className="w-full sm:w-64">
-          <SearchFilter
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search records..."
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-full sm:w-64">
+            <SearchFilter
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search records..."
+            />
+          </div>
+          {(Object.values(filters).some(v => v !== '') ||
+            Object.values(lookupFilters).some(v => v !== '') ||
+            sortField !== null) && (
+            <button
+              onClick={() => {
+                setFilters({
+                  dgt_activityid: '',
+                  dgt_activityname: '',
+                  dgt_plannedearlystart: '',
+                  dgt_plannedearlyfinish: '',
+                  dgt_projectid: '',
+                  dgt_actualstart: '',
+                  dgt_actualfinish: '',
+                  dgt_pctcomplete: '',
+                })
+                setLookupFilters({ zone_code: '', level_code: '', trade_code: '' })
+                setSortField(null)
+                setSortDirection('asc')
+              }}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap shadow-sm"
+              title="Clear all filters and sorting"
+            >
+              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear All
+              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-red-800 rounded">
+                {Object.values(filters).filter(v => v !== '').length +
+                 Object.values(lookupFilters).filter(v => v !== '').length +
+                 (sortField !== null ? 1 : 0)}
+              </span>
+            </button>
+          )}
         </div>
         <button
           onClick={openCreateModal}
@@ -455,6 +490,19 @@ export function DynamicActualDataForm() {
         <LoadingSpinner />
       ) : (
         <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
+          {/* Results count */}
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+            <span className="text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
+              {(Object.values(filters).some(v => v !== '') ||
+                Object.values(lookupFilters).some(v => v !== '') ||
+                searchTerm) && (
+                <span className="ml-1 text-gray-500">
+                  (filtered from {data.length} total)
+                </span>
+              )}
+            </span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -600,9 +648,13 @@ export function DynamicActualDataForm() {
                         ) : (
                           <span
                             onClick={() => startEditing(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart', record.dgt_actualstart)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded"
+                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
+                            title="Click to edit"
                           >
                             {formatDate(record.dgt_actualstart)}
+                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
                           </span>
                         )}
                       </td>
@@ -621,9 +673,13 @@ export function DynamicActualDataForm() {
                         ) : (
                           <span
                             onClick={() => startEditing(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish', record.dgt_actualfinish)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded"
+                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
+                            title="Click to edit"
                           >
                             {formatDate(record.dgt_actualfinish)}
+                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
                           </span>
                         )}
                       </td>
@@ -645,7 +701,8 @@ export function DynamicActualDataForm() {
                         ) : (
                           <div
                             onClick={() => startEditing(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_pctcomplete', record.dgt_pctcomplete)}
-                            className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded"
+                            className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded group"
+                            title="Click to edit"
                           >
                             <div className="w-16 bg-gray-200 rounded-full h-1.5">
                               <div
@@ -658,6 +715,9 @@ export function DynamicActualDataForm() {
                             <span className="text-xs text-gray-600 font-mono">
                               {formatPercentage(record.dgt_pctcomplete)}
                             </span>
+                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
                           </div>
                         )}
                       </td>

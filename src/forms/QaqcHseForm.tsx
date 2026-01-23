@@ -336,12 +336,41 @@ export function QaqcHseForm() {
       )}
 
       <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div className="w-full sm:w-72">
-          <SearchFilter
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by Doc ID, Ref, Subject..."
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-full sm:w-72">
+            <SearchFilter
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search by Doc ID, Ref, Subject..."
+            />
+          </div>
+          {(Object.values(filters).some(v => v !== '') || sortField !== null) && (
+            <button
+              onClick={() => {
+                setFilters({
+                  dgt_docid: '',
+                  dgt_docref: '',
+                  dgt_discipline: '',
+                  dgt_documenttype: '',
+                  dgt_submissiondate: '',
+                  dgt_responsedate: '',
+                  dgt_status: '',
+                })
+                setSortField(null)
+                setSortDirection('asc')
+              }}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors whitespace-nowrap shadow-sm"
+              title="Clear all filters and sorting"
+            >
+              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear All
+              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-red-800 rounded">
+                {Object.values(filters).filter(v => v !== '').length + (sortField !== null ? 1 : 0)}
+              </span>
+            </button>
+          )}
         </div>
         <button
           onClick={openCreateModal}
@@ -358,6 +387,17 @@ export function QaqcHseForm() {
         <LoadingSpinner />
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
+          {/* Results count */}
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+            <span className="text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
+              {(Object.values(filters).some(v => v !== '') || searchTerm) && (
+                <span className="ml-1 text-gray-500">
+                  (filtered from {data.length} total)
+                </span>
+              )}
+            </span>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">

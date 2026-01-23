@@ -296,12 +296,39 @@ export function ActualResourcesForm() {
       )}
 
       <div className="flex flex-col sm:flex-row justify-between gap-3">
-        <div className="w-full sm:w-64">
-          <SearchFilter
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search records..."
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="w-full sm:w-64">
+            <SearchFilter
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search records..."
+            />
+          </div>
+          {(Object.values(filters).some(v => v !== '') || sortField !== null) && (
+            <button
+              onClick={() => {
+                setFilters({
+                  resource_name: '',
+                  dgt_resourcediscipline: '',
+                  dgt_resourcetype: '',
+                  dgt_resourcecount: '',
+                  dgt_sequential: '',
+                })
+                setSortField(null)
+                setSortDirection('asc')
+              }}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap shadow-sm"
+              title="Clear all filters and sorting"
+            >
+              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear All
+              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-red-800 rounded">
+                {Object.values(filters).filter(v => v !== '').length + (sortField !== null ? 1 : 0)}
+              </span>
+            </button>
+          )}
         </div>
         <button
           onClick={openCreateModal}
@@ -318,11 +345,22 @@ export function ActualResourcesForm() {
         <LoadingSpinner />
       ) : (
         <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
+          {/* Results count */}
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+            <span className="text-sm text-gray-600">
+              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
+              {(Object.values(filters).some(v => v !== '') || searchTerm) && (
+                <span className="ml-1 text-gray-500">
+                  (filtered from {data.length} total)
+                </span>
+              )}
+            </span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-3 py-2 text-left align-top">
+                  <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('resource_name')}
@@ -330,11 +368,11 @@ export function ActualResourcesForm() {
                       Resource Name
                       <SortIcon field="resource_name" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="resource_name" value={filters.resource_name} onChange={(v) => updateFilter('resource_name', v)} label="Resource Name" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-28">
+                  <th className="px-2 py-1.5 text-left align-top w-24">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_resourcediscipline')}
@@ -342,11 +380,11 @@ export function ActualResourcesForm() {
                       Discipline
                       <SortIcon field="dgt_resourcediscipline" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_resourcediscipline" value={filters.dgt_resourcediscipline} onChange={(v) => updateFilter('dgt_resourcediscipline', v)} label="Discipline" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-28">
+                  <th className="px-2 py-1.5 text-left align-top w-20">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_resourcetype')}
@@ -354,11 +392,11 @@ export function ActualResourcesForm() {
                       Type
                       <SortIcon field="dgt_resourcetype" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_resourcetype" value={filters.dgt_resourcetype} onChange={(v) => updateFilter('dgt_resourcetype', v)} label="Type" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-24">
+                  <th className="px-2 py-1.5 text-left align-top w-20">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_resourcecount')}
@@ -366,11 +404,11 @@ export function ActualResourcesForm() {
                       Count
                       <SortIcon field="dgt_resourcecount" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_resourcecount" value={filters.dgt_resourcecount} onChange={(v) => updateFilter('dgt_resourcecount', v)} label="Count" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-28">
+                  <th className="px-2 py-1.5 text-left align-top w-24">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_sequential')}
@@ -378,11 +416,11 @@ export function ActualResourcesForm() {
                       Sequential
                       <SortIcon field="dgt_sequential" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_sequential" value={filters.dgt_sequential} onChange={(v) => updateFilter('dgt_sequential', v)} label="Sequential" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
+                  <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-16">
                     Actions
                   </th>
                 </tr>
@@ -390,24 +428,24 @@ export function ActualResourcesForm() {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={6} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6ud0501actualresourcesid} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
+                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.resource_name || '-'}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
                         {record.dgt_resourcediscipline || '-'}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
                         {record.dgt_resourcetype || '-'}
                       </td>
                       {/* Count - Editable */}
-                      <td className="px-3 py-2.5 text-sm">
+                      <td className="px-2 py-1.5 text-xs">
                         {editingCell?.recordId === record.dgt_dbp6ud0501actualresourcesid && editingCell?.field === 'dgt_resourcecount' ? (
                           <input
                             type="number"
@@ -421,17 +459,21 @@ export function ActualResourcesForm() {
                         ) : (
                           <span
                             onClick={() => startEditing(record.dgt_dbp6ud0501actualresourcesid, 'dgt_resourcecount', record.dgt_resourcecount)}
-                            className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 cursor-pointer hover:bg-blue-50"
+                            className="inline-flex items-center gap-1 font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 cursor-pointer hover:bg-blue-50 group"
+                            title="Click to edit"
                           >
                             {record.dgt_resourcecount ?? '-'}
+                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
                         {record.dgt_sequential || '-'}
                       </td>
                       {/* Actions */}
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         {deleteConfirm === record.dgt_dbp6ud0501actualresourcesid ? (
                           <div className="flex items-center gap-1">
                             <button
