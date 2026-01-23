@@ -10,6 +10,7 @@ import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
+import { DateColumnFilter } from '@/components/DateColumnFilter'
 
 interface QaqcHseFormData {
   dgt_docid: string
@@ -121,10 +122,30 @@ export function QaqcHseForm() {
       result = result.filter((item) => item.dgt_documenttype === filters.dgt_documenttype)
     }
     if (filters.dgt_submissiondate) {
-      result = result.filter((item) => item.dgt_submissiondate === filters.dgt_submissiondate)
+      if (filters.dgt_submissiondate === 'BLANK') {
+        result = result.filter((item) => !item.dgt_submissiondate)
+      } else {
+        // Filter by month/year (format: YYYY-MM)
+        result = result.filter((item) => {
+          if (!item.dgt_submissiondate) return false
+          const date = new Date(item.dgt_submissiondate)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_submissiondate
+        })
+      }
     }
     if (filters.dgt_responsedate) {
-      result = result.filter((item) => item.dgt_responsedate === filters.dgt_responsedate)
+      if (filters.dgt_responsedate === 'BLANK') {
+        result = result.filter((item) => !item.dgt_responsedate)
+      } else {
+        // Filter by month/year (format: YYYY-MM)
+        result = result.filter((item) => {
+          if (!item.dgt_responsedate) return false
+          const date = new Date(item.dgt_responsedate)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_responsedate
+        })
+      }
     }
     if (filters.dgt_status) {
       result = result.filter((item) => item.dgt_status === filters.dgt_status)
@@ -407,7 +428,7 @@ export function QaqcHseForm() {
                       <SortIcon field="dgt_submissiondate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_submissiondate" value={filters.dgt_submissiondate} onChange={(v) => updateFilter('dgt_submissiondate', v)} label="Submission" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <DateColumnFilter data={data} field="dgt_submissiondate" value={filters.dgt_submissiondate} onChange={(v) => updateFilter('dgt_submissiondate', v)} label="Submission" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -419,7 +440,7 @@ export function QaqcHseForm() {
                       <SortIcon field="dgt_responsedate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_responsedate" value={filters.dgt_responsedate} onChange={(v) => updateFilter('dgt_responsedate', v)} label="Response" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <DateColumnFilter data={data} field="dgt_responsedate" value={filters.dgt_responsedate} onChange={(v) => updateFilter('dgt_responsedate', v)} label="Response" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-28">
@@ -476,21 +497,22 @@ export function QaqcHseForm() {
                           <input
                             type="text"
                             value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
+                            onChange={(e) => setCellValue(e.target.value.toUpperCase())}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd0402qaqchseid, 'dgt_status')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd0402qaqchseid, 'dgt_status')}
-                            className="w-24 px-2 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-20 px-2 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase"
                             autoFocus
+                            placeholder="OPN/CLS/REJ"
                           />
                         ) : (
                           <span
                             onClick={() => startEditing(record.dgt_dbp6bd0402qaqchseid, 'dgt_status', record.dgt_status)}
                             className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full cursor-pointer hover:opacity-80 ${
-                              record.dgt_status === 'Approved'
+                              record.dgt_status === 'OPN'
+                                ? 'bg-blue-100 text-blue-800'
+                                : record.dgt_status === 'CLS'
                                 ? 'bg-green-100 text-green-800'
-                                : record.dgt_status === 'Pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : record.dgt_status === 'Rejected'
+                                : record.dgt_status === 'REJ'
                                 ? 'bg-red-100 text-red-800'
                                 : 'bg-gray-100 text-gray-800'
                             }`}

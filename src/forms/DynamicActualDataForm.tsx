@@ -11,6 +11,15 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 
+interface DynamicActualDataWithFilters extends DynamicActualData {
+  zone_code: string | null
+  level_code: string | null
+  trade_code: string | null
+  dgt_activityname: string | null
+  dgt_plannedearlystart: string | null
+  dgt_plannedearlyfinish: string | null
+}
+
 interface DynamicActualDataFormData {
   dgt_activityid: string
   dgt_projectid: string
@@ -28,11 +37,11 @@ type EditingCell = {
   field: EditableField
 } | null
 
-type SortField = 'dgt_activityid' | 'dgt_projectid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
+type SortField = 'dgt_activityid' | 'dgt_activityname' | 'dgt_projectid' | 'dgt_plannedearlystart' | 'dgt_plannedearlyfinish' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
 type SortDirection = 'asc' | 'desc'
 
 export function DynamicActualDataForm() {
-  const [data, setData] = useState<DynamicActualData[]>([])
+  const [data, setData] = useState<DynamicActualDataWithFilters[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -47,10 +56,19 @@ export function DynamicActualDataForm() {
   // Column filters
   const [filters, setFilters] = useState({
     dgt_activityid: '',
+    dgt_activityname: '',
     dgt_projectid: '',
+    dgt_plannedearlystart: '',
+    dgt_plannedearlyfinish: '',
     dgt_actualstart: '',
     dgt_actualfinish: '',
     dgt_pctcomplete: '',
+  })
+  // Lookup filters from baseline table
+  const [lookupFilters, setLookupFilters] = useState({
+    zone_code: '',
+    level_code: '',
+    trade_code: '',
   })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -69,7 +87,7 @@ export function DynamicActualDataForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dgt_dbp6bd06dynamicactualdata')
+      .from('v_dynamic_actuals_with_filters')
       .select('*')
       .order('dgt_dbp6bd06dynamicactualdataid', { ascending: false })
 
@@ -85,6 +103,30 @@ export function DynamicActualDataForm() {
     fetchData()
   }, [])
 
+  // Extract unique filter values from data
+  const filterOptions = useMemo(() => {
+    const uniqueZones = new Set<string>()
+    const uniqueLevels = new Set<string>()
+    const uniqueTrades = new Set<string>()
+
+    data.forEach((item) => {
+      if (item.zone_code) uniqueZones.add(item.zone_code)
+      if (item.level_code) uniqueLevels.add(item.level_code)
+      if (item.trade_code) uniqueTrades.add(item.trade_code)
+    })
+
+    return {
+      zones: Array.from(uniqueZones).sort(),
+      levels: Array.from(uniqueLevels).sort(),
+      trades: Array.from(uniqueTrades).sort(),
+    }
+  }, [data])
+
+  const updateLookupFilter = (field: keyof typeof lookupFilters, value: string) => {
+    setLookupFilters(prev => ({ ...prev, [field]: value }))
+    setCurrentPage(1)
+  }
+
   const filteredAndSortedData = useMemo(() => {
     let result = data
 
@@ -98,12 +140,32 @@ export function DynamicActualDataForm() {
       )
     }
 
+    // Lookup filters (Zone, Level, Trade)
+    if (lookupFilters.zone_code) {
+      result = result.filter((item) => item.zone_code === lookupFilters.zone_code)
+    }
+    if (lookupFilters.level_code) {
+      result = result.filter((item) => item.level_code === lookupFilters.level_code)
+    }
+    if (lookupFilters.trade_code) {
+      result = result.filter((item) => item.trade_code === lookupFilters.trade_code)
+    }
+
     // Column filters
     if (filters.dgt_activityid) {
       result = result.filter((item) => item.dgt_activityid === filters.dgt_activityid)
     }
+    if (filters.dgt_activityname) {
+      result = result.filter((item) => item.dgt_activityname === filters.dgt_activityname)
+    }
     if (filters.dgt_projectid) {
       result = result.filter((item) => item.dgt_projectid === filters.dgt_projectid)
+    }
+    if (filters.dgt_plannedearlystart) {
+      result = result.filter((item) => item.dgt_plannedearlystart === filters.dgt_plannedearlystart)
+    }
+    if (filters.dgt_plannedearlyfinish) {
+      result = result.filter((item) => item.dgt_plannedearlyfinish === filters.dgt_plannedearlyfinish)
     }
     if (filters.dgt_actualstart) {
       result = result.filter((item) => item.dgt_actualstart === filters.dgt_actualstart)
@@ -137,7 +199,7 @@ export function DynamicActualDataForm() {
     }
 
     return result
-  }, [data, searchTerm, filters, sortField, sortDirection])
+  }, [data, searchTerm, filters, lookupFilters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -335,6 +397,60 @@ export function DynamicActualDataForm() {
         </button>
       </div>
 
+      {/* Lookup Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <span className="text-sm font-medium text-gray-600">Filter by:</span>
+        <div className="flex flex-wrap gap-2">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500">Zone</label>
+            <select
+              value={lookupFilters.zone_code}
+              onChange={(e) => updateLookupFilter('zone_code', e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">All</option>
+              {filterOptions.zones.map((zone) => (
+                <option key={zone} value={zone}>{zone}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500">Level</label>
+            <select
+              value={lookupFilters.level_code}
+              onChange={(e) => updateLookupFilter('level_code', e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">All</option>
+              {filterOptions.levels.map((level) => (
+                <option key={level} value={level}>{level}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500">Trade</label>
+            <select
+              value={lookupFilters.trade_code}
+              onChange={(e) => updateLookupFilter('trade_code', e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">All</option>
+              {filterOptions.trades.map((trade) => (
+                <option key={trade} value={trade}>{trade}</option>
+              ))}
+            </select>
+          </div>
+          {(lookupFilters.zone_code || lookupFilters.level_code || lookupFilters.trade_code) && (
+            <button
+              onClick={() => setLookupFilters({ zone_code: '', level_code: '', trade_code: '' })}
+              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
       {loading ? (
         <LoadingSpinner />
       ) : (
@@ -343,7 +459,7 @@ export function DynamicActualDataForm() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-3 py-2 text-left align-top">
+                  <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_activityid')}
@@ -351,11 +467,47 @@ export function DynamicActualDataForm() {
                       Activity ID
                       <SortIcon field="dgt_activityid" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_activityid" value={filters.dgt_activityid} onChange={(v) => updateFilter('dgt_activityid', v)} label="Activity ID" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top">
+                  <th className="px-2 py-1.5 text-left align-top max-w-xs">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_activityname')}
+                    >
+                      Activity Name
+                      <SortIcon field="dgt_activityname" />
+                    </div>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_activityname" value={filters.dgt_activityname} onChange={(v) => updateFilter('dgt_activityname', v)} label="Activity Name" />
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_plannedearlystart')}
+                    >
+                      Planned Start
+                      <SortIcon field="dgt_plannedearlystart" />
+                    </div>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_plannedearlystart" value={filters.dgt_plannedearlystart} onChange={(v) => updateFilter('dgt_plannedearlystart', v)} label="Planned Start" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-28">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_plannedearlyfinish')}
+                    >
+                      Planned Finish
+                      <SortIcon field="dgt_plannedearlyfinish" />
+                    </div>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_plannedearlyfinish" value={filters.dgt_plannedearlyfinish} onChange={(v) => updateFilter('dgt_plannedearlyfinish', v)} label="Planned Finish" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_projectid')}
@@ -363,11 +515,11 @@ export function DynamicActualDataForm() {
                       Project ID
                       <SortIcon field="dgt_projectid" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_projectid" value={filters.dgt_projectid} onChange={(v) => updateFilter('dgt_projectid', v)} label="Project ID" />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-32">
+                  <th className="px-2 py-1.5 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_actualstart')}
@@ -375,11 +527,11 @@ export function DynamicActualDataForm() {
                       Actual Start
                       <SortIcon field="dgt_actualstart" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_actualstart" value={filters.dgt_actualstart} onChange={(v) => updateFilter('dgt_actualstart', v)} label="Actual Start" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-32">
+                  <th className="px-2 py-1.5 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_actualfinish')}
@@ -387,11 +539,11 @@ export function DynamicActualDataForm() {
                       Actual Finish
                       <SortIcon field="dgt_actualfinish" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_actualfinish" value={filters.dgt_actualfinish} onChange={(v) => updateFilter('dgt_actualfinish', v)} label="Actual Finish" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top w-36">
+                  <th className="px-2 py-1.5 text-left align-top w-24">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_pctcomplete')}
@@ -399,11 +551,11 @@ export function DynamicActualDataForm() {
                       % Complete
                       <SortIcon field="dgt_pctcomplete" />
                     </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_pctcomplete" value={filters.dgt_pctcomplete} onChange={(v) => updateFilter('dgt_pctcomplete', v)} label="% Complete" formatValue={(v) => `${v}%`} />
                     </div>
                   </th>
-                  <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
+                  <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-16">
                     Actions
                   </th>
                 </tr>
@@ -411,21 +563,30 @@ export function DynamicActualDataForm() {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={9} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 text-xs text-gray-900 truncate font-mono">
+                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.dgt_activityid || '-'}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
+                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate max-w-xs">
+                        {record.dgt_activityname || '-'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                        {formatDate(record.dgt_plannedearlystart)}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                        {formatDate(record.dgt_plannedearlyfinish)}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate">
                         {record.dgt_projectid || '-'}
                       </td>
                       {/* Actual Start - Editable */}
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualstart' ? (
                           <input
                             type="datetime-local"
@@ -433,7 +594,7 @@ export function DynamicActualDataForm() {
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
-                            className="w-36 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
@@ -446,7 +607,7 @@ export function DynamicActualDataForm() {
                         )}
                       </td>
                       {/* Actual Finish - Editable */}
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualfinish' ? (
                           <input
                             type="datetime-local"
@@ -454,7 +615,7 @@ export function DynamicActualDataForm() {
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
-                            className="w-36 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
@@ -467,7 +628,7 @@ export function DynamicActualDataForm() {
                         )}
                       </td>
                       {/* % Complete - Editable */}
-                      <td className="px-3 py-2.5 text-sm">
+                      <td className="px-2 py-1.5 text-xs">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_pctcomplete' ? (
                           <input
                             type="number"
@@ -501,7 +662,7 @@ export function DynamicActualDataForm() {
                         )}
                       </td>
                       {/* Actions */}
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         {deleteConfirm === record.dgt_dbp6bd06dynamicactualdataid ? (
                           <div className="flex items-center gap-1">
                             <button

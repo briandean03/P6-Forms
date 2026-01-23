@@ -1,46 +1,53 @@
 import { useMemo } from 'react'
 
-interface ColumnFilterProps<T> {
+interface DateColumnFilterProps<T> {
   data: T[]
   field: keyof T
   value: string
   onChange: (value: string) => void
   label: string
-  formatValue?: (value: unknown) => string
 }
 
-export function ColumnFilter<T>({
+export function DateColumnFilter<T>({
   data,
   field,
   value,
   onChange,
   label: _label,
-  formatValue,
-}: ColumnFilterProps<T>) {
-  const { options, hasBlanks } = useMemo(() => {
-    const uniqueValues = new Set<string>()
+}: DateColumnFilterProps<T>) {
+  const { monthYearOptions, hasBlanks } = useMemo(() => {
+    const monthYearSet = new Set<string>()
     let blanksCount = 0
+
     data.forEach((item) => {
       const val = item[field]
       if (val === null || val === undefined || val === '') {
         blanksCount++
       } else {
-        uniqueValues.add(String(val))
+        const date = new Date(String(val))
+        if (!isNaN(date.getTime())) {
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          monthYearSet.add(monthYear)
+        }
       }
     })
-    const sorted = Array.from(uniqueValues).sort((a, b) => {
-      // Try numeric sort first
-      const numA = parseFloat(a)
-      const numB = parseFloat(b)
-      if (!isNaN(numA) && !isNaN(numB)) {
-        return numA - numB
-      }
-      return a.localeCompare(b)
-    })
-    return { options: sorted, hasBlanks: blanksCount > 0 }
+
+    // Sort by date descending (newest first)
+    const sorted = Array.from(monthYearSet).sort((a, b) => b.localeCompare(a))
+
+    return {
+      monthYearOptions: sorted,
+      hasBlanks: blanksCount > 0,
+    }
   }, [data, field])
 
-  if (options.length === 0 && !hasBlanks) {
+  const formatMonthYear = (monthYear: string) => {
+    const [year, month] = monthYear.split('-')
+    const date = new Date(parseInt(year), parseInt(month) - 1)
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  }
+
+  if (monthYearOptions.length === 0 && !hasBlanks) {
     return null
   }
 
@@ -59,9 +66,9 @@ export function ColumnFilter<T>({
     >
       <option value="">All</option>
       {hasBlanks && <option value="BLANK">(Blanks)</option>}
-      {options.map((option) => (
+      {monthYearOptions.map((option) => (
         <option key={option} value={option}>
-          {formatValue ? formatValue(option) : option}
+          {formatMonthYear(option)}
         </option>
       ))}
     </select>

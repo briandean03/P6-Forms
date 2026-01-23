@@ -10,6 +10,7 @@ import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
+import { DateColumnFilter } from '@/components/DateColumnFilter'
 
 interface EngineeringFormData {
   // Fields for creating new records
@@ -30,14 +31,14 @@ interface EngineeringFormData {
 
 const ITEMS_PER_PAGE = 15
 
-type EditableField = 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision'
+type EditableField = 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
 
 type EditingCell = {
   recordId: string
   field: EditableField
 } | null
 
-type SortField = 'dgt_dtfid' | 'dgt_transmittalref' | 'dgt_transmittalsubject' | 'dgt_discipline' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
+type SortField = 'dgt_dtfid' | 'dgt_transmittalref' | 'dgt_transmittalsubject' | 'dgt_discipline' | 'dgt_transmittaltype' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
 type SortDirection = 'asc' | 'desc'
 
 
@@ -60,6 +61,7 @@ export function EngineeringForm() {
     dgt_dtfid: '',
     dgt_transmittalref: '',
     dgt_discipline: '',
+    dgt_transmittaltype: '',
     dgt_actualsubmissiondate: '',
     dgt_actualreturndate: '',
     dgt_revision: '',
@@ -121,13 +123,44 @@ export function EngineeringForm() {
       result = result.filter((item) => item.dgt_transmittalref === filters.dgt_transmittalref)
     }
     if (filters.dgt_discipline) {
-      result = result.filter((item) => item.dgt_discipline?.toString() === filters.dgt_discipline)
+      if (filters.dgt_discipline === 'BLANK') {
+        result = result.filter((item) => item.dgt_discipline === null || item.dgt_discipline === undefined)
+      } else {
+        result = result.filter((item) => item.dgt_discipline?.toString() === filters.dgt_discipline)
+      }
+    }
+    if (filters.dgt_transmittaltype) {
+      if (filters.dgt_transmittaltype === 'BLANK') {
+        result = result.filter((item) => item.dgt_transmittaltype === null || item.dgt_transmittaltype === undefined)
+      } else {
+        result = result.filter((item) => item.dgt_transmittaltype?.toString() === filters.dgt_transmittaltype)
+      }
     }
     if (filters.dgt_actualsubmissiondate) {
-      result = result.filter((item) => item.dgt_actualsubmissiondate === filters.dgt_actualsubmissiondate)
+      if (filters.dgt_actualsubmissiondate === 'BLANK') {
+        result = result.filter((item) => !item.dgt_actualsubmissiondate)
+      } else {
+        // Filter by month/year (format: YYYY-MM)
+        result = result.filter((item) => {
+          if (!item.dgt_actualsubmissiondate) return false
+          const date = new Date(item.dgt_actualsubmissiondate)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_actualsubmissiondate
+        })
+      }
     }
     if (filters.dgt_actualreturndate) {
-      result = result.filter((item) => item.dgt_actualreturndate === filters.dgt_actualreturndate)
+      if (filters.dgt_actualreturndate === 'BLANK') {
+        result = result.filter((item) => !item.dgt_actualreturndate)
+      } else {
+        // Filter by month/year (format: YYYY-MM)
+        result = result.filter((item) => {
+          if (!item.dgt_actualreturndate) return false
+          const date = new Date(item.dgt_actualreturndate)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_actualreturndate
+        })
+      }
     }
     if (filters.dgt_revision) {
       result = result.filter((item) => item.dgt_revision?.toString() === filters.dgt_revision)
@@ -408,6 +441,18 @@ export function EngineeringForm() {
                       <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" />
                     </div>
                   </th>
+                  <th className="px-3 py-2 text-left align-top w-24">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_transmittaltype')}
+                    >
+                      Type
+                      <SortIcon field="dgt_transmittaltype" />
+                    </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" />
+                    </div>
+                  </th>
                   <th className="px-3 py-2 text-left align-top w-32">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -417,7 +462,7 @@ export function EngineeringForm() {
                       <SortIcon field="dgt_actualsubmissiondate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Submission" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <DateColumnFilter data={data} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Submission" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -429,7 +474,7 @@ export function EngineeringForm() {
                       <SortIcon field="dgt_actualreturndate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Return" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <DateColumnFilter data={data} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Return" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-20">
@@ -464,7 +509,7 @@ export function EngineeringForm() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -482,6 +527,9 @@ export function EngineeringForm() {
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_discipline || '-'}
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-900">
+                        {record.dgt_transmittaltype || '-'}
                       </td>
                       {/* Actual Submission Date - Editable */}
                       <td className="px-3 py-2.5 text-sm text-gray-900">
@@ -546,21 +594,41 @@ export function EngineeringForm() {
                           </span>
                         )}
                       </td>
-                      {/* Status - Display only */}
-                      <td className="px-3 py-2.5">
-                        <span
-                          className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${
-                            record.dgt_status === 'Approved'
-                              ? 'bg-green-100 text-green-800'
-                              : record.dgt_status === 'Pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : record.dgt_status === 'Rejected'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {record.dgt_status || '-'}
-                        </span>
+                      {/* Status - Editable */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_status' ? (
+                          <input
+                            type="text"
+                            value={cellValue}
+                            onChange={(e) => setCellValue(e.target.value.toUpperCase())}
+                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_status')}
+                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_status')}
+                            className="w-16 px-2 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase"
+                            autoFocus
+                            placeholder="A/B/C/D/UR/E"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => startEditing(record.dgt_dbp6bd041engineeringid, 'dgt_status', record.dgt_status)}
+                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full cursor-pointer hover:opacity-80 ${
+                              record.dgt_status === 'A'
+                                ? 'bg-green-100 text-green-800'
+                                : record.dgt_status === 'B'
+                                ? 'bg-orange-100 text-orange-800'
+                                : record.dgt_status === 'C'
+                                ? 'bg-red-100 text-red-700'
+                                : record.dgt_status === 'D'
+                                ? 'bg-red-200 text-red-900'
+                                : record.dgt_status === 'UR'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : record.dgt_status === 'E'
+                                ? 'bg-gray-200 text-gray-700'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {record.dgt_status || '-'}
+                          </span>
+                        )}
                       </td>
                       {/* Actions */}
                       <td className="px-3 py-2.5">
