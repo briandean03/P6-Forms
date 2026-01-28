@@ -122,6 +122,45 @@ export function DynamicActualDataForm() {
     }
   }, [data])
 
+  // Extract unique month/year combinations for date filters
+  const dateFilterOptions = useMemo(() => {
+    const getMonthYearKey = (dateString: string | null) => {
+      if (!dateString) return null
+      const date = new Date(dateString)
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    }
+
+    const plannedStartMonths = new Set<string>()
+    const plannedFinishMonths = new Set<string>()
+    const actualStartMonths = new Set<string>()
+    const actualFinishMonths = new Set<string>()
+
+    data.forEach((item) => {
+      const psKey = getMonthYearKey(item.dgt_plannedearlystart)
+      const pfKey = getMonthYearKey(item.dgt_plannedearlyfinish)
+      const asKey = getMonthYearKey(item.dgt_actualstart)
+      const afKey = getMonthYearKey(item.dgt_actualfinish)
+
+      if (psKey) plannedStartMonths.add(psKey)
+      if (pfKey) plannedFinishMonths.add(pfKey)
+      if (asKey) actualStartMonths.add(asKey)
+      if (afKey) actualFinishMonths.add(afKey)
+    })
+
+    const formatMonthYear = (key: string) => {
+      const [year, month] = key.split('-')
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1)
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    }
+
+    return {
+      plannedStart: Array.from(plannedStartMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
+      plannedFinish: Array.from(plannedFinishMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
+      actualStart: Array.from(actualStartMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
+      actualFinish: Array.from(actualFinishMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
+    }
+  }, [data])
+
   const updateLookupFilter = (field: keyof typeof lookupFilters, value: string) => {
     setLookupFilters(prev => ({ ...prev, [field]: value }))
     setCurrentPage(1)
@@ -161,20 +200,38 @@ export function DynamicActualDataForm() {
     if (filters.dgt_projectid) {
       result = result.filter((item) => item.dgt_projectid === filters.dgt_projectid)
     }
+    // Date filters - compare by month/year using YYYY-MM format
     if (filters.dgt_plannedearlystart) {
-      result = result.filter((item) => item.dgt_plannedearlystart === filters.dgt_plannedearlystart)
+      result = result.filter((item) => {
+        if (!item.dgt_plannedearlystart) return false
+        const itemDate = new Date(item.dgt_plannedearlystart)
+        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
+        return itemKey === filters.dgt_plannedearlystart
+      })
     }
     if (filters.dgt_plannedearlyfinish) {
-      result = result.filter((item) => item.dgt_plannedearlyfinish === filters.dgt_plannedearlyfinish)
+      result = result.filter((item) => {
+        if (!item.dgt_plannedearlyfinish) return false
+        const itemDate = new Date(item.dgt_plannedearlyfinish)
+        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
+        return itemKey === filters.dgt_plannedearlyfinish
+      })
     }
     if (filters.dgt_actualstart) {
-      result = result.filter((item) => item.dgt_actualstart === filters.dgt_actualstart)
+      result = result.filter((item) => {
+        if (!item.dgt_actualstart) return false
+        const itemDate = new Date(item.dgt_actualstart)
+        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
+        return itemKey === filters.dgt_actualstart
+      })
     }
     if (filters.dgt_actualfinish) {
-      result = result.filter((item) => item.dgt_actualfinish === filters.dgt_actualfinish)
-    }
-    if (filters.dgt_pctcomplete) {
-      result = result.filter((item) => item.dgt_pctcomplete?.toString() === filters.dgt_pctcomplete)
+      result = result.filter((item) => {
+        if (!item.dgt_actualfinish) return false
+        const itemDate = new Date(item.dgt_actualfinish)
+        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
+        return itemKey === filters.dgt_actualfinish
+      })
     }
 
     // Sort
@@ -356,15 +413,16 @@ export function DynamicActualDataForm() {
 
   const formatPercentage = (value: number | null) => {
     if (value === null || value === undefined) return '-'
-    return `${value.toFixed(1)}%`
+    return `${(value * 100).toFixed(1)}%`
   }
 
   const getProgressColor = (value: number | null) => {
     if (value === null || value === undefined) return 'bg-gray-200'
-    if (value >= 100) return 'bg-green-500'
-    if (value >= 75) return 'bg-blue-500'
-    if (value >= 50) return 'bg-yellow-400'
-    if (value >= 25) return 'bg-orange-400'
+    const percentage = value * 100
+    if (percentage >= 100) return 'bg-green-500'
+    if (percentage >= 75) return 'bg-blue-500'
+    if (percentage >= 50) return 'bg-yellow-400'
+    if (percentage >= 25) return 'bg-orange-400'
     return 'bg-red-400'
   }
 
@@ -540,7 +598,16 @@ export function DynamicActualDataForm() {
                       <SortIcon field="dgt_plannedearlystart" />
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_plannedearlystart" value={filters.dgt_plannedearlystart} onChange={(v) => updateFilter('dgt_plannedearlystart', v)} label="Planned Start" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <select
+                        value={filters.dgt_plannedearlystart}
+                        onChange={(e) => updateFilter('dgt_plannedearlystart', e.target.value)}
+                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">All</option>
+                        {dateFilterOptions.plannedStart.map(({ key, label }) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-28">
@@ -552,7 +619,16 @@ export function DynamicActualDataForm() {
                       <SortIcon field="dgt_plannedearlyfinish" />
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_plannedearlyfinish" value={filters.dgt_plannedearlyfinish} onChange={(v) => updateFilter('dgt_plannedearlyfinish', v)} label="Planned Finish" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <select
+                        value={filters.dgt_plannedearlyfinish}
+                        onChange={(e) => updateFilter('dgt_plannedearlyfinish', e.target.value)}
+                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">All</option>
+                        {dateFilterOptions.plannedFinish.map(({ key, label }) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-28">
@@ -576,7 +652,16 @@ export function DynamicActualDataForm() {
                       <SortIcon field="dgt_actualstart" />
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_actualstart" value={filters.dgt_actualstart} onChange={(v) => updateFilter('dgt_actualstart', v)} label="Actual Start" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <select
+                        value={filters.dgt_actualstart}
+                        onChange={(e) => updateFilter('dgt_actualstart', e.target.value)}
+                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">All</option>
+                        {dateFilterOptions.actualStart.map(({ key, label }) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-28">
@@ -588,7 +673,16 @@ export function DynamicActualDataForm() {
                       <SortIcon field="dgt_actualfinish" />
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_actualfinish" value={filters.dgt_actualfinish} onChange={(v) => updateFilter('dgt_actualfinish', v)} label="Actual Finish" formatValue={(v) => new Date(String(v)).toLocaleDateString()} />
+                      <select
+                        value={filters.dgt_actualfinish}
+                        onChange={(e) => updateFilter('dgt_actualfinish', e.target.value)}
+                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="">All</option>
+                        {dateFilterOptions.actualFinish.map(({ key, label }) => (
+                          <option key={key} value={key}>{label}</option>
+                        ))}
+                      </select>
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-24">
@@ -598,9 +692,6 @@ export function DynamicActualDataForm() {
                     >
                       % Complete
                       <SortIcon field="dgt_pctcomplete" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_pctcomplete" value={filters.dgt_pctcomplete} onChange={(v) => updateFilter('dgt_pctcomplete', v)} label="% Complete" formatValue={(v) => `${v}%`} />
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-16">
@@ -708,7 +799,7 @@ export function DynamicActualDataForm() {
                               <div
                                 className={`h-1.5 rounded-full ${getProgressColor(record.dgt_pctcomplete)}`}
                                 style={{
-                                  width: `${Math.min(record.dgt_pctcomplete || 0, 100)}%`,
+                                  width: `${Math.min((record.dgt_pctcomplete || 0) * 100, 100)}%`,
                                 }}
                               />
                             </div>
