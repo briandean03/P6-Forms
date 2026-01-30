@@ -656,14 +656,14 @@ export function QaqcHseForm() {
 
           <FormField
             label="Submission Date"
-            type="datetime-local"
+            type="date"
             {...register('dgt_submissiondate')}
             error={errors.dgt_submissiondate?.message}
           />
 
           <FormField
             label="Response Date"
-            type="datetime-local"
+            type="date"
             {...register('dgt_responsedate')}
             error={errors.dgt_responsedate?.message}
           />

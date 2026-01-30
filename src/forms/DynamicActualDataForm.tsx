@@ -320,7 +320,7 @@ export function DynamicActualDataForm() {
         : null,
     }
 
-    const { error } = await supabase.from('dgt_dbp6bd06dynamicactualdata').insert(insertData as never)
+    const { error } = await supabase.from('dbp6bd06progressdata').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -340,7 +340,7 @@ export function DynamicActualDataForm() {
   ) => {
     setEditingCell({ recordId, field })
     if (field === 'dgt_actualstart' || field === 'dgt_actualfinish') {
-      setCellValue(currentValue ? new Date(currentValue as string).toISOString().slice(0, 16) : '')
+      setCellValue(currentValue ? new Date(currentValue as string).toISOString().slice(0, 10) : '')
     } else {
       setCellValue(currentValue?.toString() || '')
     }
@@ -361,7 +361,7 @@ export function DynamicActualDataForm() {
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dgt_dbp6bd06dynamicactualdata')
+      .from('dbp6bd06progressdata')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
 
@@ -392,7 +392,7 @@ export function DynamicActualDataForm() {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dgt_dbp6bd06dynamicactualdata')
+      .from('dbp6bd06progressdata')
       .delete()
       .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
 
@@ -728,7 +728,7 @@ export function DynamicActualDataForm() {
                       <td className="px-2 py-1.5 text-xs text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualstart' ? (
                           <input
-                            type="datetime-local"
+                            type="date"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
@@ -753,7 +753,7 @@ export function DynamicActualDataForm() {
                       <td className="px-2 py-1.5 text-xs text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualfinish' ? (
                           <input
-                            type="datetime-local"
+                            type="date"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
@@ -881,14 +881,14 @@ export function DynamicActualDataForm() {
           <div className="grid grid-cols-2 gap-4">
             <FormField
               label="Actual Start"
-              type="datetime-local"
+              type="date"
               {...register('dgt_actualstart')}
               error={errors.dgt_actualstart?.message}
             />
 
             <FormField
               label="Actual Finish"
-              type="datetime-local"
+              type="date"
               {...register('dgt_actualfinish')}
               error={errors.dgt_actualfinish?.message}
             />

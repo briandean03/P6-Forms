@@ -292,7 +292,7 @@ export function EngineeringForm() {
   ) => {
     setEditingCell({ recordId, field })
     if (field === 'dgt_actualsubmissiondate' || field === 'dgt_actualreturndate') {
-      setCellValue(currentValue ? new Date(currentValue as string).toISOString().slice(0, 16) : '')
+      setCellValue(currentValue ? new Date(currentValue as string).toISOString().slice(0, 10) : '')
     } else {
       setCellValue(currentValue?.toString() || '')
     }
@@ -576,7 +576,7 @@ export function EngineeringForm() {
                       <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_actualsubmissiondate' ? (
                           <input
-                            type="datetime-local"
+                            type="date"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_actualsubmissiondate')}
@@ -601,7 +601,7 @@ export function EngineeringForm() {
                       <td className="px-3 py-2.5 text-sm text-gray-900">
                         {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_actualreturndate' ? (
                           <input
-                            type="datetime-local"
+                            type="date"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_actualreturndate')}
@@ -784,14 +784,14 @@ export function EngineeringForm() {
 
           <FormField
             label="Planned Submission Date"
-            type="datetime-local"
+            type="date"
             {...register('dgt_plannedsubmissiondate')}
             error={errors.dgt_plannedsubmissiondate?.message}
           />
 
           <FormField
             label="Planned Approval Date"
-            type="datetime-local"
+            type="date"
             {...register('dgt_plannedapprovaldate')}
             error={errors.dgt_plannedapprovaldate?.message}
           />
@@ -810,14 +810,14 @@ export function EngineeringForm() {
 
           <FormField
             label="Actual Submission Date"
-            type="datetime-local"
+            type="date"
             {...register('dgt_actualsubmissiondate')}
             error={errors.dgt_actualsubmissiondate?.message}
           />
 
           <FormField
             label="Actual Return Date"
-            type="datetime-local"
+            type="date"
             {...register('dgt_actualreturndate')}
             error={errors.dgt_actualreturndate?.message}
           />
