@@ -650,16 +650,22 @@ export function EngineeringForm() {
                       {/* Status - Editable */}
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_status' ? (
-                          <input
-                            type="text"
+                          <select
                             value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value.toUpperCase())}
+                            onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_status')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_status')}
-                            className="w-16 px-2 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase"
+                            className="w-16 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
-                            placeholder="A/B/C/D/UR/E"
-                          />
+                          >
+                            <option value="">-</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="E">E</option>
+                            <option value="UR">UR</option>
+                          </select>
                         ) : (
                           <span
                             onClick={() => startEditing(record.dgt_dbp6bd041engineeringid, 'dgt_status', record.dgt_status)}
@@ -826,12 +832,27 @@ export function EngineeringForm() {
             error={errors.dgt_revision?.message}
           />
 
-          <FormField
-            label="Status"
-            type="text"
-            {...register('dgt_status')}
-            error={errors.dgt_status?.message}
-          />
+          <div>
+            <label htmlFor="dgt_status" className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              id="dgt_status"
+              {...register('dgt_status')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select status...</option>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="E">E</option>
+              <option value="UR">UR</option>
+            </select>
+            {errors.dgt_status?.message && (
+              <p className="mt-1 text-sm text-red-600">{errors.dgt_status.message}</p>
+            )}
+          </div>
 
           <div className="flex justify-end gap-3 pt-4">
             <button
