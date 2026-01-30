@@ -516,7 +516,7 @@ export function QaqcHseForm() {
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docref || '-'}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 max-w-xs truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 max-w-xs break-words">
                         {record.dgt_documentsubject || '-'}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">

@@ -563,7 +563,7 @@ export function EngineeringForm() {
                       <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_transmittalref || '-'}
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
+                      <td className="px-3 py-2.5 text-sm text-gray-900 max-w-xs break-words">
                         {record.dgt_transmittalsubject || '-'}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-900">
@@ -581,7 +581,7 @@ export function EngineeringForm() {
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_actualsubmissiondate')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_actualsubmissiondate')}
-                            className="w-36 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
@@ -606,7 +606,7 @@ export function EngineeringForm() {
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_actualreturndate')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_actualreturndate')}
-                            className="w-36 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (

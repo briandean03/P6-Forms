@@ -712,7 +712,7 @@ export function DynamicActualDataForm() {
                       <td className="px-2 py-1.5 text-xs text-gray-900 truncate font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.dgt_activityid || '-'}
                       </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate max-w-xs">
+                      <td className="px-2 py-1.5 text-xs text-gray-900 max-w-xs break-words">
                         {record.dgt_activityname || '-'}
                       </td>
                       <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
@@ -733,7 +733,7 @@ export function DynamicActualDataForm() {
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
-                            className="w-full px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
@@ -758,7 +758,7 @@ export function DynamicActualDataForm() {
                             onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
-                            className="w-full px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
