@@ -534,16 +534,19 @@ export function QaqcHseForm() {
                       {/* Status - Editable */}
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {editingCell?.recordId === record.dgt_dbp6bd0402qaqchseid && editingCell?.field === 'dgt_status' ? (
-                          <input
-                            type="text"
+                          <select
                             value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value.toUpperCase())}
+                            onChange={(e) => setCellValue(e.target.value)}
                             onBlur={() => saveInlineEdit(record.dgt_dbp6bd0402qaqchseid, 'dgt_status')}
                             onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd0402qaqchseid, 'dgt_status')}
-                            className="w-20 px-2 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 uppercase"
+                            className="w-20 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
-                            placeholder="OPN/CLS/REJ"
-                          />
+                          >
+                            <option value="">-</option>
+                            <option value="OPN">OPN</option>
+                            <option value="CLS">CLS</option>
+                            <option value="REJ">REJ</option>
+                          </select>
                         ) : (
                           <span
                             onClick={() => startEditing(record.dgt_dbp6bd0402qaqchseid, 'dgt_status', record.dgt_status)}
@@ -675,12 +678,24 @@ export function QaqcHseForm() {
             error={errors.dgt_revision?.message}
           />
 
-          <FormField
-            label="Status"
-            type="text"
-            {...register('dgt_status')}
-            error={errors.dgt_status?.message}
-          />
+          <div>
+            <label htmlFor="dgt_status" className="block text-sm font-medium text-gray-700 mb-1">
+              Status
+            </label>
+            <select
+              id="dgt_status"
+              {...register('dgt_status')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select status...</option>
+              <option value="OPN">OPN - Open</option>
+              <option value="CLS">CLS - Closed</option>
+              <option value="REJ">REJ - Rejected</option>
+            </select>
+            {errors.dgt_status?.message && (
+              <p className="mt-1 text-sm text-red-600">{errors.dgt_status.message}</p>
+            )}
+          </div>
 
           <div className="flex justify-end gap-3 pt-4">
             <button
