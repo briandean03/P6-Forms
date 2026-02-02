@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { Engineering } from '@/types/database'
+import type { Engineering, Type } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -45,6 +45,7 @@ type SortDirection = 'asc' | 'desc'
 
 export function EngineeringForm() {
   const [data, setData] = useState<Engineering[]>([])
+  const [types, setTypes] = useState<Type[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -56,6 +57,7 @@ export function EngineeringForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [showTypeLegend, setShowTypeLegend] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
     dgt_dtfid: '',
@@ -81,6 +83,21 @@ export function EngineeringForm() {
     formState: { errors },
   } = useForm<EngineeringFormData>()
 
+  const fetchTypes = async () => {
+    const { data: typeRecords, error } = await supabase
+      .from('dbp6_bd09_type')
+      .select('*')
+      .order('type_name', { ascending: true })
+
+    if (error) {
+      showError('Failed to fetch types: ' + error.message)
+      console.error('Error fetching types:', error)
+    } else {
+      console.log('Fetched types:', typeRecords)
+      setTypes(typeRecords || [])
+    }
+  }
+
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
@@ -97,6 +114,7 @@ export function EngineeringForm() {
   }
 
   useEffect(() => {
+    fetchTypes()
     fetchData()
   }, [])
 
@@ -285,6 +303,15 @@ export function EngineeringForm() {
     return new Date(dateString).toLocaleDateString()
   }
 
+  const getTypeName = (typeCode: number | null) => {
+    if (!typeCode) return '-'
+    const type = types.find((t) => t.type_code === typeCode)
+    if (!type) {
+      console.log('Type not found for code:', typeCode, 'Available types:', types)
+    }
+    return type?.type_name || `Code: ${typeCode}`
+  }
+
   const startEditing = (
     recordId: string,
     field: EditableField,
@@ -406,6 +433,16 @@ export function EngineeringForm() {
               </span>
             </button>
           )}
+          <button
+            onClick={() => setShowTypeLegend(!showTypeLegend)}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap shadow-sm"
+            title="Show type code reference"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Type Legend
+          </button>
         </div>
         <button
           onClick={openCreateModal}
@@ -417,6 +454,28 @@ export function EngineeringForm() {
           Create New
         </button>
       </div>
+
+      {showTypeLegend && types.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">Transmittal Type Reference</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {types.map((type) => (
+              <div key={type.id} className="flex items-center gap-2 text-sm">
+                <span className="font-mono font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                  {type.type_code}
+                </span>
+                <span className="text-gray-700">{type.type_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showTypeLegend && types.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-sm text-yellow-800">No types found in the database. Please add types to the type table.</p>
+        </div>
+      )}
 
       {loading ? (
         <LoadingSpinner />
@@ -570,7 +629,7 @@ export function EngineeringForm() {
                         {record.dgt_discipline || '-'}
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {record.dgt_transmittaltype || '-'}
+                        {getTypeName(record.dgt_transmittaltype)}
                       </td>
                       {/* Actual Submission Date - Editable */}
                       <td className="px-3 py-2.5 text-sm text-gray-900">
@@ -772,15 +831,29 @@ export function EngineeringForm() {
             error={errors.dgt_discipline?.message}
           />
 
-          <FormField
-            label="Transmittal Type"
-            type="number"
-            {...register('dgt_transmittaltype', {
-              validate: (value) =>
-                !value || !isNaN(Number(value)) || 'Must be a valid number',
-            })}
-            error={errors.dgt_transmittaltype?.message}
-          />
+          <div>
+            <label htmlFor="dgt_transmittaltype" className="block text-sm font-medium text-gray-700 mb-1">
+              Transmittal Type
+            </label>
+            <select
+              id="dgt_transmittaltype"
+              {...register('dgt_transmittaltype')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select type...</option>
+              {types.map((type) => (
+                <option key={type.id} value={type.type_code ?? ''}>
+                  {type.type_code} - {type.type_name}
+                </option>
+              ))}
+            </select>
+            {errors.dgt_transmittaltype?.message && (
+              <p className="mt-1 text-sm text-red-600">{errors.dgt_transmittaltype.message}</p>
+            )}
+            {types.length === 0 && (
+              <p className="mt-1 text-sm text-yellow-600">No types available. Please add types to the type table.</p>
+            )}
+          </div>
 
           <FormField
             label="Planned Submission Date"

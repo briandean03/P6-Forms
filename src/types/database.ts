@@ -85,3 +85,10 @@ export interface DynamicActualData {
   version_num: number | null
   dgt_projectid: string | null
 }
+
+export interface Type {
+  id: number
+  created_at: string
+  type_name: string | null
+  type_code: number | null
+}
