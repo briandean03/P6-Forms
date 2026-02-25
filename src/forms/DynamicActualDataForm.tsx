@@ -11,16 +11,8 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 
-interface DynamicActualDataWithFilters extends DynamicActualData {
-  zone_code: string | null
-  level_code: string | null
-  trade_code: string | null
-  dgt_activityname: string | null
-  dgt_plannedearlystart: string | null
-  dgt_plannedearlyfinish: string | null
-}
-
 interface DynamicActualDataFormData {
+  dgt_dbp6bd00projectdataid: string
   dgt_activityid: string
   dgt_projectid: string
   dgt_actualstart: string
@@ -37,11 +29,12 @@ type EditingCell = {
   field: EditableField
 } | null
 
-type SortField = 'dgt_activityid' | 'dgt_activityname' | 'dgt_projectid' | 'dgt_plannedearlystart' | 'dgt_plannedearlyfinish' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
+type SortField = 'dgt_activityid' | 'dgt_projectid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
 type SortDirection = 'asc' | 'desc'
 
 export function DynamicActualDataForm() {
-  const [data, setData] = useState<DynamicActualDataWithFilters[]>([])
+  const [data, setData] = useState<DynamicActualData[]>([])
+  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -53,22 +46,11 @@ export function DynamicActualDataForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
-  // Column filters
   const [filters, setFilters] = useState({
     dgt_activityid: '',
-    dgt_activityname: '',
     dgt_projectid: '',
-    dgt_plannedearlystart: '',
-    dgt_plannedearlyfinish: '',
     dgt_actualstart: '',
     dgt_actualfinish: '',
-    dgt_pctcomplete: '',
-  })
-  // Lookup filters from baseline table
-  const [lookupFilters, setLookupFilters] = useState({
-    zone_code: '',
-    level_code: '',
-    trade_code: '',
   })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -84,10 +66,18 @@ export function DynamicActualDataForm() {
     formState: { errors },
   } = useForm<DynamicActualDataFormData>()
 
+  const fetchProjects = async () => {
+    const { data: projectRecords } = await supabase
+      .from('dbp6_bd00projectdata')
+      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
+      .order('dgt_projectname', { ascending: true })
+    setProjects(projectRecords || [])
+  }
+
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('v_dynamic_actuals_with_filters')
+      .from('dbp6_bd06progressdata')
       .select('*')
       .order('dgt_dbp6bd06dynamicactualdataid', { ascending: false })
 
@@ -101,26 +91,8 @@ export function DynamicActualDataForm() {
 
   useEffect(() => {
     fetchData()
+    fetchProjects()
   }, [])
-
-  // Extract unique filter values from data
-  const filterOptions = useMemo(() => {
-    const uniqueZones = new Set<string>()
-    const uniqueLevels = new Set<string>()
-    const uniqueTrades = new Set<string>()
-
-    data.forEach((item) => {
-      if (item.zone_code) uniqueZones.add(item.zone_code)
-      if (item.level_code) uniqueLevels.add(item.level_code)
-      if (item.trade_code) uniqueTrades.add(item.trade_code)
-    })
-
-    return {
-      zones: Array.from(uniqueZones).sort(),
-      levels: Array.from(uniqueLevels).sort(),
-      trades: Array.from(uniqueTrades).sort(),
-    }
-  }, [data])
 
   // Extract unique month/year combinations for date filters
   const dateFilterOptions = useMemo(() => {
@@ -130,19 +102,12 @@ export function DynamicActualDataForm() {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     }
 
-    const plannedStartMonths = new Set<string>()
-    const plannedFinishMonths = new Set<string>()
     const actualStartMonths = new Set<string>()
     const actualFinishMonths = new Set<string>()
 
     data.forEach((item) => {
-      const psKey = getMonthYearKey(item.dgt_plannedearlystart)
-      const pfKey = getMonthYearKey(item.dgt_plannedearlyfinish)
       const asKey = getMonthYearKey(item.dgt_actualstart)
       const afKey = getMonthYearKey(item.dgt_actualfinish)
-
-      if (psKey) plannedStartMonths.add(psKey)
-      if (pfKey) plannedFinishMonths.add(pfKey)
       if (asKey) actualStartMonths.add(asKey)
       if (afKey) actualFinishMonths.add(afKey)
     })
@@ -154,17 +119,10 @@ export function DynamicActualDataForm() {
     }
 
     return {
-      plannedStart: Array.from(plannedStartMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
-      plannedFinish: Array.from(plannedFinishMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
       actualStart: Array.from(actualStartMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
       actualFinish: Array.from(actualFinishMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
     }
   }, [data])
-
-  const updateLookupFilter = (field: keyof typeof lookupFilters, value: string) => {
-    setLookupFilters(prev => ({ ...prev, [field]: value }))
-    setCurrentPage(1)
-  }
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -179,43 +137,12 @@ export function DynamicActualDataForm() {
       )
     }
 
-    // Lookup filters (Zone, Level, Trade)
-    if (lookupFilters.zone_code) {
-      result = result.filter((item) => item.zone_code === lookupFilters.zone_code)
-    }
-    if (lookupFilters.level_code) {
-      result = result.filter((item) => item.level_code === lookupFilters.level_code)
-    }
-    if (lookupFilters.trade_code) {
-      result = result.filter((item) => item.trade_code === lookupFilters.trade_code)
-    }
-
     // Column filters
     if (filters.dgt_activityid) {
       result = result.filter((item) => item.dgt_activityid === filters.dgt_activityid)
     }
-    if (filters.dgt_activityname) {
-      result = result.filter((item) => item.dgt_activityname === filters.dgt_activityname)
-    }
     if (filters.dgt_projectid) {
       result = result.filter((item) => item.dgt_projectid === filters.dgt_projectid)
-    }
-    // Date filters - compare by month/year using YYYY-MM format
-    if (filters.dgt_plannedearlystart) {
-      result = result.filter((item) => {
-        if (!item.dgt_plannedearlystart) return false
-        const itemDate = new Date(item.dgt_plannedearlystart)
-        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
-        return itemKey === filters.dgt_plannedearlystart
-      })
-    }
-    if (filters.dgt_plannedearlyfinish) {
-      result = result.filter((item) => {
-        if (!item.dgt_plannedearlyfinish) return false
-        const itemDate = new Date(item.dgt_plannedearlyfinish)
-        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
-        return itemKey === filters.dgt_plannedearlyfinish
-      })
     }
     if (filters.dgt_actualstart) {
       result = result.filter((item) => {
@@ -256,7 +183,7 @@ export function DynamicActualDataForm() {
     }
 
     return result
-  }, [data, searchTerm, filters, lookupFilters, sortField, sortDirection])
+  }, [data, searchTerm, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -311,6 +238,7 @@ export function DynamicActualDataForm() {
     setSaving(true)
 
     const insertData = {
+      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
       dgt_activityid: formData.dgt_activityid || null,
       dgt_projectid: formData.dgt_projectid || null,
       dgt_actualstart: formData.dgt_actualstart || null,
@@ -320,7 +248,7 @@ export function DynamicActualDataForm() {
         : null,
     }
 
-    const { error } = await supabase.from('dbp6bd06progressdata').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_bd06progressdata').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -361,7 +289,7 @@ export function DynamicActualDataForm() {
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6bd06progressdata')
+      .from('dbp6_bd06progressdata')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
 
@@ -392,7 +320,7 @@ export function DynamicActualDataForm() {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6bd06progressdata')
+      .from('dbp6_bd06progressdata')
       .delete()
       .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
 
@@ -409,6 +337,12 @@ export function DynamicActualDataForm() {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
+  }
+
+  const getProjectName = (id: string | null) => {
+    if (!id) return '-'
+    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
+    return project?.dgt_projectname || id
   }
 
   const formatPercentage = (value: number | null) => {
@@ -445,22 +379,15 @@ export function DynamicActualDataForm() {
               placeholder="Search records..."
             />
           </div>
-          {(Object.values(filters).some(v => v !== '') ||
-            Object.values(lookupFilters).some(v => v !== '') ||
-            sortField !== null) && (
+          {(Object.values(filters).some(v => v !== '') || sortField !== null) && (
             <button
               onClick={() => {
                 setFilters({
                   dgt_activityid: '',
-                  dgt_activityname: '',
-                  dgt_plannedearlystart: '',
-                  dgt_plannedearlyfinish: '',
                   dgt_projectid: '',
                   dgt_actualstart: '',
                   dgt_actualfinish: '',
-                  dgt_pctcomplete: '',
                 })
-                setLookupFilters({ zone_code: '', level_code: '', trade_code: '' })
                 setSortField(null)
                 setSortDirection('asc')
               }}
@@ -472,9 +399,7 @@ export function DynamicActualDataForm() {
               </svg>
               Clear All
               <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-red-800 rounded">
-                {Object.values(filters).filter(v => v !== '').length +
-                 Object.values(lookupFilters).filter(v => v !== '').length +
-                 (sortField !== null ? 1 : 0)}
+                {Object.values(filters).filter(v => v !== '').length + (sortField !== null ? 1 : 0)}
               </span>
             </button>
           )}
@@ -490,60 +415,6 @@ export function DynamicActualDataForm() {
         </button>
       </div>
 
-      {/* Lookup Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <span className="text-sm font-medium text-gray-600">Filter by:</span>
-        <div className="flex flex-wrap gap-2">
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500">Zone</label>
-            <select
-              value={lookupFilters.zone_code}
-              onChange={(e) => updateLookupFilter('zone_code', e.target.value)}
-              className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All</option>
-              {filterOptions.zones.map((zone) => (
-                <option key={zone} value={zone}>{zone}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500">Level</label>
-            <select
-              value={lookupFilters.level_code}
-              onChange={(e) => updateLookupFilter('level_code', e.target.value)}
-              className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All</option>
-              {filterOptions.levels.map((level) => (
-                <option key={level} value={level}>{level}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500">Trade</label>
-            <select
-              value={lookupFilters.trade_code}
-              onChange={(e) => updateLookupFilter('trade_code', e.target.value)}
-              className="px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All</option>
-              {filterOptions.trades.map((trade) => (
-                <option key={trade} value={trade}>{trade}</option>
-              ))}
-            </select>
-          </div>
-          {(lookupFilters.zone_code || lookupFilters.level_code || lookupFilters.trade_code) && (
-            <button
-              onClick={() => setLookupFilters({ zone_code: '', level_code: '', trade_code: '' })}
-              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      </div>
-
       {loading ? (
         <LoadingSpinner />
       ) : (
@@ -552,9 +423,7 @@ export function DynamicActualDataForm() {
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
             <span className="text-sm text-gray-600">
               Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
-              {(Object.values(filters).some(v => v !== '') ||
-                Object.values(lookupFilters).some(v => v !== '') ||
-                searchTerm) && (
+              {(Object.values(filters).some(v => v !== '') || searchTerm) && (
                 <span className="ml-1 text-gray-500">
                   (filtered from {data.length} total)
                 </span>
@@ -577,58 +446,9 @@ export function DynamicActualDataForm() {
                       <ColumnFilter data={data} field="dgt_activityid" value={filters.dgt_activityid} onChange={(v) => updateFilter('dgt_activityid', v)} label="Activity ID" />
                     </div>
                   </th>
-                  <th className="px-2 py-1.5 text-left align-top max-w-xs">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_activityname')}
-                    >
-                      Activity Name
-                      <SortIcon field="dgt_activityname" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_activityname" value={filters.dgt_activityname} onChange={(v) => updateFilter('dgt_activityname', v)} label="Activity Name" />
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-28">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_plannedearlystart')}
-                    >
-                      Planned Start
-                      <SortIcon field="dgt_plannedearlystart" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={filters.dgt_plannedearlystart}
-                        onChange={(e) => updateFilter('dgt_plannedearlystart', e.target.value)}
-                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                      >
-                        <option value="">All</option>
-                        {dateFilterOptions.plannedStart.map(({ key, label }) => (
-                          <option key={key} value={key}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-28">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_plannedearlyfinish')}
-                    >
-                      Planned Finish
-                      <SortIcon field="dgt_plannedearlyfinish" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={filters.dgt_plannedearlyfinish}
-                        onChange={(e) => updateFilter('dgt_plannedearlyfinish', e.target.value)}
-                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                      >
-                        <option value="">All</option>
-                        {dateFilterOptions.plannedFinish.map(({ key, label }) => (
-                          <option key={key} value={key}>{label}</option>
-                        ))}
-                      </select>
+                  <th className="px-2 py-1.5 text-left align-top w-36">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Project
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-28">
@@ -702,7 +522,7 @@ export function DynamicActualDataForm() {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={7} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -712,14 +532,13 @@ export function DynamicActualDataForm() {
                       <td className="px-2 py-1.5 text-xs text-gray-900 truncate font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.dgt_activityid || '-'}
                       </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900 max-w-xs break-words">
-                        {record.dgt_activityname || '-'}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
-                        {formatDate(record.dgt_plannedearlystart)}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
-                        {formatDate(record.dgt_plannedearlyfinish)}
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
+                        <div
+                          className="w-40 truncate font-medium"
+                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
+                        >
+                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
+                        </div>
                       </td>
                       <td className="px-2 py-1.5 text-xs text-gray-900 truncate">
                         {record.dgt_projectid || '-'}
@@ -864,6 +683,26 @@ export function DynamicActualDataForm() {
         title="Create Dynamic Actual Data Record"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Project <span className="text-red-500">*</span>
+            </label>
+            <select
+              {...register('dgt_dbp6bd00projectdataid', { required: 'Project is required' })}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Select Project --</option>
+              {projects.map((p) => (
+                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
+                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
+                </option>
+              ))}
+            </select>
+            {errors.dgt_dbp6bd00projectdataid && (
+              <p className="text-xs text-red-500">{errors.dgt_dbp6bd00projectdataid.message}</p>
+            )}
+          </div>
+
           <FormField
             label="Activity ID"
             type="text"

@@ -13,6 +13,7 @@ import { ColumnFilter } from '@/components/ColumnFilter'
 import { DateColumnFilter } from '@/components/DateColumnFilter'
 
 interface EngineeringFormData {
+  dgt_dbp6bd00projectdataid: string
   // Fields for creating new records
   dgt_dtfid: string
   dgt_transmittalref: string
@@ -46,6 +47,7 @@ type SortDirection = 'asc' | 'desc'
 export function EngineeringForm() {
   const [data, setData] = useState<Engineering[]>([])
   const [types, setTypes] = useState<Type[]>([])
+  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -98,10 +100,18 @@ export function EngineeringForm() {
     }
   }
 
+  const fetchProjects = async () => {
+    const { data: projectRecords } = await supabase
+      .from('dbp6_bd00projectdata')
+      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
+      .order('dgt_projectname', { ascending: true })
+    setProjects(projectRecords || [])
+  }
+
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_bd041engineering')
+      .from('dbp6_bd0401engineering')
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -116,6 +126,7 @@ export function EngineeringForm() {
   useEffect(() => {
     fetchTypes()
     fetchData()
+    fetchProjects()
   }, [])
 
   const filteredAndSortedData = useMemo(() => {
@@ -271,6 +282,7 @@ export function EngineeringForm() {
     setSaving(true)
 
     const insertData = {
+      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
       dgt_dtfid: formData.dgt_dtfid || null,
       dgt_transmittalref: formData.dgt_transmittalref || null,
       dgt_transmittalsubject: formData.dgt_transmittalsubject || null,
@@ -285,7 +297,7 @@ export function EngineeringForm() {
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_bd041engineering').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_bd0401engineering').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -310,6 +322,12 @@ export function EngineeringForm() {
       console.log('Type not found for code:', typeCode, 'Available types:', types)
     }
     return type?.type_name || `Code: ${typeCode}`
+  }
+
+  const getProjectName = (id: string | null) => {
+    if (!id) return '-'
+    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
+    return project?.dgt_projectname || id
   }
 
   const startEditing = (
@@ -340,7 +358,7 @@ export function EngineeringForm() {
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_bd041engineering')
+      .from('dbp6_bd0401engineering')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -372,7 +390,7 @@ export function EngineeringForm() {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_bd041engineering')
+      .from('dbp6_bd0401engineering')
       .delete()
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -496,6 +514,11 @@ export function EngineeringForm() {
             <table className="w-full divide-y divide-gray-200 table-fixed">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
+                  <th className="px-3 py-2 text-left align-top w-36">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Project
+                    </div>
+                  </th>
                   <th className="px-3 py-2 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -609,21 +632,35 @@ export function EngineeringForm() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={11} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd041engineeringid} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 text-sm text-gray-900 truncate">
-                        {record.dgt_dtfid || '-'}
+                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                        <div
+                          className="truncate font-medium"
+                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
+                        >
+                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {record.dgt_transmittalref || '-'}
+                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                        <div className="truncate" title={record.dgt_dtfid || '-'}>
+                          {record.dgt_dtfid || '-'}
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 max-w-xs break-words">
-                        {record.dgt_transmittalsubject || '-'}
+                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                        <div className="truncate" title={record.dgt_transmittalref || '-'}>
+                          {record.dgt_transmittalref || '-'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                        <div className="truncate" title={record.dgt_transmittalsubject || '-'}>
+                          {record.dgt_transmittalsubject || '-'}
+                        </div>
                       </td>
                       <td className="px-3 py-2.5 text-sm text-gray-900">
                         {record.dgt_discipline || '-'}
@@ -800,6 +837,26 @@ export function EngineeringForm() {
         title="Create Engineering Record"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Project <span className="text-red-500">*</span>
+            </label>
+            <select
+              {...register('dgt_dbp6bd00projectdataid', { required: 'Project is required' })}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Select Project --</option>
+              {projects.map((p) => (
+                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
+                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
+                </option>
+              ))}
+            </select>
+            {errors.dgt_dbp6bd00projectdataid && (
+              <p className="text-xs text-red-500">{errors.dgt_dbp6bd00projectdataid.message}</p>
+            )}
+          </div>
+
           <FormField
             label="DTF ID"
             type="text"

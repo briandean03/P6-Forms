@@ -12,6 +12,7 @@ import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 
 interface ActualResourcesFormData {
+  dgt_dbp6bd00projectdataid: string
   resource_name: string
   dgt_resourcecount: string
   dgt_resourcediscipline: string
@@ -33,6 +34,7 @@ type SortDirection = 'asc' | 'desc'
 
 export function ActualResourcesForm() {
   const [data, setData] = useState<ActualResources[]>([])
+  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -66,6 +68,14 @@ export function ActualResourcesForm() {
     formState: { errors },
   } = useForm<ActualResourcesFormData>()
 
+  const fetchProjects = async () => {
+    const { data: projectRecords } = await supabase
+      .from('dbp6_bd00projectdata')
+      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
+      .order('dgt_projectname', { ascending: true })
+    setProjects(projectRecords || [])
+  }
+
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
@@ -83,6 +93,7 @@ export function ActualResourcesForm() {
 
   useEffect(() => {
     fetchData()
+    fetchProjects()
   }, [])
 
   const filteredAndSortedData = useMemo(() => {
@@ -193,6 +204,7 @@ export function ActualResourcesForm() {
     setSaving(true)
 
     const insertData = {
+      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
       resource_name: formData.resource_name || null,
       dgt_resourcecount: formData.dgt_resourcecount
         ? parseInt(formData.dgt_resourcecount)
@@ -285,6 +297,12 @@ export function ActualResourcesForm() {
     setDeleteConfirm(null)
   }
 
+  const getProjectName = (id: string | null) => {
+    if (!id) return '-'
+    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
+    return project?.dgt_projectname || id
+  }
+
   return (
     <div className="space-y-4">
       {notification && (
@@ -372,6 +390,11 @@ export function ActualResourcesForm() {
                       <ColumnFilter data={data} field="resource_name" value={filters.resource_name} onChange={(v) => updateFilter('resource_name', v)} label="Resource Name" />
                     </div>
                   </th>
+                  <th className="px-2 py-1.5 text-left align-top w-36">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Project
+                    </div>
+                  </th>
                   <th className="px-2 py-1.5 text-left align-top w-24">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -428,7 +451,7 @@ export function ActualResourcesForm() {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={7} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -437,6 +460,14 @@ export function ActualResourcesForm() {
                     <tr key={record.dgt_dbp6ud0501actualresourcesid} className="hover:bg-gray-50">
                       <td className="px-2 py-1.5 text-xs text-gray-900 truncate sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.resource_name || '-'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-gray-900">
+                        <div
+                          className="w-40 truncate font-medium"
+                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
+                        >
+                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
+                        </div>
                       </td>
                       <td className="px-2 py-1.5 text-xs text-gray-900">
                         {record.dgt_resourcediscipline || '-'}
@@ -524,6 +555,26 @@ export function ActualResourcesForm() {
         title="Create Actual Resources Record"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Project <span className="text-red-500">*</span>
+            </label>
+            <select
+              {...register('dgt_dbp6bd00projectdataid', { required: 'Project is required' })}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Select Project --</option>
+              {projects.map((p) => (
+                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
+                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
+                </option>
+              ))}
+            </select>
+            {errors.dgt_dbp6bd00projectdataid && (
+              <p className="text-xs text-red-500">{errors.dgt_dbp6bd00projectdataid.message}</p>
+            )}
+          </div>
+
           <FormField
             label="Resource Name"
             type="text"

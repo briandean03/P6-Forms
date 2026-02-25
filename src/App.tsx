@@ -3,8 +3,9 @@ import { EngineeringForm } from '@/forms/EngineeringForm'
 import { QaqcHseForm } from '@/forms/QaqcHseForm'
 import { ActualResourcesForm } from '@/forms/ActualResourcesForm'
 import { DynamicActualDataForm } from '@/forms/DynamicActualDataForm'
+import { ProjectDataForm } from '@/forms/ProjectDataForm'
 
-type TabKey = 'engineering' | 'qaqc' | 'resources' | 'dynamic'
+type TabKey = 'engineering' | 'qaqc' | 'resources' | 'dynamic' | 'projectdata'
 
 interface Tab {
   key: TabKey
@@ -54,6 +55,16 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
+  {
+    key: 'projectdata',
+    label: 'Project Data',
+    shortLabel: 'Projects',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
 ]
 
 function App() {
@@ -69,6 +80,8 @@ function App() {
         return <ActualResourcesForm />
       case 'dynamic':
         return <DynamicActualDataForm />
+      case 'projectdata':
+        return <ProjectDataForm />
       default:
         return null
     }

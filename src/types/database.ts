@@ -1,7 +1,7 @@
 export interface Database {
   public: {
     Tables: {
-      dbp6_bd041engineering: {
+      dbp6_bd0401engineering: {
         Row: Engineering
         Insert: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
         Update: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
@@ -16,10 +16,15 @@ export interface Database {
         Insert: Omit<ActualResources, 'dgt_dbp6ud0501actualresourcesid' | 'created_at'>
         Update: Partial<ActualResources>
       }
-      dgt_dbp6bd06dynamicactualdata: {
+      dbp6_bd06progressdata: {
         Row: DynamicActualData
         Insert: Omit<DynamicActualData, 'dgt_dbp6bd06dynamicactualdataid'>
         Update: Partial<DynamicActualData>
+      }
+      dbp6_bd00projectdata: {
+        Row: ProjectData
+        Insert: Omit<ProjectData, 'dgt_dbp6bd00projectdataid'>
+        Update: Partial<ProjectData>
       }
     }
   }
@@ -40,14 +45,16 @@ export interface Engineering {
   dgt_transmittalsubject: string | null
   dgt_transmittaltype: number | null
   utcconversiontimezonecode: string | null
-  versionnumber: number | null
+  mod_id: number | null
   owningbusinessunit: string | null
   created_at: string | null
   is_long_lead: boolean | null
+  dgt_dbp6bd00projectdataid: string | null
 }
 
 export interface QaqcHse {
   dgt_dbp6bd0402qaqchseid: string
+  dgt_dbp6bd00projectdataid: string | null
   dgt_discipline: number | null
   dgt_docid: string | null
   dgt_docref: string | null
@@ -65,6 +72,7 @@ export interface QaqcHse {
 
 export interface ActualResources {
   dgt_dbp6ud0501actualresourcesid: string
+  dgt_dbp6bd00projectdataid: string | null
   resource_name: string | null
   dgt_resourcecount: number | null
   dgt_resourcediscipline: number | null
@@ -77,6 +85,7 @@ export interface ActualResources {
 
 export interface DynamicActualData {
   dgt_dbp6bd06dynamicactualdataid: string
+  dgt_dbp6bd00projectdataid: string | null
   dgt_activityid: string | null
   dgt_actualstart: string | null
   dgt_actualfinish: string | null
@@ -91,4 +100,31 @@ export interface Type {
   created_at: string
   type_name: string | null
   type_code: number | null
+}
+
+export interface ProjectData {
+  dgt_dbp6bd00projectdataid: string
+  dgt_consultantsname: string | null
+  dgt_contractvalue: number | null
+  dgt_contractorsname: string | null
+  dgt_datadate: string | null
+  dgt_elapsedduration: string | null
+  dgt_employersname: string | null
+  dgt_eotawarded: string | null
+  importsequencenumber: string | null
+  dgt_location: string | null
+  dgt_pmcsname: string | null
+  dgt_projectenddate: string | null
+  dgt_projectid: string | null
+  dgt_projectname: string | null
+  dgt_projectstartdate: string | null
+  dgt_reportingstartingdate: string | null
+  statuscode: number | null
+  statecode: string | null
+  timezoneruleversionnumber: string | null
+  utcconversiontimezonecode: string | null
+  versionnumber: number | null
+  dgt_weeknum: number | null
+  owningbusinessunit: string | null
+  project_id: string | null
 }
