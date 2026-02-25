@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { ProjectData } from '../types/database'
 import { useNotification } from '../hooks/useNotification'
 import { Modal } from '../components/Modal'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FormField } from '../components/FormField'
 import { SearchFilter } from '../components/SearchFilter'
 import { Pagination } from '../components/Pagination'
@@ -89,6 +90,7 @@ export function ProjectDataForm() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [cellValue, setCellValue] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -101,8 +103,16 @@ export function ProjectDataForm() {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<ProjectDataFormData>()
+
+  const handleCancelModal = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true)
+    } else {
+      setIsModalOpen(false)
+    }
+  }
 
   const ITEMS_PER_PAGE = 15
 
@@ -458,36 +468,20 @@ export function ProjectDataForm() {
         itemsPerPage={ITEMS_PER_PAGE}
       />
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <Modal
-          isOpen={!!deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          title="Confirm Delete"
-        >
-          <p className="mb-4 text-gray-700">Are you sure you want to delete this project?</p>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setDeleteConfirm(null)}
-              className="px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => handleDelete(deleteConfirm)}
-              disabled={deleting}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-red-400"
-            >
-              {deleting ? 'Deleting...' : 'Delete'}
-            </button>
-          </div>
-        </Modal>
-      )}
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        title="Delete Project"
+        message="Are you sure you want to delete this project? This action cannot be undone."
+        confirmLabel="Delete"
+        loading={deleting}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        onCancel={() => setDeleteConfirm(null)}
+      />
 
       {/* Create Project Modal */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleCancelModal}
         title="Create New Project"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -605,7 +599,7 @@ export function ProjectDataForm() {
           <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
             <button
               type="button"
-              onClick={() => setIsModalOpen(false)}
+              onClick={handleCancelModal}
               className="px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
             >
               Cancel
@@ -620,6 +614,17 @@ export function ProjectDataForm() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={showDiscardConfirm}
+        title="Discard Changes"
+        message="You have unsaved changes. Are you sure you want to discard them?"
+        confirmLabel="Discard"
+        cancelLabel="Keep Editing"
+        variant="warning"
+        onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }}
+        onCancel={() => setShowDiscardConfirm(false)}
+      />
     </div>
   )
 }
