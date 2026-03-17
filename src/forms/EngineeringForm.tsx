@@ -97,7 +97,7 @@ export function EngineeringForm() {
 
   const fetchTypes = async () => {
     const { data: typeRecords, error } = await supabase
-      .from('dbp6_bd09_type')
+      .from('dbp6_0019_type')
       .select('*')
       .order('type_name', { ascending: true })
 
@@ -112,7 +112,7 @@ export function EngineeringForm() {
 
   const fetchProjects = async () => {
     const { data: projectRecords } = await supabase
-      .from('dbp6_bd00projectdata')
+      .from('dbp6_0000_projectdata')
       .select('dgt_dbp6bd00projectdataid, dgt_projectname')
       .order('dgt_projectname', { ascending: true })
     setProjects(projectRecords || [])
@@ -121,7 +121,7 @@ export function EngineeringForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_bd0401engineering')
+      .from('dbp6_000401_engineering')
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -307,7 +307,7 @@ export function EngineeringForm() {
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_bd0401engineering').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000401_engineering').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -368,7 +368,7 @@ export function EngineeringForm() {
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_bd0401engineering')
+      .from('dbp6_000401_engineering')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -400,7 +400,7 @@ export function EngineeringForm() {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_bd0401engineering')
+      .from('dbp6_000401_engineering')
       .delete()
       .eq('dgt_dbp6bd041engineeringid', recordId)
 

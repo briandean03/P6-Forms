@@ -78,7 +78,7 @@ export function DynamicActualDataForm() {
 
   const fetchProjects = async () => {
     const { data: projectRecords } = await supabase
-      .from('dbp6_bd00projectdata')
+      .from('dbp6_0000_projectdata')
       .select('dgt_dbp6bd00projectdataid, dgt_projectname')
       .order('dgt_projectname', { ascending: true })
     setProjects(projectRecords || [])
@@ -87,7 +87,7 @@ export function DynamicActualDataForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_bd06progressdata')
+      .from('dbp6_0006_progressdata')
       .select('*')
       .order('dgt_dbp6bd06dynamicactualdataid', { ascending: false })
 
@@ -258,7 +258,7 @@ export function DynamicActualDataForm() {
         : null,
     }
 
-    const { error } = await supabase.from('dbp6_bd06progressdata').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_0006_progressdata').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -299,7 +299,7 @@ export function DynamicActualDataForm() {
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_bd06progressdata')
+      .from('dbp6_0006_progressdata')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
 
@@ -330,7 +330,7 @@ export function DynamicActualDataForm() {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_bd06progressdata')
+      .from('dbp6_0006_progressdata')
       .delete()
       .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
 

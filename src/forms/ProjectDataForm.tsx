@@ -120,7 +120,7 @@ export function ProjectDataForm() {
     setLoading(true)
     try {
       const { data: records, error } = await supabase
-        .from('dbp6_bd00projectdata')
+        .from('dbp6_0000_projectdata')
         .select('*')
         .order('dgt_dbp6bd00projectdataid', { ascending: false })
 
@@ -171,7 +171,7 @@ export function ProjectDataForm() {
     }
 
     try {
-      const { error } = await supabase.from('dbp6_bd00projectdata').insert(insertData as never)
+      const { error } = await supabase.from('dbp6_0000_projectdata').insert(insertData as never)
       if (error) {
         showError('Failed to create record: ' + error.message)
       } else {
@@ -208,7 +208,7 @@ export function ProjectDataForm() {
 
     try {
       const { error } = await supabase
-        .from('dbp6_bd00projectdata')
+        .from('dbp6_0000_projectdata')
         .update({ [field]: updateValue } as never)
         .eq('dgt_dbp6bd00projectdataid', recordId)
 
@@ -241,7 +241,7 @@ export function ProjectDataForm() {
     setDeleting(true)
     try {
       const { error } = await supabase
-        .from('dbp6_bd00projectdata')
+        .from('dbp6_0000_projectdata')
         .delete()
         .eq('dgt_dbp6bd00projectdataid', recordId)
 

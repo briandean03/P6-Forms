@@ -80,7 +80,7 @@ export function ActualResourcesForm() {
 
   const fetchProjects = async () => {
     const { data: projectRecords } = await supabase
-      .from('dbp6_bd00projectdata')
+      .from('dbp6_0000_projectdata')
       .select('dgt_dbp6bd00projectdataid, dgt_projectname')
       .order('dgt_projectname', { ascending: true })
     setProjects(projectRecords || [])
@@ -89,7 +89,7 @@ export function ActualResourcesForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_ud0501actualresources')
+      .from('dbp6_000501_actualresources')
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -230,7 +230,7 @@ export function ActualResourcesForm() {
         : null,
     }
 
-    const { error } = await supabase.from('dbp6_ud0501actualresources').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000501_actualresources').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -262,7 +262,7 @@ export function ActualResourcesForm() {
     const updatePayload: Record<string, number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_ud0501actualresources')
+      .from('dbp6_000501_actualresources')
       .update(updatePayload as never)
       .eq('dgt_dbp6ud0501actualresourcesid', recordId)
 
@@ -293,7 +293,7 @@ export function ActualResourcesForm() {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_ud0501actualresources')
+      .from('dbp6_000501_actualresources')
       .delete()
       .eq('dgt_dbp6ud0501actualresourcesid', recordId)
 

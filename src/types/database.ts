@@ -1,27 +1,27 @@
 export interface Database {
   public: {
     Tables: {
-      dbp6_bd0401engineering: {
+      dbp6_000401_engineering: {
         Row: Engineering
         Insert: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
         Update: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
       }
-      dbp6_bd0402_qaqc_hse: {
+      dbp6_000402_qaqc_hse: {
         Row: QaqcHse
         Insert: Omit<QaqcHse, 'dgt_dbp6bd0402qaqchseid' | 'created_at'>
         Update: Partial<QaqcHse>
       }
-      dbp6_ud0501actualresources: {
+      dbp6_000501_actualresources: {
         Row: ActualResources
         Insert: Omit<ActualResources, 'dgt_dbp6ud0501actualresourcesid' | 'created_at'>
         Update: Partial<ActualResources>
       }
-      dbp6_bd06progressdata: {
+      dbp6_0006_progressdata: {
         Row: DynamicActualData
         Insert: Omit<DynamicActualData, 'dgt_dbp6bd06dynamicactualdataid'>
         Update: Partial<DynamicActualData>
       }
-      dbp6_bd00projectdata: {
+      dbp6_0000_projectdata: {
         Row: ProjectData
         Insert: Omit<ProjectData, 'dgt_dbp6bd00projectdataid'>
         Update: Partial<ProjectData>
@@ -100,6 +100,14 @@ export interface Type {
   created_at: string
   type_name: string | null
   type_code: number | null
+}
+
+export interface AreaOfConcern {
+  id: string
+  aoc_number: string
+  description: string | null
+  project_id: string | null
+  created_at: string
 }
 
 export interface ProjectData {
