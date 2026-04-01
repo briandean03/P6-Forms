@@ -17,7 +17,7 @@ interface AocFormData {
 
 const ITEMS_PER_PAGE = 15
 
-type SortField = 'aoc_number' | 'description' | 'project_id' | 'created_at'
+type SortField = 'aoc_number' | 'description' | 'project_id' | 'created_at' | 'status'
 type SortDirection = 'asc' | 'desc'
 
 export function AreasOfConcernForm() {
@@ -28,11 +28,12 @@ export function AreasOfConcernForm() {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
-  const [sortField, setSortField] = useState<SortField | null>(null)
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const {
@@ -61,7 +62,7 @@ export function AreasOfConcernForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('areas_of_concern')
+      .from('dbp6_areas_of_concern')
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -100,9 +101,7 @@ export function AreasOfConcernForm() {
         if (bVal === null || bVal === undefined) return sortDirection === 'asc' ? -1 : 1
 
         if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return sortDirection === 'asc'
-            ? aVal.localeCompare(bVal)
-            : bVal.localeCompare(aVal)
+          return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
         }
 
         if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
@@ -158,26 +157,28 @@ export function AreasOfConcernForm() {
   }
 
   const onSubmit = async (formData: AocFormData) => {
-    // Check for duplicate: same description + project already open
+    // Only block if an OPEN record with the same description + project already exists
     const normalized = formData.description.trim().toLowerCase()
     const duplicate = data.find(
       (item) =>
         item.project_id === formData.project_id &&
-        item.description?.trim().toLowerCase() === normalized
+        item.description?.trim().toLowerCase() === normalized &&
+        item.status === 'open'
     )
 
     if (duplicate) {
       showError(
-        `This area of concern already exists and is open (${duplicate.aoc_number}). It must be resolved (deleted) before adding it again.`
+        `This area of concern is already open (${duplicate.aoc_number}). Close it before adding again.`
       )
       return
     }
 
     setSaving(true)
 
-    const { error } = await supabase.from('areas_of_concern').insert({
+    const { error } = await supabase.from('dbp6_areas_of_concern').insert({
       project_id: formData.project_id || null,
       description: formData.description.trim(),
+      status: 'open',
     } as never)
 
     if (error) {
@@ -191,18 +192,35 @@ export function AreasOfConcernForm() {
     setSaving(false)
   }
 
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'open' ? 'closed' : 'open'
+    setTogglingId(id)
+
+    const { error } = await supabase
+      .from('dbp6_areas_of_concern')
+      .update({ status: newStatus } as never)
+      .eq('id', id)
+
+    if (error) {
+      showError('Failed to update status: ' + error.message)
+    } else {
+      setData((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, status: newStatus } : item))
+      )
+      showSuccess(newStatus === 'closed' ? 'Marked as closed' : 'Reopened')
+    }
+    setTogglingId(null)
+  }
+
   const handleDelete = async (id: string) => {
     setDeleting(true)
-    const { error } = await supabase
-      .from('areas_of_concern')
-      .delete()
-      .eq('id', id)
+    const { error } = await supabase.from('dbp6_areas_of_concern').delete().eq('id', id)
 
     if (error) {
       showError('Failed to delete record: ' + error.message)
     } else {
       setData((prev) => prev.filter((item) => item.id !== id))
-      showSuccess('Area of concern resolved and removed')
+      showSuccess('Record deleted')
     }
     setDeleting(false)
     setDeleteConfirm(null)
@@ -218,6 +236,9 @@ export function AreasOfConcernForm() {
     const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === projectId)
     return project?.dgt_projectname || projectId
   }
+
+  const openCount = data.filter((d) => d.status === 'open').length
+  const closedCount = data.filter((d) => d.status === 'closed').length
 
   return (
     <div className="space-y-4">
@@ -235,17 +256,28 @@ export function AreasOfConcernForm() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-2.194-.833-2.964 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
         </svg>
         <span>
-          All listed items are <strong>open</strong> areas of concern. Once an issue is resolved, delete the record. You cannot add a duplicate concern while it remains open.
+          You cannot add a duplicate concern while one is already <strong>open</strong>. Click the status badge to toggle between Open and Closed.
         </span>
       </div>
 
       <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div className="w-full sm:w-72">
-          <SearchFilter
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Search by AOC number, description..."
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="w-full sm:w-72">
+            <SearchFilter
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search by AOC number, description..."
+            />
+          </div>
+          {/* Summary counts */}
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+            {openCount} Open
+          </span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            {closedCount} Closed
+          </span>
         </div>
         <button
           onClick={openCreateModal}
@@ -264,7 +296,7 @@ export function AreasOfConcernForm() {
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
             <span className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> open area{filteredAndSortedData.length !== 1 ? 's' : ''} of concern
+              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
               {searchTerm && (
                 <span className="ml-1 text-gray-500">(filtered from {data.length} total)</span>
               )}
@@ -310,14 +342,18 @@ export function AreasOfConcernForm() {
                       <SortIcon field="created_at" />
                     </div>
                   </th>
-                  <th className="px-3 py-3 text-left w-28">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                  <th className="px-3 py-3 text-left w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('status')}
+                    >
                       Status
+                      <SortIcon field="status" />
                     </div>
                   </th>
-                  <th className="px-3 py-3 text-left w-24">
+                  <th className="px-3 py-3 text-left w-16">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-                      Actions
+                      Del
                     </div>
                   </th>
                 </tr>
@@ -326,46 +362,71 @@ export function AreasOfConcernForm() {
                 {paginatedData.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                      No open areas of concern
+                      No areas of concern
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 whitespace-nowrap text-sm font-mono font-medium text-gray-900">
-                        {record.aoc_number}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        <div className="w-40 truncate" title={getProjectName(record.project_id)}>
-                          {getProjectName(record.project_id)}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 max-w-md break-words">
-                        {record.description || '-'}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(record.created_at)}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-                          Open
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <button
-                          onClick={() => setDeleteConfirm(record.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 transition-colors"
-                          title="Mark as resolved and remove"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Resolve
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  paginatedData.map((record) => {
+                    const isOpen = record.status === 'open'
+                    const isToggling = togglingId === record.id
+                    return (
+                      <tr key={record.id} className={`hover:bg-gray-50 ${!isOpen ? 'opacity-70' : ''}`}>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm font-mono font-medium text-gray-900">
+                          {record.aoc_number}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">
+                          <div className="w-40 truncate" title={getProjectName(record.project_id)}>
+                            {getProjectName(record.project_id)}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900 max-w-md break-words">
+                          {record.description || '-'}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(record.created_at)}
+                        </td>
+                        {/* Clickable status badge */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button
+                            onClick={() => handleToggleStatus(record.id, record.status ?? 'open')}
+                            disabled={isToggling}
+                            title={isOpen ? 'Click to close' : 'Click to reopen'}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full transition-all hover:opacity-80 disabled:opacity-50 ${
+                              isOpen
+                                ? 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                                : 'bg-green-100 text-green-800 hover:bg-green-200'
+                            }`}
+                          >
+                            {isToggling ? (
+                              <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                            ) : isOpen ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                            ) : (
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                            {isOpen ? 'Open' : 'Closed'}
+                          </button>
+                        </td>
+                        {/* Delete */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button
+                            onClick={() => setDeleteConfirm(record.id)}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                            title="Delete record"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -425,14 +486,14 @@ export function AreasOfConcernForm() {
             <button
               type="button"
               onClick={handleCancelModal}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? (
                 <>
@@ -452,9 +513,9 @@ export function AreasOfConcernForm() {
 
       <ConfirmDialog
         isOpen={!!deleteConfirm}
-        title="Resolve Area of Concern"
-        message="Mark this area of concern as resolved? It will be permanently removed from the list."
-        confirmLabel="Resolve & Remove"
+        title="Delete Record"
+        message="Permanently delete this area of concern? This cannot be undone."
+        confirmLabel="Delete"
         loading={deleting}
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         onCancel={() => setDeleteConfirm(null)}
