@@ -37,6 +37,7 @@ type EditValues = {
 
 export function VariationsForm() {
   const [data, setData] = useState<Variations[]>([])
+  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -67,7 +68,12 @@ export function VariationsForm() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [])
+  const fetchProjects = async () => {
+    const { data: records } = await supabase.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname, dgt_projectid').order('dgt_projectname', { ascending: true })
+    setProjects(records || [])
+  }
+
+  useEffect(() => { fetchData(); fetchProjects() }, [])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -284,7 +290,13 @@ export function VariationsForm() {
 
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Variation">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <FormField label="Project ID" type="text" {...register('dgt_projectid')} error={errors.dgt_projectid?.message} />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Project</label>
+            <select {...register('dgt_projectid')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">-- Select Project --</option>
+              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_projectid ?? ''}>{p.dgt_projectname || p.dgt_projectid || p.dgt_dbp6bd00projectdataid}</option>)}
+            </select>
+          </div>
           <FormField label="VO Reference" type="text" {...register('dgt_voref')} error={errors.dgt_voref?.message} />
           <FormField label="Applied Amount" type="text" {...register('dgt_voappliedamount')} error={errors.dgt_voappliedamount?.message} />
           <FormField label="Approved Amount" type="text" {...register('dgt_voapprovedamount')} error={errors.dgt_voapprovedamount?.message} />

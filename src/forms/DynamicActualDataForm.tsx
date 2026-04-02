@@ -35,7 +35,7 @@ type SortDirection = 'asc' | 'desc'
 
 export function DynamicActualDataForm() {
   const [data, setData] = useState<DynamicActualData[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
+  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -79,7 +79,7 @@ export function DynamicActualDataForm() {
   const fetchProjects = async () => {
     const { data: projectRecords } = await supabase
       .from('dbp6_0000_projectdata')
-      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
+      .select('dgt_dbp6bd00projectdataid, dgt_projectname, dgt_projectid')
       .order('dgt_projectname', { ascending: true })
     setProjects(projectRecords || [])
   }
@@ -702,12 +702,21 @@ export function DynamicActualDataForm() {
             error={errors.dgt_activityid?.message}
           />
 
-          <FormField
-            label="Project ID"
-            type="text"
-            {...register('dgt_projectid')}
-            error={errors.dgt_projectid?.message}
-          />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Project ID</label>
+            <select
+              {...register('dgt_projectid')}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Select Project --</option>
+              {projects.map((p) => (
+                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_projectid ?? ''}>
+                  {p.dgt_projectname || p.dgt_projectid || p.dgt_dbp6bd00projectdataid}
+                </option>
+              ))}
+            </select>
+            {errors.dgt_projectid && <p className="text-xs text-red-500">{errors.dgt_projectid.message}</p>}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <FormField

@@ -13,7 +13,6 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 interface SubtradesFormData {
   dgt_dbp6bd00projectdataid: string
-  dgt_dbp6bd014subtradeid: string
   dgt_subtradecode: string
   dgt_subtradename: string
 }
@@ -136,7 +135,6 @@ export function SubtradesForm() {
   const onSubmit = async (formData: SubtradesFormData) => {
     setSaving(true)
     const { error } = await supabase.from('dbp6_0016_subtrades').insert({
-      dgt_dbp6bd014subtradeid: formData.dgt_dbp6bd014subtradeid,
       dgt_subtradecode: formData.dgt_subtradecode || null,
       dgt_subtradename: formData.dgt_subtradename || null,
       dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid || null,
@@ -242,7 +240,6 @@ export function SubtradesForm() {
               {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
             </select>
           </div>
-          <FormField label="Subtrade ID" type="text" {...register('dgt_dbp6bd014subtradeid', { required: 'Subtrade ID is required' })} error={errors.dgt_dbp6bd014subtradeid?.message} />
           <FormField label="Subtrade Code" type="text" {...register('dgt_subtradecode')} error={errors.dgt_subtradecode?.message} />
           <FormField label="Subtrade Name" type="text" {...register('dgt_subtradename')} error={errors.dgt_subtradename?.message} />
           <div className="flex justify-end gap-3 pt-4">

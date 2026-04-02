@@ -13,6 +13,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 interface AocFormData {
   project_id: string
   description: string
+  status: string
 }
 
 const ITEMS_PER_PAGE = 15
@@ -157,20 +158,22 @@ export function AreasOfConcernForm() {
   }
 
   const onSubmit = async (formData: AocFormData) => {
-    // Only block if an OPEN record with the same description + project already exists
-    const normalized = formData.description.trim().toLowerCase()
-    const duplicate = data.find(
-      (item) =>
-        item.project_id === formData.project_id &&
-        item.description?.trim().toLowerCase() === normalized &&
-        item.status === 'open'
-    )
-
-    if (duplicate) {
-      showError(
-        `This area of concern is already open (${duplicate.aoc_number}). Close it before adding again.`
+    const selectedStatus = formData.status || 'open'
+    // Only block if an OPEN record with the same description + project already exists and we're also creating as open
+    if (selectedStatus === 'open') {
+      const normalized = formData.description.trim().toLowerCase()
+      const duplicate = data.find(
+        (item) =>
+          item.project_id === formData.project_id &&
+          item.description?.trim().toLowerCase() === normalized &&
+          item.status === 'open'
       )
-      return
+      if (duplicate) {
+        showError(
+          `This area of concern is already open (${duplicate.aoc_number}). Close it before adding again.`
+        )
+        return
+      }
     }
 
     setSaving(true)
@@ -178,7 +181,7 @@ export function AreasOfConcernForm() {
     const { error } = await supabase.from('dbp6_areas_of_concern').insert({
       project_id: formData.project_id || null,
       description: formData.description.trim(),
-      status: 'open',
+      status: selectedStatus,
     } as never)
 
     if (error) {
@@ -480,6 +483,18 @@ export function AreasOfConcernForm() {
             {errors.description && (
               <p className="text-xs text-red-500">{errors.description.message}</p>
             )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Status</label>
+            <select
+              {...register('status')}
+              defaultValue="open"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
