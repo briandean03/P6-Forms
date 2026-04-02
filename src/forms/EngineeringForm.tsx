@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { Engineering, Type } from '@/types/database'
+import type { Engineering, Type, Discipline } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -33,13 +33,6 @@ interface EngineeringFormData {
 
 const ITEMS_PER_PAGE = 15
 
-type EditableField = 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
-
-type EditingCell = {
-  recordId: string
-  field: EditableField
-} | null
-
 type SortField = 'dgt_dtfid' | 'dgt_transmittalref' | 'dgt_transmittalsubject' | 'dgt_discipline' | 'dgt_transmittaltype' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
 type SortDirection = 'asc' | 'desc'
 
@@ -54,13 +47,17 @@ export function EngineeringForm() {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
-  const [editingCell, setEditingCell] = useState<EditingCell>(null)
-  const [cellValue, setCellValue] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState({ actualsubmissiondate: '', actualreturndate: '', revision: '', status: '' })
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false)
+  const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showTypeLegend, setShowTypeLegend] = useState(false)
+  const [disciplines, setDisciplines] = useState<Discipline[]>([])
+  const [showDisciplineLegend, setShowDisciplineLegend] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
@@ -133,10 +130,16 @@ export function EngineeringForm() {
     setLoading(false)
   }
 
+  const fetchDisciplines = async () => {
+    const { data: records } = await supabase.from('dbp6_0018_discipline').select('id, discipline_code, discipline_name').order('discipline_code', { ascending: true })
+    setDisciplines(records || [])
+  }
+
   useEffect(() => {
     fetchTypes()
     fetchData()
     fetchProjects()
+    fetchDisciplines()
   }, [])
 
   const filteredAndSortedData = useMemo(() => {
@@ -320,6 +323,8 @@ export function EngineeringForm() {
     setSaving(false)
   }
 
+  const inputCls = 'w-full px-1.5 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
@@ -340,60 +345,34 @@ export function EngineeringForm() {
     return project?.dgt_projectname || id
   }
 
-  const startEditing = (
-    recordId: string,
-    field: EditableField,
-    currentValue: string | number | null
-  ) => {
-    setEditingCell({ recordId, field })
-    if (field === 'dgt_actualsubmissiondate' || field === 'dgt_actualreturndate') {
-      setCellValue(currentValue ? new Date(currentValue as string).toISOString().slice(0, 10) : '')
-    } else {
-      setCellValue(currentValue?.toString() || '')
-    }
+  const startEdit = (record: Engineering) => {
+    setEditingId(record.dgt_dbp6bd041engineeringid)
+    setEditValues({
+      actualsubmissiondate: record.dgt_actualsubmissiondate ? record.dgt_actualsubmissiondate.split('T')[0] : '',
+      actualreturndate: record.dgt_actualreturndate ? record.dgt_actualreturndate.split('T')[0] : '',
+      revision: record.dgt_revision != null ? String(record.dgt_revision) : '',
+      status: record.dgt_status || '',
+    })
   }
 
-  const cancelEditing = () => {
-    setEditingCell(null)
-    setCellValue('')
-  }
-
-  const saveInlineEdit = async (recordId: string, field: EditableField) => {
-    let updateValue: string | number | null = cellValue || null
-
-    if (field === 'dgt_revision' && cellValue) {
-      updateValue = parseInt(cellValue)
-    }
-
-    const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
-
-    const { error } = await supabase
-      .from('dbp6_000401_engineering')
-      .update(updatePayload as never)
-      .eq('dgt_dbp6bd041engineeringid', recordId)
-
-    if (error) {
-      showError('Failed to update: ' + error.message)
-    } else {
-      // Update local data
-      setData((prev) =>
-        prev.map((item) =>
-          item.dgt_dbp6bd041engineeringid === recordId
-            ? { ...item, [field]: updateValue }
-            : item
-        )
-      )
-      showSuccess('Updated successfully')
-    }
-    setEditingCell(null)
-    setCellValue('')
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent, recordId: string, field: EditableField) => {
-    if (e.key === 'Enter') {
-      saveInlineEdit(recordId, field)
-    } else if (e.key === 'Escape') {
-      cancelEditing()
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    const { error } = await supabase.from('dbp6_000401_engineering').update({
+      dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
+      dgt_actualreturndate: editValues.actualreturndate || null,
+      dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
+      dgt_status: editValues.status || null,
+    } as never).eq('dgt_dbp6bd041engineeringid', editingId)
+    if (error) { showError('Failed to update: ' + error.message) }
+    else {
+      setData(prev => prev.map(r => r.dgt_dbp6bd041engineeringid === editingId ? {
+        ...r,
+        dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
+        dgt_actualreturndate: editValues.actualreturndate || null,
+        dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
+        dgt_status: editValues.status || null,
+      } : r))
+      showSuccess('Record updated'); setEditingId(null)
     }
   }
 
@@ -471,6 +450,16 @@ export function EngineeringForm() {
             </svg>
             Type Legend
           </button>
+          <button
+            onClick={() => setShowDisciplineLegend(!showDisciplineLegend)}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap shadow-sm"
+            title="Show discipline code reference"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Discipline Legend
+          </button>
         </div>
         <button
           onClick={openCreateModal}
@@ -502,6 +491,27 @@ export function EngineeringForm() {
       {showTypeLegend && types.length === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-800">No types found in the database. Please add types to the type table.</p>
+        </div>
+      )}
+
+      {showDisciplineLegend && disciplines.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">Discipline Reference</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {disciplines.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 text-sm">
+                <span className="font-mono font-semibold text-green-700 bg-green-100 px-2 py-1 rounded">
+                  {d.discipline_code}
+                </span>
+                <span className="text-gray-700">{d.discipline_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showDisciplineLegend && disciplines.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-sm text-yellow-800">No disciplines found. Please add disciplines to the discipline table.</p>
         </div>
       )}
 
@@ -647,168 +657,76 @@ export function EngineeringForm() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((record) => (
-                    <tr key={record.dgt_dbp6bd041engineeringid} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                        <div
-                          className="truncate font-medium"
-                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        >
-                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                        <div className="truncate" title={record.dgt_dtfid || '-'}>
-                          {record.dgt_dtfid || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                        <div className="truncate" title={record.dgt_transmittalref || '-'}>
-                          {record.dgt_transmittalref || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                        <div className="truncate" title={record.dgt_transmittalsubject || '-'}>
-                          {record.dgt_transmittalsubject || '-'}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {record.dgt_discipline || '-'}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {getTypeName(record.dgt_transmittaltype)}
-                      </td>
-                      {/* Actual Submission Date - Editable */}
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_actualsubmissiondate' ? (
-                          <input
-                            type="date"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_actualsubmissiondate')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_actualsubmissiondate')}
-                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
+                  paginatedData.map((record) => {
+                    const isEditing = editingId === record.dgt_dbp6bd041engineeringid
+                    return (
+                      <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
+                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                          <div className="truncate font-medium" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>
+                            {getProjectName(record.dgt_dbp6bd00projectdataid)}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                          <div className="truncate" title={record.dgt_dtfid || '-'}>{record.dgt_dtfid || '-'}</div>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                          <div className="truncate" title={record.dgt_transmittalref || '-'}>{record.dgt_transmittalref || '-'}</div>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
+                          <div className="truncate" title={record.dgt_transmittalsubject || '-'}>{record.dgt_transmittalsubject || '-'}</div>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_discipline || '-'}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">{getTypeName(record.dgt_transmittaltype)}</td>
+                        {isEditing ? (
+                          <>
+                            <td className="px-2 py-1.5"><input type="date" value={editValues.actualsubmissiondate} onChange={e => setEditValues(p => ({ ...p, actualsubmissiondate: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5"><input type="date" value={editValues.actualreturndate} onChange={e => setEditValues(p => ({ ...p, actualreturndate: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5"><input type="number" value={editValues.revision} onChange={e => setEditValues(p => ({ ...p, revision: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5">
+                              <select value={editValues.status} onChange={e => setEditValues(p => ({ ...p, status: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} className={inputCls}>
+                                <option value="">-</option>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                                <option value="D">D</option>
+                                <option value="E">E</option>
+                                <option value="UR">UR</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => setShowSaveConfirm(true)} className="p-1 text-green-600 rounded" title="Save"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg></button>
+                                <button onClick={() => setShowEditCancelConfirm(true)} className="p-1 text-red-500 rounded" title="Cancel"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                              </div>
+                            </td>
+                          </>
                         ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6bd041engineeringid, 'dgt_actualsubmissiondate', record.dgt_actualsubmissiondate)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
-                            title="Click to edit"
-                          >
-                            {formatDate(record.dgt_actualsubmissiondate)}
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </span>
-                        )}
-                      </td>
-                      {/* Actual Return Date - Editable */}
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_actualreturndate' ? (
-                          <input
-                            type="date"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_actualreturndate')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_actualreturndate')}
-                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6bd041engineeringid, 'dgt_actualreturndate', record.dgt_actualreturndate)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
-                            title="Click to edit"
-                          >
-                            {formatDate(record.dgt_actualreturndate)}
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </span>
-                        )}
-                      </td>
-                      {/* Revision - Editable */}
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_revision' ? (
-                          <input
-                            type="number"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_revision')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_revision')}
-                            className="w-14 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6bd041engineeringid, 'dgt_revision', record.dgt_revision)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
-                            title="Click to edit"
-                          >
-                            {record.dgt_revision ?? '-'}
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </span>
-                        )}
-                      </td>
-                      {/* Status - Editable */}
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        {editingCell?.recordId === record.dgt_dbp6bd041engineeringid && editingCell?.field === 'dgt_status' ? (
-                          <select
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd041engineeringid, 'dgt_status')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd041engineeringid, 'dgt_status')}
-                            className="w-16 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          >
-                            <option value="">-</option>
-                            <option value="A">A</option>
-                            <option value="B">B</option>
-                            <option value="C">C</option>
-                            <option value="D">D</option>
-                            <option value="E">E</option>
-                            <option value="UR">UR</option>
-                          </select>
-                        ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6bd041engineeringid, 'dgt_status', record.dgt_status)}
-                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full cursor-pointer hover:opacity-80 ${
-                              record.dgt_status === 'A'
-                                ? 'bg-green-100 text-green-800'
-                                : record.dgt_status === 'B'
-                                ? 'bg-orange-100 text-orange-800'
-                                : record.dgt_status === 'C'
-                                ? 'bg-red-100 text-red-700'
-                                : record.dgt_status === 'D'
-                                ? 'bg-red-200 text-red-900'
-                                : record.dgt_status === 'UR'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : record.dgt_status === 'E'
-                                ? 'bg-gray-200 text-gray-700'
+                          <>
+                            <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualsubmissiondate)}</td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualreturndate)}</td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_revision ?? '-'}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                record.dgt_status === 'A' ? 'bg-green-100 text-green-800'
+                                : record.dgt_status === 'B' ? 'bg-orange-100 text-orange-800'
+                                : record.dgt_status === 'C' ? 'bg-red-100 text-red-700'
+                                : record.dgt_status === 'D' ? 'bg-red-200 text-red-900'
+                                : record.dgt_status === 'UR' ? 'bg-yellow-100 text-yellow-800'
+                                : record.dgt_status === 'E' ? 'bg-gray-200 text-gray-700'
                                 : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {record.dgt_status || '-'}
-                          </span>
+                              }`}>{record.dgt_status || '-'}</span>
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => startEdit(record)} className="p-1 text-blue-500 rounded" title="Edit"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                                <button onClick={() => setDeleteConfirm(record.dgt_dbp6bd041engineeringid)} className="p-1 text-red-500 rounded" title="Delete"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                              </div>
+                            </td>
+                          </>
                         )}
-                      </td>
-                      {/* Actions */}
-                      <td className="px-3 py-2.5">
-                        <button
-                          onClick={() => setDeleteConfirm(record.dgt_dbp6bd041engineeringid)}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50"
-                          title="Delete record"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -1025,6 +943,10 @@ export function EngineeringForm() {
         onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }}
         onCancel={() => setShowDiscardConfirm(false)}
       />
+      <ConfirmDialog isOpen={showSaveConfirm} title="Save Changes" message="Save changes to this record?" confirmLabel="Save" cancelLabel="Keep Editing" variant="warning"
+        onConfirm={() => { setShowSaveConfirm(false); handleSaveEdit() }} onCancel={() => setShowSaveConfirm(false)} />
+      <ConfirmDialog isOpen={showEditCancelConfirm} title="Discard Changes" message="Discard your changes?" confirmLabel="Discard" cancelLabel="Keep Editing" variant="warning"
+        onConfirm={() => { setShowEditCancelConfirm(false); setEditingId(null) }} onCancel={() => setShowEditCancelConfirm(false)} />
     </div>
   )
 }

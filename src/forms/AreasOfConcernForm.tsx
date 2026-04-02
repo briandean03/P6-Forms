@@ -35,6 +35,10 @@ export function AreasOfConcernForm() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState({ project_id: '', description: '' })
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false)
+  const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const {
@@ -229,6 +233,39 @@ export function AreasOfConcernForm() {
     setDeleteConfirm(null)
   }
 
+  const startEdit = (record: AreaOfConcern) => {
+    setEditingId(record.id)
+    setEditValues({
+      project_id: record.project_id || '',
+      description: record.description || '',
+    })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    const { error } = await supabase
+      .from('dbp6_areas_of_concern')
+      .update({
+        project_id: editValues.project_id || null,
+        description: editValues.description.trim(),
+      } as never)
+      .eq('id', editingId)
+
+    if (error) {
+      showError('Failed to update record: ' + error.message)
+    } else {
+      setData((prev) =>
+        prev.map((item) =>
+          item.id === editingId
+            ? { ...item, project_id: editValues.project_id || null, description: editValues.description.trim() }
+            : item
+        )
+      )
+      showSuccess('Record updated')
+      setEditingId(null)
+    }
+  }
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
@@ -354,9 +391,9 @@ export function AreasOfConcernForm() {
                       <SortIcon field="status" />
                     </div>
                   </th>
-                  <th className="px-3 py-3 text-left w-16">
+                  <th className="px-3 py-3 text-left w-20">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-                      Del
+                      Actions
                     </div>
                   </th>
                 </tr>
@@ -372,6 +409,72 @@ export function AreasOfConcernForm() {
                   paginatedData.map((record) => {
                     const isOpen = record.status === 'open'
                     const isToggling = togglingId === record.id
+                    const isEditing = editingId === record.id
+
+                    if (isEditing) {
+                      return (
+                        <tr key={record.id} className="bg-amber-50">
+                          <td className="px-3 py-2.5 whitespace-nowrap text-sm font-mono font-medium text-gray-900">
+                            {record.aoc_number}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <select
+                              value={editValues.project_id}
+                              onChange={(e) => setEditValues((v) => ({ ...v, project_id: e.target.value }))}
+                              className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            >
+                              <option value="">-- None --</option>
+                              {projects.map((p) => (
+                                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
+                                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <textarea
+                              value={editValues.description}
+                              onChange={(e) => setEditValues((v) => ({ ...v, description: e.target.value }))}
+                              rows={2}
+                              className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setShowSaveConfirm(true) }
+                                if (e.key === 'Escape') setShowEditCancelConfirm(true)
+                              }}
+                            />
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-500">
+                            {formatDate(record.created_at)}
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-400 italic">
+                            (unchanged)
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setShowSaveConfirm(true)}
+                                className="p-1 text-green-600 rounded"
+                                title="Save changes"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setShowEditCancelConfirm(true)}
+                                className="p-1 text-red-500 rounded"
+                                title="Discard changes"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    }
+
                     return (
                       <tr key={record.id} className={`hover:bg-gray-50 ${!isOpen ? 'opacity-70' : ''}`}>
                         <td className="px-3 py-2.5 whitespace-nowrap text-sm font-mono font-medium text-gray-900">
@@ -415,17 +518,28 @@ export function AreasOfConcernForm() {
                             {isOpen ? 'Open' : 'Closed'}
                           </button>
                         </td>
-                        {/* Delete */}
+                        {/* Actions: Edit + Delete */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <button
-                            onClick={() => setDeleteConfirm(record.id)}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
-                            title="Delete record"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startEdit(record)}
+                              className="p-1 text-blue-500 rounded"
+                              title="Edit record"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(record.id)}
+                              className="p-1 text-red-500 rounded"
+                              title="Delete record"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -545,6 +659,28 @@ export function AreasOfConcernForm() {
         variant="warning"
         onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }}
         onCancel={() => setShowDiscardConfirm(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={showSaveConfirm}
+        title="Save Changes"
+        message="Save changes to this record?"
+        confirmLabel="Save"
+        cancelLabel="Keep Editing"
+        variant="warning"
+        onConfirm={() => { setShowSaveConfirm(false); handleSaveEdit() }}
+        onCancel={() => setShowSaveConfirm(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={showEditCancelConfirm}
+        title="Discard Changes"
+        message="Discard your changes?"
+        confirmLabel="Discard"
+        cancelLabel="Keep Editing"
+        variant="warning"
+        onConfirm={() => { setShowEditCancelConfirm(false); setEditingId(null) }}
+        onCancel={() => setShowEditCancelConfirm(false)}
       />
     </div>
   )

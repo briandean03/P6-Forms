@@ -32,6 +32,10 @@ export function ActivityWorkTypeForm() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState({ work_type_name: '' })
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false)
+  const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<ActivityWorkTypeFormData>()
@@ -102,6 +106,23 @@ export function ActivityWorkTypeForm() {
     setDeleting(false); setDeleteConfirm(null)
   }
 
+  const startEdit = (record: ActivityWorkType) => {
+    setEditingId(record.work_type_code)
+    setEditValues({ work_type_name: record.work_type_name || '' })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    const { error } = await supabase.from('dbp6_activity_work_type').update({
+      work_type_name: editValues.work_type_name,
+    } as never).eq('work_type_code', editingId)
+    if (error) { showError('Failed to update: ' + error.message) }
+    else {
+      setData(prev => prev.map(item => item.work_type_code === editingId ? { ...item, work_type_name: editValues.work_type_name } : item))
+      showSuccess('Record updated'); setEditingId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
@@ -130,23 +151,39 @@ export function ActivityWorkTypeForm() {
                   <th className="px-3 py-3 text-left">
                     <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('work_type_name')}>Name<SortIcon field="work_type_name" /></div>
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide w-16">Del</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide w-20">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr><td colSpan={3} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
-                ) : paginatedData.map(record => (
+                ) : paginatedData.map(record => {
+                  const isEditing = editingId === record.work_type_code
+                  if (isEditing) return (
+                    <tr key={record.work_type_code} className="bg-amber-50">
+                      <td className="px-3 py-2.5 text-sm font-mono font-medium text-gray-900 whitespace-nowrap">{record.work_type_code}</td>
+                      <td className="px-3 py-2.5"><input type="text" value={editValues.work_type_name} onChange={e => setEditValues({ work_type_name: e.target.value })} className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500" onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} /></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setShowSaveConfirm(true)} className="p-1 text-green-600 rounded" title="Save"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg></button>
+                          <button onClick={() => setShowEditCancelConfirm(true)} className="p-1 text-red-500 rounded" title="Cancel"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                  return (
                   <tr key={record.work_type_code} className="hover:bg-gray-50">
                     <td className="px-3 py-2.5 text-sm font-mono font-medium text-gray-900 whitespace-nowrap">{record.work_type_code}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-900">{record.work_type_name}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
-                      <button onClick={() => setDeleteConfirm(record.work_type_code)} className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => startEdit(record)} className="p-1 text-blue-500 rounded" title="Edit"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                        <button onClick={() => setDeleteConfirm(record.work_type_code)} className="p-1 text-red-500 rounded" title="Delete"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -169,6 +206,10 @@ export function ActivityWorkTypeForm() {
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)} onCancel={() => setDeleteConfirm(null)} />
       <ConfirmDialog isOpen={showDiscardConfirm} title="Discard Changes" message="You have unsaved changes. Discard them?" confirmLabel="Discard" cancelLabel="Keep Editing" variant="warning"
         onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }} onCancel={() => setShowDiscardConfirm(false)} />
+      <ConfirmDialog isOpen={showSaveConfirm} title="Save Changes" message="Save changes to this record?" confirmLabel="Save" cancelLabel="Keep Editing" variant="warning"
+        onConfirm={() => { setShowSaveConfirm(false); handleSaveEdit() }} onCancel={() => setShowSaveConfirm(false)} />
+      <ConfirmDialog isOpen={showEditCancelConfirm} title="Discard Changes" message="Discard your changes?" confirmLabel="Discard" cancelLabel="Keep Editing" variant="warning"
+        onConfirm={() => { setShowEditCancelConfirm(false); setEditingId(null) }} onCancel={() => setShowEditCancelConfirm(false)} />
     </div>
   )
 }

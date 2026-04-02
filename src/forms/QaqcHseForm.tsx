@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { QaqcHse } from '@/types/database'
+import type { QaqcHse, Discipline } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -53,6 +53,8 @@ export function QaqcHseForm() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const [disciplines, setDisciplines] = useState<Discipline[]>([])
+  const [showDisciplineLegend, setShowDisciplineLegend] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
     dgt_docid: '',
@@ -108,9 +110,15 @@ export function QaqcHseForm() {
     setLoading(false)
   }
 
+  const fetchDisciplines = async () => {
+    const { data: records } = await supabase.from('dbp6_0018_discipline').select('id, discipline_code, discipline_name').order('discipline_code', { ascending: true })
+    setDisciplines(records || [])
+  }
+
   useEffect(() => {
     fetchData()
     fetchProjects()
+    fetchDisciplines()
   }, [])
 
   const filteredAndSortedData = useMemo(() => {
@@ -399,6 +407,16 @@ export function QaqcHseForm() {
               </span>
             </button>
           )}
+          <button
+            onClick={() => setShowDisciplineLegend(!showDisciplineLegend)}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap shadow-sm"
+            title="Show discipline code reference"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Discipline Legend
+          </button>
         </div>
         <button
           onClick={openCreateModal}
@@ -410,6 +428,27 @@ export function QaqcHseForm() {
           Create New
         </button>
       </div>
+
+      {showDisciplineLegend && disciplines.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">Discipline Reference</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {disciplines.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 text-sm">
+                <span className="font-mono font-semibold text-green-700 bg-green-100 px-2 py-1 rounded">
+                  {d.discipline_code}
+                </span>
+                <span className="text-gray-700">{d.discipline_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showDisciplineLegend && disciplines.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-sm text-yellow-800">No disciplines found. Please add disciplines to the discipline table.</p>
+        </div>
+      )}
 
       {loading ? (
         <LoadingSpinner />
@@ -609,7 +648,7 @@ export function QaqcHseForm() {
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <button
                           onClick={() => setDeleteConfirm(record.dgt_dbp6bd0402qaqchseid)}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50"
+                          className="p-1 text-red-500 rounded"
                           title="Delete record"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -645,7 +645,7 @@ export function DynamicActualDataForm() {
                       <td className="px-2 py-1.5">
                         <button
                           onClick={() => setDeleteConfirm(record.dgt_dbp6bd06dynamicactualdataid)}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50"
+                          className="p-1 text-red-500 rounded"
                           title="Delete record"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
