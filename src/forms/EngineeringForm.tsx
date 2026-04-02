@@ -583,7 +583,7 @@ export function EngineeringForm() {
                       <SortIcon field="dgt_transmittaltype" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" />
+                      <ColumnFilter data={data} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" formatValue={(v) => getTypeName(Number(v))} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">

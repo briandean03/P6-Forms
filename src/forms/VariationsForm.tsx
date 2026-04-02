@@ -49,6 +49,8 @@ export function VariationsForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<EditValues>({ projectid: '', voref: '', appliedamt: '', approvedamt: '', receivedamt: '', receiveddate: '', datesubmitted: '', dateapproved: '', statuscode: '' })
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false)
+  const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<VariationsFormData>()
@@ -243,11 +245,11 @@ export function VariationsForm() {
                           <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.appliedamt} onChange={set('appliedamt')} className={inputCls} /></td>
                           <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.approvedamt} onChange={set('approvedamt')} className={inputCls} /></td>
                           <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.receivedamt} onChange={set('receivedamt')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[110px]"><input value={editValues.receiveddate} onChange={set('receiveddate')} onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') setEditingId(null) }} className={inputCls} placeholder="YYYY-MM-DD" /></td>
+                          <td className="px-2 py-1.5 min-w-[110px]"><input value={editValues.receiveddate} onChange={set('receiveddate')} onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} className={inputCls} placeholder="YYYY-MM-DD" /></td>
                           <td className="px-2 py-1.5 whitespace-nowrap">
                             <div className="flex items-center gap-1">
-                              <button onClick={handleSaveEdit} disabled={saving} title="Save" className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-40"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></button>
-                              <button onClick={() => setEditingId(null)} title="Cancel" className="p-1 text-gray-400 hover:bg-gray-100 rounded"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                              <button onClick={() => setShowSaveConfirm(true)} disabled={saving} title="Save" className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-40"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></button>
+                              <button onClick={() => setShowEditCancelConfirm(true)} title="Cancel" className="p-1 text-gray-400 hover:bg-gray-100 rounded"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                             </div>
                           </td>
                         </>
@@ -303,6 +305,10 @@ export function VariationsForm() {
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)} onCancel={() => setDeleteConfirm(null)} />
       <ConfirmDialog isOpen={showDiscardConfirm} title="Discard Changes" message="You have unsaved changes. Discard them?" confirmLabel="Discard" cancelLabel="Keep Editing" variant="warning"
         onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }} onCancel={() => setShowDiscardConfirm(false)} />
+      <ConfirmDialog isOpen={showSaveConfirm} title="Save Changes" message="Save changes to this record?" confirmLabel="Save" cancelLabel="Keep Editing" variant="warning"
+        onConfirm={() => { setShowSaveConfirm(false); handleSaveEdit() }} onCancel={() => setShowSaveConfirm(false)} />
+      <ConfirmDialog isOpen={showEditCancelConfirm} title="Discard Changes" message="Discard your changes?" confirmLabel="Discard" cancelLabel="Keep Editing" variant="warning"
+        onConfirm={() => { setShowEditCancelConfirm(false); setEditingId(null) }} onCancel={() => setShowEditCancelConfirm(false)} />
     </div>
   )
 }

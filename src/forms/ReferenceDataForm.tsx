@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { SearchFilter } from '@/components/SearchFilter'
 
 interface RefTableConfig {
   title: string
@@ -76,6 +77,46 @@ function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
   // Delete state
   const [deleteConfirm, setDeleteConfirm] = useState<string | number | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // Sort state
+  type SortCol = 'code' | 'name'
+  const [sortCol, setSortCol] = useState<SortCol>('code')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (col: SortCol) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const displayRows = useMemo(() => {
+    let result = rows
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(r =>
+        String(r[config.codeField] ?? '').toLowerCase().includes(term) ||
+        String(r[config.nameField] ?? '').toLowerCase().includes(term)
+      )
+    }
+    return [...result].sort((a, b) => {
+      const aVal = sortCol === 'code' ? a[config.codeField] : a[config.nameField]
+      const bVal = sortCol === 'code' ? b[config.codeField] : b[config.nameField]
+      if (aVal == null) return sortDir === 'asc' ? 1 : -1
+      if (bVal == null) return sortDir === 'asc' ? -1 : 1
+      return sortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal), undefined, { numeric: true })
+        : String(bVal).localeCompare(String(aVal), undefined, { numeric: true })
+    })
+  }, [rows, searchTerm, sortCol, sortDir, config.codeField, config.nameField])
+
+  const SortIcon = ({ col }: { col: SortCol }) => {
+    if (sortCol !== col) return <svg className="w-3 h-3 text-gray-400 inline ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
+    return sortDir === 'asc'
+      ? <svg className="w-3 h-3 text-blue-600 inline ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+      : <svg className="w-3 h-3 text-blue-600 inline ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+  }
 
   const fetchRows = async () => {
     setLoading(true)
@@ -193,16 +234,21 @@ function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
           </button>
         </div>
 
+        {/* Search */}
+        <div className="px-3 py-2 border-b border-gray-100">
+          <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder={`Search ${config.title.toLowerCase()}…`} />
+        </div>
+
         {/* Table */}
-        <div className="overflow-auto max-h-72">
+        <div className="overflow-auto max-h-64">
           {loading ? (
             <div className="p-6 text-xs text-gray-400 text-center">Loading…</div>
           ) : (
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28">Code</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28 cursor-pointer hover:text-gray-800 select-none" onClick={() => handleSort('code')}>Code<SortIcon col="code" /></th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-800 select-none" onClick={() => handleSort('name')}>Name<SortIcon col="name" /></th>
                   <th className="px-3 py-2 w-16"></th>
                 </tr>
               </thead>
@@ -261,14 +307,16 @@ function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
                 )}
 
                 {/* Empty state */}
-                {rows.length === 0 && !addingRow && (
+                {displayRows.length === 0 && !addingRow && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-8 text-center text-xs text-gray-400">No records</td>
+                    <td colSpan={3} className="px-3 py-8 text-center text-xs text-gray-400">
+                      {searchTerm ? 'No matching records' : 'No records'}
+                    </td>
                   </tr>
                 )}
 
                 {/* Data rows */}
-                {rows.map(row => {
+                {displayRows.map(row => {
                   const pk = row[config.pkField] as string | number
                   const isEditing = editingPk === pk
                   return (
@@ -362,7 +410,11 @@ function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
 
         {/* Footer row count */}
         <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 rounded-b-lg">
-          <span className="text-xs text-gray-400">{rows.length} record{rows.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-gray-400">
+            {searchTerm
+              ? `${displayRows.length} of ${rows.length} record${rows.length !== 1 ? 's' : ''}`
+              : `${rows.length} record${rows.length !== 1 ? 's' : ''}`}
+          </span>
         </div>
       </div>
 

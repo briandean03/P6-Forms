@@ -8,7 +8,6 @@ import { AreasOfConcernForm } from '@/forms/AreasOfConcernForm'
 import { VariationsForm } from '@/forms/VariationsForm'
 import { TradesForm } from '@/forms/TradesForm'
 import { SubtradesForm } from '@/forms/SubtradesForm'
-import { PartyContactsForm } from '@/forms/PartyContactsForm'
 import { PaymentsForm } from '@/forms/PaymentsForm'
 import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
 
@@ -24,7 +23,6 @@ type TabKey =
   | 'subtrades'
   | 'discipline'
   | 'type'
-  | 'partycontacts'
   | 'payments'
   | 'referencedata'
 
@@ -117,15 +115,6 @@ const tabs: Tab[] = [
     ),
   },
   {
-    key: 'partycontacts',
-    label: 'Party Contacts',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
     key: 'payments',
     label: 'Payments',
     icon: (
@@ -169,8 +158,6 @@ function App() {
         return <TradesForm />
       case 'subtrades':
         return <SubtradesForm />
-      case 'partycontacts':
-        return <PartyContactsForm />
       case 'payments':
         return <PaymentsForm />
       case 'referencedata':
