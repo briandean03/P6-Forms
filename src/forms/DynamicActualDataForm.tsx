@@ -33,7 +33,7 @@ type EditingCell = {
 type SortField = 'dgt_activityid' | 'dgt_projectid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
 type SortDirection = 'asc' | 'desc'
 
-export function DynamicActualDataForm() {
+export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<DynamicActualData[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,6 +65,7 @@ export function DynamicActualDataForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<DynamicActualDataFormData>()
 
@@ -89,6 +90,7 @@ export function DynamicActualDataForm() {
     const { data: records, error } = await supabase
       .from('dbp6_0006_progressdata')
       .select('*')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('dgt_dbp6bd06dynamicactualdataid', { ascending: false })
 
     if (error) {
@@ -102,7 +104,7 @@ export function DynamicActualDataForm() {
   useEffect(() => {
     fetchData()
     fetchProjects()
-  }, [])
+  }, [projectId])
 
   // Extract unique month/year combinations for date filters
   const dateFilterOptions = useMemo(() => {
@@ -241,6 +243,7 @@ export function DynamicActualDataForm() {
       dgt_actualfinish: '',
       dgt_pctcomplete: '',
     })
+    setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
   }
 
@@ -441,7 +444,7 @@ export function DynamicActualDataForm() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="min-w-max">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
@@ -539,12 +542,12 @@ export function DynamicActualDataForm() {
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
-                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
+                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.dgt_activityid || '-'}
                       </td>
                       <td className="px-2 py-1.5 text-xs text-gray-900">
                         <div
-                          className="w-40 truncate font-medium"
+                          className="whitespace-nowrap font-medium"
                           title={getProjectName(record.dgt_dbp6bd00projectdataid)}
                         >
                           {getProjectName(record.dgt_dbp6bd00projectdataid)}

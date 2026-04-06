@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { ActualResources, Discipline, ActivityWorkType } from '@/types/database'
+import type { ActualResources, Discipline } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -33,7 +33,7 @@ type EditingCell = {
 type SortField = 'resource_name' | 'dgt_resourcediscipline' | 'dgt_resourcetype' | 'dgt_resourcecount' | 'dgt_sequential'
 type SortDirection = 'asc' | 'desc'
 
-export function ActualResourcesForm() {
+export function ActualResourcesForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<ActualResources[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,8 +50,6 @@ export function ActualResourcesForm() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [disciplines, setDisciplines] = useState<Discipline[]>([])
   const [showDisciplineLegend, setShowDisciplineLegend] = useState(false)
-  const [workTypes, setWorkTypes] = useState<ActivityWorkType[]>([])
-  const [showWorkTypeLegend, setShowWorkTypeLegend] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
     resource_name: '',
@@ -71,6 +69,7 @@ export function ActualResourcesForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<ActualResourcesFormData>()
 
@@ -95,6 +94,7 @@ export function ActualResourcesForm() {
     const { data: records, error } = await supabase
       .from('dbp6_000501_actualresources')
       .select('*')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -110,17 +110,11 @@ export function ActualResourcesForm() {
     setDisciplines(records || [])
   }
 
-  const fetchWorkTypes = async () => {
-    const { data: records } = await supabase.from('dbp6_activity_work_type').select('work_type_code, work_type_name').order('work_type_code', { ascending: true })
-    setWorkTypes(records || [])
-  }
-
   useEffect(() => {
     fetchData()
     fetchProjects()
     fetchDisciplines()
-    fetchWorkTypes()
-  }, [])
+  }, [projectId])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -223,6 +217,7 @@ export function ActualResourcesForm() {
       dgt_resourcetype: '',
       dgt_sequential: '',
     })
+    setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
   }
 
@@ -383,16 +378,6 @@ export function ActualResourcesForm() {
             </svg>
             Discipline Legend
           </button>
-          <button
-            onClick={() => setShowWorkTypeLegend(!showWorkTypeLegend)}
-            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap shadow-sm"
-            title="Show work type code reference"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Work Type Legend
-          </button>
         </div>
         <button
           onClick={openCreateModal}
@@ -426,27 +411,6 @@ export function ActualResourcesForm() {
         </div>
       )}
 
-      {showWorkTypeLegend && workTypes.length > 0 && (
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-2">Work Type Reference</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-            {workTypes.map((w) => (
-              <div key={w.work_type_code} className="flex items-center gap-2 text-sm">
-                <span className="font-mono font-semibold text-purple-700 bg-purple-100 px-2 py-1 rounded">
-                  {w.work_type_code}
-                </span>
-                <span className="text-gray-700">{w.work_type_name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {showWorkTypeLegend && workTypes.length === 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">No work types found. Please add work types to the work type table.</p>
-        </div>
-      )}
-
       {loading ? (
         <LoadingSpinner />
       ) : (
@@ -463,7 +427,7 @@ export function ActualResourcesForm() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="min-w-max">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
@@ -546,12 +510,12 @@ export function ActualResourcesForm() {
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6ud0501actualresourcesid} className="hover:bg-gray-50">
-                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
+                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.resource_name || '-'}
                       </td>
                       <td className="px-2 py-1.5 text-xs text-gray-900">
                         <div
-                          className="w-40 truncate font-medium"
+                          className="whitespace-nowrap font-medium"
                           title={getProjectName(record.dgt_dbp6bd00projectdataid)}
                         >
                           {getProjectName(record.dgt_dbp6bd00projectdataid)}

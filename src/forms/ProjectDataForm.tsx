@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { supabase } from '../lib/supabase'
 import { ProjectData } from '../types/database'
 import { useNotification } from '../hooks/useNotification'
+import { Notification } from '../components/Notification'
 import { Modal } from '../components/Modal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { FormField } from '../components/FormField'
@@ -15,7 +16,6 @@ type EditableField = Exclude<keyof ProjectData, 'dgt_dbp6bd00projectdataid'>
 interface ProjectDataFormData {
   dgt_projectname: string
   dgt_projectid: string
-  project_id: string
   dgt_employersname: string
   dgt_contractorsname: string
   dgt_consultantsname: string
@@ -29,10 +29,6 @@ interface ProjectDataFormData {
   dgt_elapsedduration: string
   dgt_eotawarded: string
   dgt_weeknum: string
-  importsequencenumber: string
-  statuscode: string
-  statecode: string
-  versionnumber: string
   timezoneruleversionnumber: string
   utcconversiontimezonecode: string
   owningbusinessunit: string
@@ -52,7 +48,8 @@ const DATE_FIELDS = new Set([
   'dgt_reportingstartingdate',
   'dgt_datadate',
 ])
-const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_weeknum', 'statuscode', 'versionnumber'])
+const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_weeknum'])
+const NON_EDITABLE_FIELDS = new Set(['dgt_datadate', 'dgt_weeknum'])
 
 // All columns except the sticky-first (dgt_projectname) and sticky-last (Actions)
 const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
@@ -71,10 +68,6 @@ const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
   { field: 'dgt_elapsedduration' },
   { field: 'dgt_eotawarded' },
   { field: 'dgt_weeknum' },
-  { field: 'importsequencenumber' },
-  { field: 'statuscode' },
-  { field: 'statecode' },
-  { field: 'versionnumber' },
   { field: 'timezoneruleversionnumber' },
   { field: 'utcconversiontimezonecode' },
   { field: 'owningbusinessunit' },
@@ -98,7 +91,7 @@ export function ProjectDataForm() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [searchTerm, setSearchTerm] = useState('')
 
-  const { showSuccess, showError } = useNotification()
+  const { notification, hideNotification, showSuccess, showError } = useNotification()
   const {
     register,
     handleSubmit,
@@ -173,6 +166,7 @@ export function ProjectDataForm() {
     try {
       const { error } = await supabase.from('dbp6_0000_projectdata').insert(insertData as never)
       if (error) {
+        console.error('Insert error:', error)
         showError('Failed to create record: ' + error.message)
       } else {
         showSuccess('Project posted successfully')
@@ -314,6 +308,14 @@ export function ProjectDataForm() {
     const rawValue = record[field]
     const inputType = getInputType(field)
 
+    if (NON_EDITABLE_FIELDS.has(field)) {
+      return (
+        <span className="px-1 py-1 block min-w-[40px] whitespace-nowrap text-gray-700">
+          {formatCellValue(field, rawValue as string | number | null)}
+        </span>
+      )
+    }
+
     return isEditing ? (
       <input
         type={inputType}
@@ -349,6 +351,9 @@ export function ProjectDataForm() {
 
   return (
     <div className="space-y-4">
+      {notification && (
+        <Notification type={notification.type} message={notification.message} onClose={hideNotification} />
+      )}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Project Data</h2>
         <button
@@ -382,7 +387,7 @@ export function ProjectDataForm() {
       </div>
 
       <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+        <table className="min-w-max border-collapse text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-300">
               {/* Sticky first column */}
@@ -501,7 +506,6 @@ export function ProjectDataForm() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="project_id" type="text" {...register('project_id')} />
             <FormField label="employersname" type="text" {...register('dgt_employersname')} />
           </div>
 
@@ -561,20 +565,6 @@ export function ProjectDataForm() {
               {...register('dgt_elapsedduration')}
             />
             <FormField label="eotawarded" type="text" {...register('dgt_eotawarded')} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="importsequencenumber"
-              type="text"
-              {...register('importsequencenumber')}
-            />
-            <FormField label="statuscode" type="number" {...register('statuscode')} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="statecode" type="text" {...register('statecode')} />
-            <FormField label="versionnumber" type="number" {...register('versionnumber')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

@@ -45,7 +45,7 @@ type EditValues = {
   receivedamount: string; receiveddate: string; datesubmitted: string; dateapproved: string; statuscode: string
 }
 
-export function PaymentsForm() {
+export function PaymentsForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Payments[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,12 +77,12 @@ export function PaymentsForm() {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase.from('dbp6_0009_payments').select('*').order('dgt_datesubmitted', { ascending: false })
+    const { data: records, error } = await supabase.from('dbp6_0009_payments').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('dgt_datesubmitted', { ascending: false })
     if (error) { showError('Failed to fetch data: ' + error.message) } else { setData(records || []) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [])
+  useEffect(() => { fetchData(); fetchProjects() }, [projectId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const getProjectName = (id: string | null) => {
@@ -219,7 +219,7 @@ export function PaymentsForm() {
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by IPA ref, payment ID..." />
         </div>
-        <button onClick={() => { reset({}); setIsModalOpen(true) }}
+        <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
           <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create New
@@ -231,7 +231,7 @@ export function PaymentsForm() {
             <span className="text-sm text-gray-600">Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap w-36">Project</th>
@@ -286,7 +286,7 @@ export function PaymentsForm() {
                         </>
                       ) : (
                         <>
-                          <td className="px-3 py-2.5 text-sm text-gray-900"><div className="w-36 truncate" title={getProjectName(record.dgt_dbp6bd00projectdataid ?? null)}>{getProjectName(record.dgt_dbp6bd00projectdataid ?? null)}</div></td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900"><div className="whitespace-nowrap" title={getProjectName(record.dgt_dbp6bd00projectdataid ?? null)}>{getProjectName(record.dgt_dbp6bd00projectdataid ?? null)}</div></td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_iparef || '-'}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_ipaamount)}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_ipcamount)}</td>

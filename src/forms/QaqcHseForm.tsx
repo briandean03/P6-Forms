@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { QaqcHse, Discipline } from '@/types/database'
+import type { QaqcHse, Discipline, Type } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -38,7 +38,7 @@ type EditingCell = {
 type SortField = 'dgt_docid' | 'dgt_docref' | 'dgt_documentsubject' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_status'
 type SortDirection = 'asc' | 'desc'
 
-export function QaqcHseForm() {
+export function QaqcHseForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<QaqcHse[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,6 +55,8 @@ export function QaqcHseForm() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [disciplines, setDisciplines] = useState<Discipline[]>([])
   const [showDisciplineLegend, setShowDisciplineLegend] = useState(false)
+  const [types, setTypes] = useState<Type[]>([])
+  const [showTypeLegend, setShowTypeLegend] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
     dgt_docid: '',
@@ -76,6 +78,7 @@ export function QaqcHseForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<QaqcHseFormData>()
 
@@ -100,6 +103,7 @@ export function QaqcHseForm() {
     const { data: records, error } = await supabase
       .from('dbp6_000402_qaqc_hse')
       .select('*')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -115,11 +119,17 @@ export function QaqcHseForm() {
     setDisciplines(records || [])
   }
 
+  const fetchTypes = async () => {
+    const { data: records } = await supabase.from('dbp6_0019_type').select('id, type_code, type_name').order('type_code', { ascending: true })
+    setTypes(records || [])
+  }
+
   useEffect(() => {
     fetchData()
     fetchProjects()
     fetchDisciplines()
-  }, [])
+    fetchTypes()
+  }, [projectId])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -254,6 +264,7 @@ export function QaqcHseForm() {
       dgt_revision: '',
       dgt_status: '',
     })
+    setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
   }
 
@@ -417,6 +428,16 @@ export function QaqcHseForm() {
             </svg>
             Discipline Legend
           </button>
+          <button
+            onClick={() => setShowTypeLegend(!showTypeLegend)}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap shadow-sm"
+            title="Show type code reference"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Type Legend
+          </button>
         </div>
         <button
           onClick={openCreateModal}
@@ -450,6 +471,27 @@ export function QaqcHseForm() {
         </div>
       )}
 
+      {showTypeLegend && types.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">Type Reference</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {types.map((t) => (
+              <div key={t.id} className="flex items-center gap-2 text-sm">
+                <span className="font-mono font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                  {t.type_code}
+                </span>
+                <span className="text-gray-700">{t.type_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showTypeLegend && types.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-sm text-yellow-800">No types found. Please add types to the type table.</p>
+        </div>
+      )}
+
       {loading ? (
         <LoadingSpinner />
       ) : (
@@ -466,7 +508,7 @@ export function QaqcHseForm() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-2 text-left align-top w-36">
@@ -584,7 +626,7 @@ export function QaqcHseForm() {
                     <tr key={record.dgt_dbp6bd0402qaqchseid} className="hover:bg-gray-50">
                       <td className="px-3 py-2.5 text-sm text-gray-900">
                         <div
-                          className="w-40 truncate font-medium"
+                          className="whitespace-nowrap font-medium"
                           title={getProjectName(record.dgt_dbp6bd00projectdataid)}
                         >
                           {getProjectName(record.dgt_dbp6bd00projectdataid)}

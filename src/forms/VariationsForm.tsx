@@ -35,7 +35,7 @@ type EditValues = {
   receivedamt: string; receiveddate: string; datesubmitted: string; dateapproved: string; statuscode: string
 }
 
-export function VariationsForm() {
+export function VariationsForm({ projectTextId }: { projectTextId: string }) {
   const [data, setData] = useState<Variations[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,7 +54,7 @@ export function VariationsForm() {
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
-  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<VariationsFormData>()
+  const { register, handleSubmit, reset, setValue, formState: { errors, isDirty } } = useForm<VariationsFormData>()
 
   const handleCancelModal = () => {
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
@@ -63,7 +63,7 @@ export function VariationsForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_0010_variations').select('*').order('dgt_dbp6bd0004variationsid', { ascending: false })
+      .from('dbp6_0010_variations').select('*').eq('dgt_projectid', projectTextId).order('dgt_dbp6bd0004variationsid', { ascending: false })
     if (error) { showError('Failed to fetch data: ' + error.message) } else { setData(records || []) }
     setLoading(false)
   }
@@ -73,7 +73,7 @@ export function VariationsForm() {
     setProjects(records || [])
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [])
+  useEffect(() => { fetchData(); fetchProjects() }, [projectTextId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -169,7 +169,7 @@ export function VariationsForm() {
   const onSubmit = async (formData: VariationsFormData) => {
     setSaving(true)
     const { error } = await supabase.from('dbp6_0010_variations').insert({
-      dgt_projectid: formData.dgt_projectid || null,
+      dgt_projectid: formData.dgt_projectid || projectTextId || null,
       dgt_voref: formData.dgt_voref || null,
       dgt_voappliedamount: formData.dgt_voappliedamount || null,
       dgt_voapprovedamount: formData.dgt_voapprovedamount || null,
@@ -205,7 +205,7 @@ export function VariationsForm() {
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by VO Ref, Project ID..." />
         </div>
-        <button onClick={() => { reset({}); setIsModalOpen(true) }}
+        <button onClick={() => { reset({}); setValue('dgt_projectid', projectTextId); setIsModalOpen(true) }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
           <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create New
@@ -217,7 +217,7 @@ export function VariationsForm() {
             <span className="text-sm text-gray-600">Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   {colHeaders.map(([field, label]) => (

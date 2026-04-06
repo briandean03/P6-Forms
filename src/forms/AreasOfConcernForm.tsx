@@ -21,7 +21,7 @@ const ITEMS_PER_PAGE = 15
 type SortField = 'aoc_number' | 'description' | 'project_id' | 'created_at' | 'status'
 type SortDirection = 'asc' | 'desc'
 
-export function AreasOfConcernForm() {
+export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<AreaOfConcern[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,6 +45,7 @@ export function AreasOfConcernForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<AocFormData>()
 
@@ -69,6 +70,7 @@ export function AreasOfConcernForm() {
     const { data: records, error } = await supabase
       .from('dbp6_areas_of_concern')
       .select('*')
+      .eq('project_id', projectId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -82,7 +84,7 @@ export function AreasOfConcernForm() {
   useEffect(() => {
     fetchData()
     fetchProjects()
-  }, [])
+  }, [projectId])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -158,6 +160,7 @@ export function AreasOfConcernForm() {
 
   const openCreateModal = () => {
     reset({ project_id: '', description: '' })
+    setValue('project_id', projectId)
     setIsModalOpen(true)
   }
 
@@ -343,7 +346,7 @@ export function AreasOfConcernForm() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-3 text-left w-28">
@@ -481,7 +484,7 @@ export function AreasOfConcernForm() {
                           {record.aoc_number}
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-900">
-                          <div className="w-40 truncate" title={getProjectName(record.project_id)}>
+                          <div className="whitespace-nowrap" title={getProjectName(record.project_id)}>
                             {getProjectName(record.project_id)}
                           </div>
                         </td>

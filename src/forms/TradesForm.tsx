@@ -25,7 +25,7 @@ type SortDirection = 'asc' | 'desc'
 const inputCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
 const selectCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white'
 
-export function TradesForm() {
+export function TradesForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Trades[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,12 +57,12 @@ export function TradesForm() {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase.from('dbp6_0015_trades').select('*').order('dgt_tradeid', { ascending: true })
+    const { data: records, error } = await supabase.from('dbp6_0015_trades').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('dgt_tradeid', { ascending: true })
     if (error) { showError('Failed to fetch data: ' + error.message) } else { setData(records || []) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [])
+  useEffect(() => { fetchData(); fetchProjects() }, [projectId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -161,7 +161,7 @@ export function TradesForm() {
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Trade ID, Code, Name..." />
         </div>
-        <button onClick={() => { reset({}); setIsModalOpen(true) }}
+        <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
           <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create New
@@ -173,7 +173,7 @@ export function TradesForm() {
             <span className="text-sm text-gray-600">Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide w-40">Project</th>
@@ -212,7 +212,7 @@ export function TradesForm() {
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-2.5 text-sm text-gray-900"><div className="w-40 truncate" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>{getProjectName(record.dgt_dbp6bd00projectdataid)}</div></td>
+                        <td className="px-3 py-2.5 text-sm text-gray-900"><div className="whitespace-nowrap" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>{getProjectName(record.dgt_dbp6bd00projectdataid)}</div></td>
                         <td className="px-3 py-2.5 text-sm font-mono text-gray-900 whitespace-nowrap">{record.dgt_tradeid}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_tradecode || '-'}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_tradename || '-'}</td>

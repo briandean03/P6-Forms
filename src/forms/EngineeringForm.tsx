@@ -38,7 +38,7 @@ type SortDirection = 'asc' | 'desc'
 
 
 
-export function EngineeringForm() {
+export function EngineeringForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Engineering[]>([])
   const [types, setTypes] = useState<Type[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
@@ -81,6 +81,7 @@ export function EngineeringForm() {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<EngineeringFormData>()
 
@@ -120,6 +121,7 @@ export function EngineeringForm() {
     const { data: records, error } = await supabase
       .from('dbp6_000401_engineering')
       .select('*')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -140,7 +142,7 @@ export function EngineeringForm() {
     fetchData()
     fetchProjects()
     fetchDisciplines()
-  }, [])
+  }, [projectId])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -288,6 +290,7 @@ export function EngineeringForm() {
       dgt_revision: '',
       dgt_status: '',
     })
+    setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
   }
 
@@ -531,7 +534,7 @@ export function EngineeringForm() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full divide-y divide-gray-200 table-fixed">
+            <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-2 text-left align-top w-36">
@@ -661,19 +664,19 @@ export function EngineeringForm() {
                     const isEditing = editingId === record.dgt_dbp6bd041engineeringid
                     return (
                       <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
-                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                          <div className="truncate font-medium" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">
+                          <div className="whitespace-nowrap font-medium" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>
                             {getProjectName(record.dgt_dbp6bd00projectdataid)}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                          <div className="truncate" title={record.dgt_dtfid || '-'}>{record.dgt_dtfid || '-'}</div>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">
+                          <div className="whitespace-nowrap" title={record.dgt_dtfid || '-'}>{record.dgt_dtfid || '-'}</div>
                         </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                          <div className="truncate" title={record.dgt_transmittalref || '-'}>{record.dgt_transmittalref || '-'}</div>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">
+                          <div className="whitespace-nowrap" title={record.dgt_transmittalref || '-'}>{record.dgt_transmittalref || '-'}</div>
                         </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900 overflow-hidden max-w-0">
-                          <div className="truncate" title={record.dgt_transmittalsubject || '-'}>{record.dgt_transmittalsubject || '-'}</div>
+                        <td className="px-3 py-2.5 text-sm text-gray-900">
+                          <div className="whitespace-nowrap" title={record.dgt_transmittalsubject || '-'}>{record.dgt_transmittalsubject || '-'}</div>
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_discipline || '-'}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-900">{getTypeName(record.dgt_transmittaltype)}</td>
@@ -708,7 +711,7 @@ export function EngineeringForm() {
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                                 record.dgt_status === 'A' ? 'bg-green-100 text-green-800'
-                                : record.dgt_status === 'B' ? 'bg-orange-100 text-orange-800'
+                                : record.dgt_status === 'B' ? 'bg-sky-100 text-sky-800'
                                 : record.dgt_status === 'C' ? 'bg-red-100 text-red-700'
                                 : record.dgt_status === 'D' ? 'bg-red-200 text-red-900'
                                 : record.dgt_status === 'UR' ? 'bg-yellow-100 text-yellow-800'
