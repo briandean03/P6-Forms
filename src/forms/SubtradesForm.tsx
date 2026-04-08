@@ -22,7 +22,6 @@ type SortField = 'dgt_dbp6bd014subtradeid' | 'dgt_subtradecode' | 'dgt_subtraden
 type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
-const selectCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white'
 
 export function SubtradesForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Subtrades[]>([])
@@ -100,11 +99,6 @@ export function SubtradesForm({ projectId }: { projectId: string }) {
   const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
   const paginatedData = filteredAndSortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    return projects.find(p => p.dgt_dbp6bd00projectdataid === id)?.dgt_projectname || id
-  }
-
   const startEdit = (record: Subtrades) => {
     setEditingId(record.dgt_dbp6bd014subtradeid)
     setEditValues({
@@ -171,10 +165,9 @@ export function SubtradesForm({ projectId }: { projectId: string }) {
             <span className="text-sm text-gray-600">Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-max divide-y divide-gray-200">
+            <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide w-40">Project</th>
                   {(['dgt_dbp6bd014subtradeid', 'dgt_subtradecode', 'dgt_subtradename'] as SortField[]).map(field => (
                     <th key={field} className="px-3 py-3 text-left">
                       <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort(field)}>
@@ -187,17 +180,11 @@ export function SubtradesForm({ projectId }: { projectId: string }) {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => (
                   <tr key={record.dgt_dbp6bd014subtradeid} className={editingId === record.dgt_dbp6bd014subtradeid ? 'bg-amber-50' : 'hover:bg-gray-50'}>
                     {editingId === record.dgt_dbp6bd014subtradeid ? (
                       <>
-                        <td className="px-2 py-1.5">
-                          <select value={editValues.projectid} onChange={e => setEditValues(p => ({ ...p, projectid: e.target.value }))} className={selectCls}>
-                            <option value="">-- No Project --</option>
-                            {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-                          </select>
-                        </td>
                         <td className="px-3 py-2.5 text-xs font-mono text-gray-500 whitespace-nowrap">{record.dgt_dbp6bd014subtradeid}</td>
                         <td className="px-2 py-1.5"><input value={editValues.subtradecode} onChange={e => setEditValues(p => ({ ...p, subtradecode: e.target.value }))} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input value={editValues.subtradename} onChange={e => setEditValues(p => ({ ...p, subtradename: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} className={inputCls} /></td>
@@ -210,7 +197,6 @@ export function SubtradesForm({ projectId }: { projectId: string }) {
                       </>
                     ) : (
                       <>
-                        <td className="px-3 py-2.5 text-sm text-gray-900"><div className="whitespace-nowrap" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>{getProjectName(record.dgt_dbp6bd00projectdataid)}</div></td>
                         <td className="px-3 py-2.5 text-sm font-mono text-gray-900 whitespace-nowrap">{record.dgt_dbp6bd014subtradeid}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_subtradecode || '-'}</td>
                         <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_subtradename || '-'}</td>

@@ -15,7 +15,6 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 interface DynamicActualDataFormData {
   dgt_dbp6bd00projectdataid: string
   dgt_activityid: string
-  dgt_projectid: string
   dgt_actualstart: string
   dgt_actualfinish: string
   dgt_pctcomplete: string
@@ -30,7 +29,7 @@ type EditingCell = {
   field: EditableField
 } | null
 
-type SortField = 'dgt_activityid' | 'dgt_projectid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
+type SortField = 'dgt_activityid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
 type SortDirection = 'asc' | 'desc'
 
 export function DynamicActualDataForm({ projectId }: { projectId: string }) {
@@ -50,7 +49,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [filters, setFilters] = useState({
     dgt_activityid: '',
-    dgt_projectid: '',
     dgt_actualstart: '',
     dgt_actualfinish: '',
   })
@@ -144,17 +142,13 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
       const term = searchTerm.toLowerCase()
       result = result.filter(
         (item) =>
-          item.dgt_activityid?.toLowerCase().includes(term) ||
-          item.dgt_projectid?.toLowerCase().includes(term)
+          item.dgt_activityid?.toLowerCase().includes(term)
       )
     }
 
     // Column filters
     if (filters.dgt_activityid) {
       result = result.filter((item) => item.dgt_activityid === filters.dgt_activityid)
-    }
-    if (filters.dgt_projectid) {
-      result = result.filter((item) => item.dgt_projectid === filters.dgt_projectid)
     }
     if (filters.dgt_actualstart) {
       result = result.filter((item) => {
@@ -238,7 +232,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   const openCreateModal = () => {
     reset({
       dgt_activityid: '',
-      dgt_projectid: '',
       dgt_actualstart: '',
       dgt_actualfinish: '',
       dgt_pctcomplete: '',
@@ -253,7 +246,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
     const insertData = {
       dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
       dgt_activityid: formData.dgt_activityid || null,
-      dgt_projectid: formData.dgt_projectid || null,
       dgt_actualstart: formData.dgt_actualstart || null,
       dgt_actualfinish: formData.dgt_actualfinish || null,
       dgt_pctcomplete: formData.dgt_pctcomplete
@@ -352,11 +344,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
     return new Date(dateString).toLocaleDateString()
   }
 
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
-    return project?.dgt_projectname || id
-  }
 
   const formatPercentage = (value: number | null) => {
     if (value === null || value === undefined) return '-'
@@ -397,7 +384,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
               onClick={() => {
                 setFilters({
                   dgt_activityid: '',
-                  dgt_projectid: '',
                   dgt_actualstart: '',
                   dgt_actualfinish: '',
                 })
@@ -444,7 +430,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-max">
+            <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
@@ -457,23 +443,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_activityid" value={filters.dgt_activityid} onChange={(v) => updateFilter('dgt_activityid', v)} label="Activity ID" />
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-36">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Project
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-28">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_projectid')}
-                    >
-                      Project ID
-                      <SortIcon field="dgt_projectid" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_projectid" value={filters.dgt_projectid} onChange={(v) => updateFilter('dgt_projectid', v)} label="Project ID" />
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-28">
@@ -535,7 +504,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={5} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -544,17 +513,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                     <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
                       <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.dgt_activityid || '-'}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        <div
-                          className="whitespace-nowrap font-medium"
-                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        >
-                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900 truncate">
-                        {record.dgt_projectid || '-'}
                       </td>
                       {/* Actual Start - Editable */}
                       <td className="px-2 py-1.5 text-xs text-gray-900">
@@ -704,22 +662,6 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
             {...register('dgt_activityid')}
             error={errors.dgt_activityid?.message}
           />
-
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Project ID</label>
-            <select
-              {...register('dgt_projectid')}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_projectid ?? ''}>
-                  {p.dgt_projectname || p.dgt_projectid || p.dgt_dbp6bd00projectdataid}
-                </option>
-              ))}
-            </select>
-            {errors.dgt_projectid && <p className="text-xs text-red-500">{errors.dgt_projectid.message}</p>}
-          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <FormField
