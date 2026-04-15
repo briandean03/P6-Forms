@@ -12,6 +12,8 @@ import { TradesForm } from '@/forms/TradesForm'
 import { SubtradesForm } from '@/forms/SubtradesForm'
 import { PaymentsForm } from '@/forms/PaymentsForm'
 import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
+import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
+import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
 
 type TabKey =
   | 'engineering'
@@ -27,6 +29,8 @@ type TabKey =
   | 'type'
   | 'payments'
   | 'referencedata'
+  | 'p6activityoutput'
+  | 'p6activityupdates'
 
 interface Tab {
   key: TabKey
@@ -134,6 +138,24 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
+  {
+    key: 'p6activityoutput',
+    label: 'P6 Activity Output',
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'p6activityupdates',
+    label: 'P6 Activity Updates',
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    ),
+  },
 ]
 
 interface ProjectInfo {
@@ -214,6 +236,10 @@ function App() {
         return <PaymentsForm projectId={selectedProjectId} />
       case 'referencedata':
         return <ReferenceDataForm />
+      case 'p6activityoutput':
+        return <P6ActivityOutputForm />
+      case 'p6activityupdates':
+        return <P6ActivityUpdatesForm />
       default:
         return null
     }

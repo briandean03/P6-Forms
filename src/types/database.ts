@@ -218,6 +218,32 @@ export interface ActivityWorkType {
   work_type_name: string
 }
 
+export interface P6ActivityOutput {
+  id: number
+  project_code: string
+  activity_id: string | null
+  field_name: string
+  field_value: string | null
+  last_updated: string | null
+}
+
+export interface P6ActivityUpdate {
+  id: number
+  project_code: string
+  task_code: string
+  status_code: string | null
+  wbs_id: string | null
+  task_name: string | null
+  act_start_date: string | null
+  act_end_date: string | null
+  complete_pct: number | null
+  remain_drtn_hr_cnt: number | null
+  mrk_uptd: number | null
+  delete_record_flag: number | null
+  data_date: string | null
+  submitted_at: string | null
+}
+
 export interface ProjectData {
   dgt_dbp6bd00projectdataid: string
   dgt_consultantsname: string | null
