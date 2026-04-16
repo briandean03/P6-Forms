@@ -188,14 +188,9 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
       }
     }
 
-    // Generate next aoc_number as MAX + 1 within this project
-    const maxNum = data.reduce((max, item) => Math.max(max, parseInt(item.aoc_number) || 0), 0)
-    const nextAocNumber = String(maxNum + 1)
-
     setSaving(true)
 
     const { error } = await supabase.from('dbp6_areas_of_concern').insert({
-      aoc_number: nextAocNumber,
       project_id: formData.project_id || null,
       dgt_projectid: getTextProjectId(formData.project_id),
       description: formData.description.trim(),
@@ -239,28 +234,10 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
 
     if (error) {
       showError('Failed to delete record: ' + error.message)
-      setDeleting(false)
-      setDeleteConfirm(null)
-      return
+    } else {
+      setData((prev) => prev.filter((item) => item.id !== id))
+      showSuccess('Record deleted')
     }
-
-    // Renumber remaining records sequentially (sorted by current aoc_number)
-    const remaining = data
-      .filter(item => item.id !== id)
-      .sort((a, b) => (parseInt(a.aoc_number) || 0) - (parseInt(b.aoc_number) || 0))
-
-    for (let i = 0; i < remaining.length; i++) {
-      const newNum = String(i + 1)
-      if (remaining[i].aoc_number !== newNum) {
-        await supabase
-          .from('dbp6_areas_of_concern')
-          .update({ aoc_number: newNum } as never)
-          .eq('id', remaining[i].id)
-      }
-    }
-
-    showSuccess('Record deleted')
-    fetchData()
     setDeleting(false)
     setDeleteConfirm(null)
   }
