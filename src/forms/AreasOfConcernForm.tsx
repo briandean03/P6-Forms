@@ -23,7 +23,7 @@ type SortDirection = 'asc' | 'desc'
 
 export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<AreaOfConcern[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
+  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -60,9 +60,14 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const fetchProjects = async () => {
     const { data: projectRecords } = await supabase
       .from('dbp6_0000_projectdata')
-      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
+      .select('dgt_dbp6bd00projectdataid, dgt_projectname, dgt_projectid')
       .order('dgt_projectname', { ascending: true })
     setProjects(projectRecords || [])
+  }
+
+  const getTextProjectId = (uuid: string | null) => {
+    if (!uuid) return null
+    return projects.find(p => p.dgt_dbp6bd00projectdataid === uuid)?.dgt_projectid ?? null
   }
 
   const fetchData = async () => {
@@ -187,6 +192,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
 
     const { error } = await supabase.from('dbp6_areas_of_concern').insert({
       project_id: formData.project_id || null,
+      dgt_projectid: getTextProjectId(formData.project_id),
       description: formData.description.trim(),
       status: selectedStatus,
     } as never)
@@ -250,6 +256,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
       .from('dbp6_areas_of_concern')
       .update({
         project_id: editValues.project_id || null,
+        dgt_projectid: getTextProjectId(editValues.project_id),
         description: editValues.description.trim(),
       } as never)
       .eq('id', editingId)
@@ -260,7 +267,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
       setData((prev) =>
         prev.map((item) =>
           item.id === editingId
-            ? { ...item, project_id: editValues.project_id || null, description: editValues.description.trim() }
+            ? { ...item, project_id: editValues.project_id || null, dgt_projectid: getTextProjectId(editValues.project_id), description: editValues.description.trim() }
             : item
         )
       )
