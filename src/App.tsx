@@ -14,6 +14,7 @@ import { PaymentsForm } from '@/forms/PaymentsForm'
 import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
 import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
 import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
+import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 
 type TabKey =
   | 'engineering'
@@ -31,6 +32,7 @@ type TabKey =
   | 'referencedata'
   | 'p6activityoutput'
   | 'p6activityupdates'
+  | 'photos'
 
 interface Tab {
   key: TabKey
@@ -156,6 +158,15 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
+  {
+    key: 'photos',
+    label: 'Photos',
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
 ]
 
 interface ProjectInfo {
@@ -240,6 +251,8 @@ function App() {
         return <P6ActivityOutputForm />
       case 'p6activityupdates':
         return <P6ActivityUpdatesForm />
+      case 'photos':
+        return <PhotoUploadForm projectId={selectedProjectId} />
       default:
         return null
     }

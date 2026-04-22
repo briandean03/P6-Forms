@@ -244,6 +244,15 @@ export interface P6ActivityUpdate {
   submitted_at: string | null
 }
 
+export interface Photo {
+  id: string
+  dgt_dbp6bd00projectdataid: string | null
+  photo_date: string
+  storage_path: string
+  file_name: string
+  created_at: string
+}
+
 export interface ProjectData {
   dgt_dbp6bd00projectdataid: string
   dgt_consultantsname: string | null

@@ -20,7 +20,7 @@ const ITEMS_PER_PAGE = 15
 
 type SortField = 'aoc_number' | 'description' | 'project_id' | 'created_at' | 'status'
 type SortDirection = 'asc' | 'desc'
-
+        
 export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<AreaOfConcern[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
