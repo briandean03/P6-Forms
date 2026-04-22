@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { ContainerClient } from '@azure/storage-blob'
 import { supabase } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
@@ -15,17 +15,21 @@ function getContainerClient() {
   return new ContainerClient(`${BLOB_BASE}?${SAS_TOKEN}`)
 }
 
-// URL with SAS for display — base URL (no SAS) is what we store in Supabase
 function blobDisplayUrl(blobName: string) {
   return `${BLOB_BASE}/${blobName}?${SAS_TOKEN}`
 }
 
+interface QueuedFile {
+  file: File
+  previewUrl: string
+}
+
 interface Photo {
   supabaseId: string
-  blobName: string    // used for Azure deletion
+  blobName: string
   fileName: string
   photoDate: string
-  url: string         // display URL with SAS
+  url: string
   serialNumber: string
 }
 
@@ -41,8 +45,9 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
   const [photos, setPhotos] = useState<Photo[]>([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+  const [fileQueue, setFileQueue] = useState<QueuedFile[]>([])
+  const [dragOver, setDragOver] = useState(false)
   const [photoDate, setPhotoDate] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Photo | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -63,9 +68,7 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
       if (error) throw error
 
       const result: Photo[] = (data ?? []).map(row => {
-        const blobName = row.imageurl
-          ? row.imageurl.replace(`${BLOB_BASE}/`, '')
-          : ''
+        const blobName = row.imageurl ? row.imageurl.replace(`${BLOB_BASE}/`, '') : ''
         return {
           supabaseId: row.id,
           blobName,
@@ -86,50 +89,88 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
     if (projectId) fetchPhotos()
   }, [projectId])
 
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+    const newItems: QueuedFile[] = imageFiles.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }))
+    setFileQueue(prev => [...prev, ...newItems])
+  }, [])
+
+  const removeFromQueue = (index: number) => {
+    setFileQueue(prev => {
+      URL.revokeObjectURL(prev[index].previewUrl)
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    addFiles(e.dataTransfer.files)
+  }
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedFile || !photoDate) return
+    if (fileQueue.length === 0 || !photoDate) return
     setUploading(true)
-    try {
-      const ext = selectedFile.name.includes('.') ? `.${selectedFile.name.split('.').pop()}` : ''
-      const serial = uploadCounterRef.current
-      const displayName = `${photoDate}${ext}`
-      const blobName = `${projectId}/${photoDate}-${serial}${ext}`
+    setUploadProgress({ current: 0, total: fileQueue.length })
 
-      // 1. Upload file to Azure
-      const blockBlob = getContainerClient().getBlockBlobClient(blobName)
-      await blockBlob.uploadData(selectedFile, {
-        blobHTTPHeaders: { blobContentType: selectedFile.type },
-      })
+    let successCount = 0
+    const failedNames: string[] = []
 
-      // 2. Save metadata to Supabase (store base URL without SAS token)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await (supabase as any)
-        .from('p6forms_photoupload')
-        .insert({
-          filename: displayName,
-          photodate: photoDate,
-          imageurl: `${BLOB_BASE}/${blobName}`,
-          serialnumber: String(serial),
+    for (let i = 0; i < fileQueue.length; i++) {
+      const { file, previewUrl } = fileQueue[i]
+      setUploadProgress({ current: i + 1, total: fileQueue.length })
+      try {
+        const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : ''
+        const serial = uploadCounterRef.current
+        const displayName = `${photoDate}${ext}`
+        const blobName = `${projectId}/${photoDate}-${serial}${ext}`
+
+        // 1. Upload to Azure
+        const blockBlob = getContainerClient().getBlockBlobClient(blobName)
+        await blockBlob.uploadData(file, {
+          blobHTTPHeaders: { blobContentType: file.type },
         })
-      if (insertError) {
-        // Rollback: remove the blob if Supabase insert fails
-        await getContainerClient().deleteBlob(blobName)
-        throw insertError
-      }
 
-      // 3. Refresh gallery from Supabase
-      uploadCounterRef.current += 1
-      showSuccess(`"${displayName}" uploaded successfully`)
-      setSelectedFile(null)
-      setPhotoDate('')
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      fetchPhotos()
-    } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Upload failed')
+        // 2. Save metadata to Supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: insertError } = await (supabase as any)
+          .from('p6forms_photoupload')
+          .insert({
+            filename: displayName,
+            photodate: photoDate,
+            imageurl: `${BLOB_BASE}/${blobName}`,
+            serialnumber: String(serial),
+          })
+        if (insertError) {
+          await getContainerClient().deleteBlob(blobName)
+          throw insertError
+        }
+
+        uploadCounterRef.current += 1
+        successCount++
+      } catch {
+        failedNames.push(file.name)
+      }
+      URL.revokeObjectURL(previewUrl)
     }
+
+    setFileQueue([])
+    setPhotoDate('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setUploadProgress(null)
+
+    if (successCount > 0) {
+      showSuccess(`${successCount} photo${successCount !== 1 ? 's' : ''} uploaded successfully`)
+      fetchPhotos()
+    }
+    if (failedNames.length > 0) {
+      showError(`Failed to upload: ${failedNames.join(', ')}`)
+    }
+
     setUploading(false)
   }
 
@@ -137,16 +178,12 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      // 1. Delete from Azure
       await getContainerClient().deleteBlob(deleteTarget.blobName)
-
-      // 2. Delete from Supabase
       const { error } = await supabase
         .from('p6forms_photoupload')
         .delete()
         .eq('id', deleteTarget.supabaseId)
       if (error) throw error
-
       setPhotos(prev => prev.filter(p => p.supabaseId !== deleteTarget.supabaseId))
       showSuccess('Photo deleted')
     } catch (err: unknown) {
@@ -208,54 +245,88 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
 
       {/* Upload panel */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Upload Photo</h3>
-        <form onSubmit={handleUpload} className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[220px]">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Image File</label>
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Upload Photos</h3>
+        <form onSubmit={handleUpload} className="space-y-4">
+
+          {/* Drag & drop zone */}
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors select-none ${
+              dragOver
+                ? 'border-blue-400 bg-blue-50'
+                : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50'
+            }`}
+          >
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={e => {
-                const file = e.target.files?.[0] ?? null
-                setSelectedFile(file)
-                if (previewUrl) URL.revokeObjectURL(previewUrl)
-                setPreviewUrl(file ? URL.createObjectURL(file) : null)
-              }}
-              className="block w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+              multiple
+              className="hidden"
+              onChange={e => e.target.files && addFiles(e.target.files)}
             />
+            <svg className="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <p className="text-sm text-gray-500">Drag & drop images here, or <span className="text-blue-600 font-medium">browse</span></p>
+            <p className="text-xs text-gray-400 mt-1">Multiple images supported</p>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Photo Date</label>
-            <input
-              type="date"
-              value={photoDate}
-              onChange={e => setPhotoDate(e.target.value)}
-              required
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!selectedFile || !photoDate || uploading}
-            className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {uploading ? 'Uploading…' : 'Upload'}
-          </button>
-        </form>
-        {previewUrl && (
-          <div className="mt-4 flex items-start gap-3">
-            <img
-              src={previewUrl}
-              alt="Preview"
-              className="h-32 w-32 rounded-lg object-cover border border-gray-200"
-            />
-            <div className="text-xs text-gray-500 mt-1">
-              <p className="font-medium text-gray-700">{selectedFile?.name}</p>
-              <p className="mt-0.5">{selectedFile ? (selectedFile.size / 1024).toFixed(1) + ' KB' : ''}</p>
+
+          {/* Queued file previews */}
+          {fileQueue.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">{fileQueue.length} file{fileQueue.length !== 1 ? 's' : ''} selected</p>
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                {fileQueue.map((item, i) => (
+                  <div key={i} className="relative group aspect-square">
+                    <img
+                      src={item.previewUrl}
+                      alt={item.file.name}
+                      className="w-full h-full object-cover rounded-lg border border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeFromQueue(i)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Date + submit row */}
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Photo Date</label>
+              <input
+                type="date"
+                value={photoDate}
+                onChange={e => setPhotoDate(e.target.value)}
+                required
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={fileQueue.length === 0 || !photoDate || uploading}
+                className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {uploading && uploadProgress
+                  ? `Uploading ${uploadProgress.current}/${uploadProgress.total}…`
+                  : `Upload${fileQueue.length > 1 ? ` ${fileQueue.length} photos` : ''}`}
+              </button>
             </div>
           </div>
-        )}
+        </form>
       </div>
 
       {/* Gallery */}
