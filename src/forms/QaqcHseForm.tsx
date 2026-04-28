@@ -12,6 +12,8 @@ import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 import { DateColumnFilter } from '@/components/DateColumnFilter'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CsvControls } from '@/components/CsvControls'
+import { exportToCsv } from '@/utils/csv'
 
 interface QaqcHseFormData {
   dgt_dbp6bd00projectdataid: string
@@ -361,6 +363,34 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
     setDeleteConfirm(null)
   }
 
+  const handleExport = () => {
+    const headers = ['dgt_docid', 'dgt_docref', 'dgt_documentsubject', 'dgt_discipline', 'dgt_documenttype', 'dgt_submissiondate', 'dgt_responsedate', 'dgt_revision', 'dgt_status']
+    const rows = data.map(r => [r.dgt_docid, r.dgt_docref, r.dgt_documentsubject, r.dgt_discipline, r.dgt_documenttype, r.dgt_submissiondate, r.dgt_responsedate, r.dgt_revision, r.dgt_status])
+    exportToCsv('qaqc-hse', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.dgt_docid || r.dgt_docref)
+      .map(({ dgt_docid, dgt_docref, dgt_documentsubject, dgt_discipline, dgt_documenttype, dgt_submissiondate, dgt_responsedate, dgt_revision, dgt_status }) => ({
+        dgt_dbp6bd00projectdataid: projectId,
+        dgt_docid: dgt_docid || null,
+        dgt_docref: dgt_docref || null,
+        dgt_documentsubject: dgt_documentsubject || null,
+        dgt_discipline: Number(dgt_discipline) || null,
+        dgt_documenttype: dgt_documenttype || null,
+        dgt_submissiondate: dgt_submissiondate || null,
+        dgt_responsedate: dgt_responsedate || null,
+        dgt_revision: Number(dgt_revision) || null,
+        dgt_status: dgt_status || null,
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
@@ -439,15 +469,18 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
             Type Legend
           </button>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create New
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create New
+          </button>
+        </div>
       </div>
 
       {showDisciplineLegend && disciplines.length > 0 && (

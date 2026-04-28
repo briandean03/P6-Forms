@@ -12,6 +12,8 @@ import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 import { DateColumnFilter } from '@/components/DateColumnFilter'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CsvControls } from '@/components/CsvControls'
+import { exportToCsv } from '@/utils/csv'
 
 interface EngineeringFormData {
   dgt_dbp6bd00projectdataid: string
@@ -396,6 +398,36 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
     setDeleteConfirm(null)
   }
 
+  const handleExport = () => {
+    const headers = ['dgt_dtfid', 'dgt_transmittalref', 'dgt_transmittalsubject', 'dgt_discipline', 'dgt_transmittaltype', 'dgt_actualsubmissiondate', 'dgt_actualreturndate', 'dgt_revision', 'dgt_status', 'is_long_lead', 'importsequencenumber']
+    const rows = data.map(r => [r.dgt_dtfid, r.dgt_transmittalref, r.dgt_transmittalsubject, r.dgt_discipline, r.dgt_transmittaltype, r.dgt_actualsubmissiondate, r.dgt_actualreturndate, r.dgt_revision, r.dgt_status, r.is_long_lead, r.importsequencenumber])
+    exportToCsv('engineering-transmittals', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.dgt_dtfid)
+      .map(({ dgt_dtfid, dgt_transmittalref, dgt_transmittalsubject, dgt_discipline, dgt_transmittaltype, dgt_actualsubmissiondate, dgt_actualreturndate, dgt_revision, dgt_status, is_long_lead, importsequencenumber }) => ({
+        dgt_dbp6bd00projectdataid: projectId,
+        dgt_dtfid,
+        dgt_transmittalref,
+        dgt_transmittalsubject,
+        dgt_discipline: Number(dgt_discipline) || null,
+        dgt_transmittaltype: Number(dgt_transmittaltype) || null,
+        dgt_actualsubmissiondate: dgt_actualsubmissiondate || null,
+        dgt_actualreturndate: dgt_actualreturndate || null,
+        dgt_revision: Number(dgt_revision) || null,
+        dgt_status,
+        is_long_lead: is_long_lead === 'true',
+        importsequencenumber: importsequencenumber || null,
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_000401_engineering').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   return (
     <div className="space-y-4">
       {notification && (
@@ -464,15 +496,18 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
             Discipline Legend
           </button>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create New
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create New
+          </button>
+        </div>
       </div>
 
       {showTypeLegend && types.length > 0 && (

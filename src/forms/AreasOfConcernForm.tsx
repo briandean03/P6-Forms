@@ -9,6 +9,8 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CsvControls } from '@/components/CsvControls'
+import { exportToCsv } from '@/utils/csv'
 
 interface AocFormData {
   project_id: string
@@ -276,6 +278,28 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
     }
   }
 
+  const handleExport = () => {
+    const headers = ['aoc_number', 'description', 'status', 'created_at']
+    const rows = data.map(r => [r.aoc_number, r.description, r.status, r.created_at])
+    exportToCsv('areas-of-concern', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.description)
+      .map(({ aoc_number, description, status }) => ({
+        project_id: projectId,
+        aoc_number: aoc_number || null,
+        description: description || null,
+        status: status || 'open',
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_areas_of_concern').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
@@ -329,15 +353,18 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
             {closedCount} Closed
           </span>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Area of Concern
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Area of Concern
+          </button>
+        </div>
       </div>
 
       {loading ? (

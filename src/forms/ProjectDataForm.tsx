@@ -10,6 +10,8 @@ import { FormField } from '../components/FormField'
 import { SearchFilter } from '../components/SearchFilter'
 import { Pagination } from '../components/Pagination'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { CsvControls } from '../components/CsvControls'
+import { exportToCsv } from '../utils/csv'
 
 type EditableField = Exclude<keyof ProjectData, 'dgt_dbp6bd00projectdataid'>
 
@@ -41,6 +43,15 @@ type EditingCell = {
   recordId: string
   field: EditableField
 } | null
+
+type WebhookStatus = 'idle' | 'loading' | 'success' | 'error'
+
+const WEBHOOKS = [
+  { id: '51', label: 'Webhook 51', url: 'https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec' },
+  { id: '52', label: 'Webhook 52', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
+  { id: '53', label: 'Webhook 53', url: 'https://pmc2p2c.app.n8n.cloud/webhook/dee9c559-16eb-474f-86c6-5707a4a72600' },
+  { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
+] as const
 
 const DATE_FIELDS = new Set([
   'dgt_projectstartdate',
@@ -84,6 +95,10 @@ export function ProjectDataForm() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const [webhookModal, setWebhookModal] = useState(false)
+  const [webhookStatus, setWebhookStatus] = useState<Record<string, WebhookStatus>>({
+    '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle',
+  })
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [cellValue, setCellValue] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -252,6 +267,16 @@ export function ProjectDataForm() {
     setDeleteConfirm(null)
   }
 
+  const triggerWebhook = async (id: string, url: string) => {
+    setWebhookStatus(prev => ({ ...prev, [id]: 'loading' }))
+    try {
+      await fetch(url, { method: 'GET' })
+      setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
+    } catch {
+      setWebhookStatus(prev => ({ ...prev, [id]: 'error' }))
+    }
+  }
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
@@ -347,6 +372,37 @@ export function ProjectDataForm() {
     )
   }
 
+  const handleExport = () => {
+    const headers = ['dgt_projectname', 'dgt_projectid', 'dgt_employersname', 'dgt_contractorsname', 'dgt_consultantsname', 'dgt_pmcsname', 'dgt_location', 'dgt_contractvalue', 'dgt_projectstartdate', 'dgt_projectenddate', 'dgt_reportingstartingdate', 'dgt_elapsedduration', 'dgt_eotawarded']
+    const rows = data.map(r => [r.dgt_projectname, r.dgt_projectid, r.dgt_employersname, r.dgt_contractorsname, r.dgt_consultantsname, r.dgt_pmcsname, r.dgt_location, r.dgt_contractvalue, r.dgt_projectstartdate, r.dgt_projectenddate, r.dgt_reportingstartingdate, r.dgt_elapsedduration, r.dgt_eotawarded])
+    exportToCsv('project-data', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.dgt_projectname)
+      .map(({ dgt_projectname, dgt_projectid, dgt_employersname, dgt_contractorsname, dgt_consultantsname, dgt_pmcsname, dgt_location, dgt_contractvalue, dgt_projectstartdate, dgt_projectenddate, dgt_reportingstartingdate, dgt_elapsedduration, dgt_eotawarded }) => ({
+        dgt_projectname: dgt_projectname || null,
+        dgt_projectid: dgt_projectid || null,
+        dgt_employersname: dgt_employersname || null,
+        dgt_contractorsname: dgt_contractorsname || null,
+        dgt_consultantsname: dgt_consultantsname || null,
+        dgt_pmcsname: dgt_pmcsname || null,
+        dgt_location: dgt_location || null,
+        dgt_contractvalue: Number(dgt_contractvalue) || null,
+        dgt_projectstartdate: dgt_projectstartdate || null,
+        dgt_projectenddate: dgt_projectenddate || null,
+        dgt_reportingstartingdate: dgt_reportingstartingdate || null,
+        dgt_elapsedduration: dgt_elapsedduration || null,
+        dgt_eotawarded: dgt_eotawarded || null,
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_0000_projectdata').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   if (loading) return <LoadingSpinner />
 
   return (
@@ -356,12 +412,24 @@ export function ProjectDataForm() {
       )}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Project Data</h2>
-        <button
-          onClick={openCreateModal}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
-          Post Project
-        </button>
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => { setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle' }); setWebhookModal(true) }}
+            className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Sync
+          </button>
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={openCreateModal}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            Post Project
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3 bg-white p-4 rounded-lg shadow-sm">
@@ -603,6 +671,41 @@ export function ProjectDataForm() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Webhook Sync Modal */}
+      <Modal isOpen={webhookModal} onClose={() => setWebhookModal(false)} title="Sync / Update Webhooks">
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-gray-500 mb-4">Trigger an n8n workflow to sync project data.</p>
+          {WEBHOOKS.map(({ id, label, url }) => {
+            const status = webhookStatus[id]
+            return (
+              <div key={id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50">
+                <span className="text-sm font-medium text-gray-700">{label}</span>
+                <button
+                  onClick={() => triggerWebhook(id, url)}
+                  disabled={status === 'loading'}
+                  className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed ${
+                    status === 'success' ? 'bg-green-100 text-green-700 border border-green-300' :
+                    status === 'error'   ? 'bg-red-100 text-red-700 border border-red-300' :
+                    status === 'loading' ? 'bg-gray-100 text-gray-400 border border-gray-200' :
+                    'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {status === 'loading' && (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  )}
+                  {status === 'success' && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                  {status === 'error'   && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>}
+                  {status === 'idle'    ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed — Retry'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
       </Modal>
 
       <ConfirmDialog

@@ -11,6 +11,8 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CsvControls } from '@/components/CsvControls'
+import { exportToCsv } from '@/utils/csv'
 
 interface DynamicActualDataFormData {
   dgt_dbp6bd00projectdataid: string
@@ -339,6 +341,30 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
     setDeleteConfirm(null)
   }
 
+  const handleExport = () => {
+    const headers = ['dgt_activityid', 'dgt_actualstart', 'dgt_actualfinish', 'dgt_pctcomplete', 'dgt_projectid']
+    const rows = data.map(r => [r.dgt_activityid, r.dgt_actualstart, r.dgt_actualfinish, r.dgt_pctcomplete, r.dgt_projectid])
+    exportToCsv('dynamic-actual-data', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.dgt_activityid)
+      .map(({ dgt_activityid, dgt_actualstart, dgt_actualfinish, dgt_pctcomplete, dgt_projectid }) => ({
+        dgt_dbp6bd00projectdataid: projectId,
+        dgt_activityid: dgt_activityid || null,
+        dgt_actualstart: dgt_actualstart || null,
+        dgt_actualfinish: dgt_actualfinish || null,
+        dgt_pctcomplete: Number(dgt_pctcomplete) || null,
+        dgt_projectid: dgt_projectid || null,
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_0006_progressdata').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
@@ -403,15 +429,18 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
             </button>
           )}
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          New Record
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            New Record
+          </button>
+        </div>
       </div>
 
       {loading ? (

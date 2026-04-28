@@ -10,6 +10,8 @@ import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CsvControls } from '@/components/CsvControls'
+import { exportToCsv } from '@/utils/csv'
 
 interface PaymentsFormData {
   dbp6bd0003paymentsid: string
@@ -212,6 +214,33 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
     setDeleting(false); setDeleteConfirm(null)
   }
 
+  const handleExport = () => {
+    const headers = ['dgt_iparef', 'dgt_ipaamount', 'dgt_ipcamount', 'dgt_paymentreceivedamount', 'dgt_paymentreceiveddate', 'dgt_datesubmitted', 'dgt_dateapproved', 'statuscode']
+    const rows = data.map(r => [r.dgt_iparef, r.dgt_ipaamount, r.dgt_ipcamount, r.dgt_paymentreceivedamount, r.dgt_paymentreceiveddate, r.dgt_datesubmitted, r.dgt_dateapproved, r.statuscode])
+    exportToCsv('payments', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.dgt_iparef)
+      .map(({ dgt_iparef, dgt_ipaamount, dgt_ipcamount, dgt_paymentreceivedamount, dgt_paymentreceiveddate, dgt_datesubmitted, dgt_dateapproved, statuscode }) => ({
+        dgt_dbp6bd00projectdataid: projectId,
+        dgt_iparef: dgt_iparef || null,
+        dgt_ipaamount: Number(dgt_ipaamount) || null,
+        dgt_ipcamount: Number(dgt_ipcamount) || null,
+        dgt_paymentreceivedamount: Number(dgt_paymentreceivedamount) || null,
+        dgt_paymentreceiveddate: dgt_paymentreceiveddate || null,
+        dgt_datesubmitted: dgt_datesubmitted || null,
+        dgt_dateapproved: dgt_dateapproved || null,
+        statuscode: Number(statuscode) || null,
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_0009_payments').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   return (
     <div className="space-y-4">
       {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
@@ -219,11 +248,14 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by IPA ref, payment ID..." />
         </div>
-        <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-          <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          Create New
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+            <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Create New
+          </button>
+        </div>
       </div>
       {loading ? <LoadingSpinner /> : (
         <div className="bg-white shadow rounded-lg overflow-hidden">

@@ -11,6 +11,8 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ColumnFilter } from '@/components/ColumnFilter'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { CsvControls } from '@/components/CsvControls'
+import { exportToCsv } from '@/utils/csv'
 
 interface ActualResourcesFormData {
   dgt_dbp6bd00projectdataid: string
@@ -324,6 +326,30 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     return project?.dgt_projectname || id
   }
 
+  const handleExport = () => {
+    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential']
+    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential])
+    exportToCsv('actual-resources', headers, rows)
+  }
+
+  const handleImport = async (rows: Record<string, string>[]) => {
+    if (rows.length === 0) { showError('No data found in CSV'); return }
+    const inserts = rows
+      .filter(r => r.resource_name)
+      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential }) => ({
+        dgt_dbp6bd00projectdataid: projectId,
+        resource_name: resource_name || null,
+        dgt_resourcediscipline: Number(dgt_resourcediscipline) || null,
+        dgt_resourcetype: Number(dgt_resourcetype) || null,
+        dgt_resourcecount: Number(dgt_resourcecount) || null,
+        dgt_sequential: Number(dgt_sequential) || null,
+      }))
+    if (inserts.length === 0) { showError('No valid rows to import'); return }
+    const { error } = await supabase.from('dbp6_000501_actualresources').insert(inserts as never)
+    if (error) { showError('Import failed: ' + error.message) }
+    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+  }
+
   return (
     <div className="space-y-4">
       {notification && (
@@ -379,15 +405,18 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
             Discipline Legend
           </button>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          New Record
-        </button>
+        <div className="flex items-center gap-2">
+          <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            New Record
+          </button>
+        </div>
       </div>
 
       {showDisciplineLegend && disciplines.length > 0 && (
