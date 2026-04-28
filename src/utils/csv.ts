@@ -1,5 +1,5 @@
 /** Escapes a single CSV cell value */
-function escapeCell(val: string | number | null | undefined): string {
+function escapeCell(val: string | number | boolean | null | undefined): string {
   if (val === null || val === undefined) return ''
   const str = String(val)
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {

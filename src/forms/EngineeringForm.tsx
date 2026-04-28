@@ -399,10 +399,36 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   }
 
   const handleExport = () => {
-    const headers = ['dgt_dtfid', 'dgt_transmittalref', 'dgt_transmittalsubject', 'dgt_discipline', 'dgt_transmittaltype', 'dgt_actualsubmissiondate', 'dgt_actualreturndate', 'dgt_revision', 'dgt_status', 'is_long_lead', 'importsequencenumber']
-    const rows = data.map(r => [r.dgt_dtfid, r.dgt_transmittalref, r.dgt_transmittalsubject, r.dgt_discipline, r.dgt_transmittaltype, r.dgt_actualsubmissiondate, r.dgt_actualreturndate, r.dgt_revision, r.dgt_status, r.is_long_lead, r.importsequencenumber])
-    exportToCsv('engineering-transmittals', headers, rows)
-  }
+  const headers = [
+    'dgt_dtfid', 
+    'dgt_transmittalref', 
+    'dgt_transmittalsubject', 
+    'dgt_discipline', 
+    'dgt_transmittaltype', 
+    'dgt_actualsubmissiondate', 
+    'dgt_actualreturndate', 
+    'dgt_revision', 
+    'dgt_status', 
+    'is_long_lead', 
+    'importsequencenumber'
+  ]
+
+  const rows = data.map(r => [
+    r.dgt_dtfid, 
+    r.dgt_transmittalref, 
+    r.dgt_transmittalsubject, 
+    r.dgt_discipline, 
+    r.dgt_transmittaltype, 
+    r.dgt_actualsubmissiondate, 
+    r.dgt_actualreturndate, 
+    r.dgt_revision, 
+    r.dgt_status, 
+    String(r.is_long_lead), // Convert boolean to string here
+    r.importsequencenumber
+  ])
+
+  exportToCsv('engineering-transmittals', headers, rows)
+}
 
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
