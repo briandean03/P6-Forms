@@ -234,7 +234,7 @@ function App() {
       case 'dynamic':
         return <DynamicActualDataForm projectId={selectedProjectId} />
       case 'projectdata':
-        return <ProjectDataForm />
+        return <ProjectDataForm projectId={selectedProjectId} />
       case 'aoc':
         return <AreasOfConcernForm projectId={selectedProjectId} />
       case 'variations':

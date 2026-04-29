@@ -87,7 +87,7 @@ const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
 const formatHeader = (field: string) =>
   field.startsWith('dgt_') ? field.slice(4) : field
 
-export function ProjectDataForm() {
+export function ProjectDataForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<ProjectData[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -127,10 +127,16 @@ export function ProjectDataForm() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const { data: records, error } = await supabase
+      let query = supabase
         .from('dbp6_0000_projectdata')
         .select('*')
         .order('dgt_dbp6bd00projectdataid', { ascending: false })
+
+      if (projectId) {
+        query = query.eq('dgt_dbp6bd00projectdataid', projectId)
+      }
+
+      const { data: records, error } = await query
 
       if (error) {
         showError('Failed to fetch data: ' + error.message)
