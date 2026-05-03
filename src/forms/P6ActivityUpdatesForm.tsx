@@ -174,12 +174,21 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase
-      .from('p6_activity_updates')
-      .select('*')
-      .order('project_code', { ascending: true })
-    if (error) { showError('Failed to fetch data: ' + error.message) }
-    else { setData(records as P6ActivityUpdate[] | null || []) }
+    const PAGE_SIZE = 1000
+    let allRecords: P6ActivityUpdate[] = []
+    let from = 0
+    while (true) {
+      const { data: records, error } = await supabase
+        .from('p6_activity_updates')
+        .select('*')
+        .order('task_code', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1)
+      if (error) { showError('Failed to fetch data: ' + error.message); break }
+      allRecords = allRecords.concat((records as P6ActivityUpdate[] | null) || [])
+      if (!records || records.length < PAGE_SIZE) break
+      from += PAGE_SIZE
+    }
+    setData(allRecords)
     setLoading(false)
   }
 
