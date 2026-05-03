@@ -250,7 +250,7 @@ function App() {
       case 'p6activityoutput':
         return <P6ActivityOutputForm />
       case 'p6activityupdates':
-        return <P6ActivityUpdatesForm />
+        return <P6ActivityUpdatesForm projectTextId={projectTextId} />
       case 'photos':
         return <PhotoUploadForm projectId={selectedProjectId} />
       default:
