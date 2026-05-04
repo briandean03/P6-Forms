@@ -1,7 +1,7 @@
 export interface Database {
   public: {
     Tables: {
-      dbp6_000401_engineering: {
+      dbp6_000401_engineering_storage: {
         Row: Engineering
         Insert: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
         Update: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
@@ -45,11 +45,13 @@ export interface Engineering {
   dgt_transmittalsubject: string | null
   dgt_transmittaltype: number | null
   utcconversiontimezonecode: string | null
-  mod_id: number | null
+  versionnumber: number | null
   owningbusinessunit: string | null
   created_at: string | null
+  week_num: number | null
   is_long_lead: boolean | null
   dgt_dbp6bd00projectdataid: string | null
+  dgt_projectid: string | null
 }
 
 export interface QaqcHse {

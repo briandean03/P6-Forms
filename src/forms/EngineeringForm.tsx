@@ -121,7 +121,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000401_engineering')
+      .from('dbp6_000401_engineering_storage')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
@@ -315,7 +315,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000401_engineering').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000401_engineering_storage').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -362,7 +362,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
 
   const handleSaveEdit = async () => {
     if (!editingId) return
-    const { error } = await supabase.from('dbp6_000401_engineering').update({
+    const { error } = await supabase.from('dbp6_000401_engineering_storage').update({
       dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
       dgt_actualreturndate: editValues.actualreturndate || null,
       dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -384,7 +384,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000401_engineering')
+      .from('dbp6_000401_engineering_storage')
       .delete()
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -449,7 +449,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
         importsequencenumber: importsequencenumber || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000401_engineering').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_000401_engineering_storage').insert(inserts as never)
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
