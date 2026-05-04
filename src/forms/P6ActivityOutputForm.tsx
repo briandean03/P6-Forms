@@ -51,7 +51,7 @@ export function P6ActivityOutputForm() {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('p6_activity_output')
+      .from('p6_activity_output_flat')
       .select('*')
       .order('project_code', { ascending: true })
     if (error) { showError('Failed to fetch data: ' + error.message) }
@@ -128,7 +128,7 @@ export function P6ActivityOutputForm() {
     if (editingId == null) return
     setSaving(true)
     const { error } = await supabase
-      .from('p6_activity_output')
+      .from('p6_activity_output_flat')
       .update({
         project_code: editValues.project_code,
         activity_id: editValues.activity_id || null,
@@ -150,7 +150,7 @@ export function P6ActivityOutputForm() {
   const onSubmit = async (formData: P6ActivityOutputFormData) => {
     setSaving(true)
     const { error } = await supabase
-      .from('p6_activity_output')
+      .from('p6_activity_output_flat')
       .insert({
         project_code: formData.project_code,
         activity_id: formData.activity_id || null,
@@ -164,7 +164,7 @@ export function P6ActivityOutputForm() {
 
   const handleDelete = async (id: number) => {
     setDeleting(true)
-    const { error } = await supabase.from('p6_activity_output').delete().eq('id', id)
+    const { error } = await supabase.from('p6_activity_output_flat').delete().eq('id', id)
     if (error) { showError('Failed to delete: ' + error.message) }
     else { setData(prev => prev.filter(item => item.id !== id)); showSuccess('Record deleted') }
     setDeleting(false); setDeleteConfirm(null)
