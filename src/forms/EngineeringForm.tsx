@@ -50,7 +50,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ actualsubmissiondate: '', actualreturndate: '', revision: '', status: '' })
+  const [editValues, setEditValues] = useState({ dtfid: '', transmittalref: '', transmittalsubject: '', discipline: '', transmittaltype: '', actualsubmissiondate: '', actualreturndate: '', revision: '', status: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
@@ -353,6 +353,11 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   const startEdit = (record: Engineering) => {
     setEditingId(record.dgt_dbp6bd041engineeringid)
     setEditValues({
+      dtfid: record.dgt_dtfid || '',
+      transmittalref: record.dgt_transmittalref || '',
+      transmittalsubject: record.dgt_transmittalsubject || '',
+      discipline: record.dgt_discipline != null ? String(record.dgt_discipline) : '',
+      transmittaltype: record.dgt_transmittaltype != null ? String(record.dgt_transmittaltype) : '',
       actualsubmissiondate: record.dgt_actualsubmissiondate ? record.dgt_actualsubmissiondate.split('T')[0] : '',
       actualreturndate: record.dgt_actualreturndate ? record.dgt_actualreturndate.split('T')[0] : '',
       revision: record.dgt_revision != null ? String(record.dgt_revision) : '',
@@ -363,6 +368,11 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   const handleSaveEdit = async () => {
     if (!editingId) return
     const { error } = await supabase.from('dbp6_000401_engineering_storage').update({
+      dgt_dtfid: editValues.dtfid || null,
+      dgt_transmittalref: editValues.transmittalref || null,
+      dgt_transmittalsubject: editValues.transmittalsubject || null,
+      dgt_discipline: editValues.discipline ? parseInt(editValues.discipline) : null,
+      dgt_transmittaltype: editValues.transmittaltype ? parseInt(editValues.transmittaltype) : null,
       dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
       dgt_actualreturndate: editValues.actualreturndate || null,
       dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -372,6 +382,11 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
     else {
       setData(prev => prev.map(r => r.dgt_dbp6bd041engineeringid === editingId ? {
         ...r,
+        dgt_dtfid: editValues.dtfid || null,
+        dgt_transmittalref: editValues.transmittalref || null,
+        dgt_transmittalsubject: editValues.transmittalsubject || null,
+        dgt_discipline: editValues.discipline ? parseInt(editValues.discipline) : null,
+        dgt_transmittaltype: editValues.transmittaltype ? parseInt(editValues.transmittaltype) : null,
         dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
         dgt_actualreturndate: editValues.actualreturndate || null,
         dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -730,19 +745,20 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
                             {getProjectName(record.dgt_dbp6bd00projectdataid)}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">
-                          <div className="whitespace-nowrap" title={record.dgt_dtfid || '-'}>{record.dgt_dtfid || '-'}</div>
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">
-                          <div className="whitespace-nowrap" title={record.dgt_transmittalref || '-'}>{record.dgt_transmittalref || '-'}</div>
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">
-                          <div className="whitespace-nowrap" title={record.dgt_transmittalsubject || '-'}>{record.dgt_transmittalsubject || '-'}</div>
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_discipline || '-'}</td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">{getTypeName(record.dgt_transmittaltype)}</td>
                         {isEditing ? (
                           <>
+                            <td className="px-2 py-1.5"><input type="text" value={editValues.dtfid} onChange={e => setEditValues(p => ({ ...p, dtfid: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5"><input type="text" value={editValues.transmittalref} onChange={e => setEditValues(p => ({ ...p, transmittalref: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5"><input type="text" value={editValues.transmittalsubject} onChange={e => setEditValues(p => ({ ...p, transmittalsubject: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5"><input type="number" value={editValues.discipline} onChange={e => setEditValues(p => ({ ...p, discipline: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5">
+                              <select value={editValues.transmittaltype} onChange={e => setEditValues(p => ({ ...p, transmittaltype: e.target.value }))} className={inputCls}>
+                                <option value="">-</option>
+                                {types.map((type) => (
+                                  <option key={type.id} value={type.type_code ?? ''}>{type.type_code} - {type.type_name}</option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="px-2 py-1.5"><input type="date" value={editValues.actualsubmissiondate} onChange={e => setEditValues(p => ({ ...p, actualsubmissiondate: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="date" value={editValues.actualreturndate} onChange={e => setEditValues(p => ({ ...p, actualreturndate: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="number" value={editValues.revision} onChange={e => setEditValues(p => ({ ...p, revision: e.target.value }))} className={inputCls} /></td>
@@ -766,6 +782,17 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
                           </>
                         ) : (
                           <>
+                            <td className="px-3 py-2.5 text-sm text-gray-900">
+                              <div className="whitespace-nowrap" title={record.dgt_dtfid || '-'}>{record.dgt_dtfid || '-'}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900">
+                              <div className="whitespace-nowrap" title={record.dgt_transmittalref || '-'}>{record.dgt_transmittalref || '-'}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900">
+                              <div className="whitespace-nowrap" title={record.dgt_transmittalsubject || '-'}>{record.dgt_transmittalsubject || '-'}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_discipline || '-'}</td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900">{getTypeName(record.dgt_transmittaltype)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualsubmissiondate)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualreturndate)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_revision ?? '-'}</td>

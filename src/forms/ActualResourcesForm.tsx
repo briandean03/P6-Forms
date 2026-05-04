@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { ActualResources, Discipline } from '@/types/database'
+import type { ActualResources, Discipline, Type } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -21,19 +21,35 @@ interface ActualResourcesFormData {
   dgt_resourcediscipline: string
   dgt_resourcetype: string
   dgt_sequential: string
+  resource_code: string
+  Date: string
+  week_num: string
+  dgt_projectid: string
+  versionnumber: string
+  owningbusinessunit: string
+}
+
+interface EditValues {
+  resource_name: string
+  dgt_dbp6bd00projectdataid: string
+  dgt_resourcediscipline: string
+  dgt_resourcetype: string
+  dgt_resourcecount: string
+  dgt_sequential: string
+  resource_code: string
+  Date: string
+  week_num: string
+  dgt_projectid: string
+  versionnumber: string
+  owningbusinessunit: string
 }
 
 const ITEMS_PER_PAGE = 15
 
-type EditableField = 'dgt_resourcecount'
-
-type EditingCell = {
-  recordId: string
-  field: EditableField
-} | null
-
 type SortField = 'resource_name' | 'dgt_resourcediscipline' | 'dgt_resourcetype' | 'dgt_resourcecount' | 'dgt_sequential'
 type SortDirection = 'asc' | 'desc'
+
+const inputCls = 'w-full px-1 py-0.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500'
 
 export function ActualResourcesForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<ActualResources[]>([])
@@ -43,15 +59,31 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
-  const [editingCell, setEditingCell] = useState<EditingCell>(null)
-  const [cellValue, setCellValue] = useState('')
+  const [editingRowId, setEditingRowId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState<EditValues>({
+    resource_name: '',
+    dgt_dbp6bd00projectdataid: '',
+    dgt_resourcediscipline: '',
+    dgt_resourcetype: '',
+    dgt_resourcecount: '',
+    dgt_sequential: '',
+    resource_code: '',
+    Date: '',
+    week_num: '',
+    dgt_projectid: '',
+    versionnumber: '',
+    owningbusinessunit: '',
+  })
+  const [savingRow, setSavingRow] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [disciplines, setDisciplines] = useState<Discipline[]>([])
+  const [types, setTypes] = useState<Type[]>([])
   const [showDisciplineLegend, setShowDisciplineLegend] = useState(false)
+  const [showTypeLegend, setShowTypeLegend] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
     resource_name: '',
@@ -112,10 +144,16 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     setDisciplines(records || [])
   }
 
+  const fetchTypes = async () => {
+    const { data: records } = await supabase.from('dbp6_0019_type').select('id, type_code, type_name').order('type_code', { ascending: true })
+    setTypes(records || [])
+  }
+
   useEffect(() => {
     fetchData()
     fetchProjects()
     fetchDisciplines()
+    fetchTypes()
   }, [projectId])
 
   const filteredAndSortedData = useMemo(() => {
@@ -218,6 +256,12 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
       dgt_resourcediscipline: '',
       dgt_resourcetype: '',
       dgt_sequential: '',
+      resource_code: '',
+      Date: '',
+      week_num: '',
+      dgt_projectid: '',
+      versionnumber: '',
+      owningbusinessunit: '',
     })
     setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
@@ -241,6 +285,12 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
       dgt_sequential: formData.dgt_sequential
         ? parseInt(formData.dgt_sequential)
         : null,
+      resource_code: formData.resource_code || null,
+      Date: formData.Date || null,
+      week_num: formData.week_num ? parseInt(formData.week_num) : null,
+      dgt_projectid: formData.dgt_projectid || null,
+      versionnumber: formData.versionnumber ? parseInt(formData.versionnumber) : null,
+      owningbusinessunit: formData.owningbusinessunit || null,
     }
 
     const { error } = await supabase.from('dbp6_000501_actualresources_storage').insert(insertData as never)
@@ -256,23 +306,44 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     setSaving(false)
   }
 
-  const startEditing = (
-    recordId: string,
-    field: EditableField,
-    currentValue: number | null
-  ) => {
-    setEditingCell({ recordId, field })
-    setCellValue(currentValue?.toString() || '')
+  const startEdit = (record: ActualResources) => {
+    setEditingRowId(record.dgt_dbp6ud0501actualresourcesid)
+    setEditValues({
+      resource_name: record.resource_name ?? '',
+      dgt_dbp6bd00projectdataid: record.dgt_dbp6bd00projectdataid ?? '',
+      dgt_resourcediscipline: record.dgt_resourcediscipline?.toString() ?? '',
+      dgt_resourcetype: record.dgt_resourcetype?.toString() ?? '',
+      dgt_resourcecount: record.dgt_resourcecount?.toString() ?? '',
+      dgt_sequential: record.dgt_sequential?.toString() ?? '',
+      resource_code: record.resource_code ?? '',
+      Date: record.Date ?? '',
+      week_num: record.week_num?.toString() ?? '',
+      dgt_projectid: record.dgt_projectid ?? '',
+      versionnumber: record.versionnumber?.toString() ?? '',
+      owningbusinessunit: record.owningbusinessunit ?? '',
+    })
   }
 
-  const cancelEditing = () => {
-    setEditingCell(null)
-    setCellValue('')
+  const cancelEdit = () => {
+    setEditingRowId(null)
   }
 
-  const saveInlineEdit = async (recordId: string, field: EditableField) => {
-    const updateValue: number | null = cellValue ? parseInt(cellValue) : null
-    const updatePayload: Record<string, number | null> = { [field]: updateValue }
+  const saveEdit = async (recordId: string) => {
+    setSavingRow(true)
+    const updatePayload = {
+      resource_name: editValues.resource_name || null,
+      dgt_dbp6bd00projectdataid: editValues.dgt_dbp6bd00projectdataid || null,
+      dgt_resourcediscipline: editValues.dgt_resourcediscipline ? parseInt(editValues.dgt_resourcediscipline) : null,
+      dgt_resourcetype: editValues.dgt_resourcetype ? parseInt(editValues.dgt_resourcetype) : null,
+      dgt_resourcecount: editValues.dgt_resourcecount ? parseInt(editValues.dgt_resourcecount) : null,
+      dgt_sequential: editValues.dgt_sequential ? parseInt(editValues.dgt_sequential) : null,
+      resource_code: editValues.resource_code || null,
+      Date: editValues.Date || null,
+      week_num: editValues.week_num ? parseInt(editValues.week_num) : null,
+      dgt_projectid: editValues.dgt_projectid || null,
+      versionnumber: editValues.versionnumber ? parseInt(editValues.versionnumber) : null,
+      owningbusinessunit: editValues.owningbusinessunit || null,
+    }
 
     const { error } = await supabase
       .from('dbp6_000501_actualresources_storage')
@@ -285,22 +356,14 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
       setData((prev) =>
         prev.map((item) =>
           item.dgt_dbp6ud0501actualresourcesid === recordId
-            ? { ...item, [field]: updateValue }
+            ? { ...item, ...updatePayload }
             : item
         )
       )
       showSuccess('Updated successfully')
+      setEditingRowId(null)
     }
-    setEditingCell(null)
-    setCellValue('')
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent, recordId: string, field: EditableField) => {
-    if (e.key === 'Enter') {
-      saveInlineEdit(recordId, field)
-    } else if (e.key === 'Escape') {
-      cancelEditing()
-    }
+    setSavingRow(false)
   }
 
   const handleDelete = async (recordId: string) => {
@@ -327,8 +390,8 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
   }
 
   const handleExport = () => {
-    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential']
-    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential])
+    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential', 'resource_code', 'Date', 'week_num', 'dgt_projectid', 'versionnumber', 'owningbusinessunit']
+    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential, r.resource_code, r.Date, r.week_num, r.dgt_projectid, r.versionnumber, r.owningbusinessunit])
     exportToCsv('actual-resources', headers, rows)
   }
 
@@ -336,13 +399,19 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const inserts = rows
       .filter(r => r.resource_name)
-      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential }) => ({
+      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential, resource_code, Date: dateVal, week_num, dgt_projectid, versionnumber, owningbusinessunit }) => ({
         dgt_dbp6bd00projectdataid: projectId,
         resource_name: resource_name || null,
         dgt_resourcediscipline: Number(dgt_resourcediscipline) || null,
         dgt_resourcetype: Number(dgt_resourcetype) || null,
         dgt_resourcecount: Number(dgt_resourcecount) || null,
         dgt_sequential: Number(dgt_sequential) || null,
+        resource_code: resource_code || null,
+        Date: dateVal || null,
+        week_num: Number(week_num) || null,
+        dgt_projectid: dgt_projectid || null,
+        versionnumber: Number(versionnumber) || null,
+        owningbusinessunit: owningbusinessunit || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
     const { error } = await supabase.from('dbp6_000501_actualresources_storage').insert(inserts as never)
@@ -404,6 +473,16 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
             </svg>
             Discipline Legend
           </button>
+          <button
+            onClick={() => setShowTypeLegend(!showTypeLegend)}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors whitespace-nowrap shadow-sm"
+            title="Show type code reference"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            Type Legend
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <CsvControls onExport={handleExport} onImport={handleImport} />
@@ -437,6 +516,27 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
       {showDisciplineLegend && disciplines.length === 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-800">No disciplines found. Please add disciplines to the discipline table.</p>
+        </div>
+      )}
+
+      {showTypeLegend && types.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-2">Type Reference</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {types.map((t) => (
+              <div key={t.id} className="flex items-center gap-2 text-sm">
+                <span className="font-mono font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                  {t.type_code}
+                </span>
+                <span className="text-gray-700">{t.type_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showTypeLegend && types.length === 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-sm text-yellow-800">No types found. Please add types to the type table.</p>
         </div>
       )}
 
@@ -524,7 +624,37 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                       <ColumnFilter data={data} field="dgt_sequential" value={filters.dgt_sequential} onChange={(v) => updateFilter('dgt_sequential', v)} label="Sequential" />
                     </div>
                   </th>
-                  <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-16">
+                  <th className="px-2 py-1.5 text-left align-top w-28">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Resource Code
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-28">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Date
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-20">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Week No.
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-32">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Project ID
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-20">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Version No.
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top w-32">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Business Unit
+                    </div>
+                  </th>
+                  <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-24">
                     Actions
                   </th>
                 </tr>
@@ -532,72 +662,169 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={13} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((record) => (
-                    <tr key={record.dgt_dbp6ud0501actualresourcesid} className="hover:bg-gray-50">
-                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
-                        {record.resource_name || '-'}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        <div
-                          className="whitespace-nowrap font-medium"
-                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        >
-                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        </div>
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {record.dgt_resourcediscipline || '-'}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {record.dgt_resourcetype || '-'}
-                      </td>
-                      {/* Count - Editable */}
-                      <td className="px-2 py-1.5 text-xs">
-                        {editingCell?.recordId === record.dgt_dbp6ud0501actualresourcesid && editingCell?.field === 'dgt_resourcecount' ? (
-                          <input
-                            type="number"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6ud0501actualresourcesid, 'dgt_resourcecount')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6ud0501actualresourcesid, 'dgt_resourcecount')}
-                            className="w-16 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6ud0501actualresourcesid, 'dgt_resourcecount', record.dgt_resourcecount)}
-                            className="inline-flex items-center gap-1 font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 cursor-pointer hover:bg-blue-50 group"
-                            title="Click to edit"
-                          >
-                            {record.dgt_resourcecount ?? '-'}
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {record.dgt_sequential || '-'}
-                      </td>
-                      {/* Actions */}
-                      <td className="px-2 py-1.5">
-                        <button
-                          onClick={() => setDeleteConfirm(record.dgt_dbp6ud0501actualresourcesid)}
-                          className="p-1 text-red-500 rounded"
-                          title="Delete record"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  paginatedData.map((record) => {
+                    const isEditing = editingRowId === record.dgt_dbp6ud0501actualresourcesid
+                    return (
+                      <tr key={record.dgt_dbp6ud0501actualresourcesid} className={isEditing ? 'bg-blue-50' : 'hover:bg-gray-50'}>
+                        {/* Resource Name */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap sticky left-0 border-r border-gray-200" style={{ backgroundColor: isEditing ? '#eff6ff' : 'white' }}>
+                          {isEditing ? (
+                            <input type="text" value={editValues.resource_name} onChange={e => setEditValues(p => ({ ...p, resource_name: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.resource_name || '-'
+                          )}
+                        </td>
+                        {/* Project */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900">
+                          {isEditing ? (
+                            <select value={editValues.dgt_dbp6bd00projectdataid} onChange={e => setEditValues(p => ({ ...p, dgt_dbp6bd00projectdataid: e.target.value }))} className={inputCls}>
+                              <option value="">-- Select --</option>
+                              {projects.map((p) => (
+                                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
+                                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="whitespace-nowrap font-medium" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>
+                              {getProjectName(record.dgt_dbp6bd00projectdataid)}
+                            </div>
+                          )}
+                        </td>
+                        {/* Discipline */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900">
+                          {isEditing ? (
+                            <input type="number" value={editValues.dgt_resourcediscipline} onChange={e => setEditValues(p => ({ ...p, dgt_resourcediscipline: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.dgt_resourcediscipline ?? '-'
+                          )}
+                        </td>
+                        {/* Type */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900">
+                          {isEditing ? (
+                            <select value={editValues.dgt_resourcetype} onChange={e => setEditValues(p => ({ ...p, dgt_resourcetype: e.target.value }))} className={inputCls}>
+                              <option value="">-</option>
+                              {types.map((t) => (
+                                <option key={t.id} value={t.type_code ?? ''}>{t.type_code} - {t.type_name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            record.dgt_resourcetype ?? '-'
+                          )}
+                        </td>
+                        {/* Count */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900">
+                          {isEditing ? (
+                            <input type="number" value={editValues.dgt_resourcecount} onChange={e => setEditValues(p => ({ ...p, dgt_resourcecount: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.dgt_resourcecount ?? '-'
+                          )}
+                        </td>
+                        {/* Sequential */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900">
+                          {isEditing ? (
+                            <input type="number" value={editValues.dgt_sequential} onChange={e => setEditValues(p => ({ ...p, dgt_sequential: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.dgt_sequential ?? '-'
+                          )}
+                        </td>
+                        {/* Resource Code */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="text" value={editValues.resource_code} onChange={e => setEditValues(p => ({ ...p, resource_code: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.resource_code || '-'
+                          )}
+                        </td>
+                        {/* Date */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="date" value={editValues.Date} onChange={e => setEditValues(p => ({ ...p, Date: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.Date || '-'
+                          )}
+                        </td>
+                        {/* Week No. */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="number" value={editValues.week_num} onChange={e => setEditValues(p => ({ ...p, week_num: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.week_num ?? '-'
+                          )}
+                        </td>
+                        {/* Project ID */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="text" value={editValues.dgt_projectid} onChange={e => setEditValues(p => ({ ...p, dgt_projectid: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.dgt_projectid || '-'
+                          )}
+                        </td>
+                        {/* Version No. */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="number" value={editValues.versionnumber} onChange={e => setEditValues(p => ({ ...p, versionnumber: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.versionnumber ?? '-'
+                          )}
+                        </td>
+                        {/* Business Unit */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="text" value={editValues.owningbusinessunit} onChange={e => setEditValues(p => ({ ...p, owningbusinessunit: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.owningbusinessunit || '-'
+                          )}
+                        </td>
+                        {/* Actions */}
+                        <td className="px-2 py-1.5">
+                          {isEditing ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => saveEdit(record.dgt_dbp6ud0501actualresourcesid)}
+                                disabled={savingRow}
+                                className="px-2 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
+                              >
+                                {savingRow ? '...' : 'Save'}
+                              </button>
+                              <button
+                                onClick={cancelEdit}
+                                className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => startEdit(record)}
+                                className="p-1 text-blue-500 rounded hover:bg-blue-50"
+                                title="Edit record"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(record.dgt_dbp6ud0501actualresourcesid)}
+                                className="p-1 text-red-500 rounded hover:bg-red-50"
+                                title="Delete record"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -655,15 +882,18 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
             error={errors.dgt_resourcediscipline?.message}
           />
 
-          <FormField
-            label="Resource Type"
-            type="number"
-            {...register('dgt_resourcetype', {
-              validate: (value) =>
-                !value || !isNaN(Number(value)) || 'Must be a valid number',
-            })}
-            error={errors.dgt_resourcetype?.message}
-          />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Resource Type</label>
+            <select
+              {...register('dgt_resourcetype')}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">-- Select Type --</option>
+              {types.map((t) => (
+                <option key={t.id} value={t.type_code ?? ''}>{t.type_code} - {t.type_name}</option>
+              ))}
+            </select>
+          </div>
 
           <FormField
             label="Resource Count"
@@ -683,6 +913,54 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                 !value || !isNaN(Number(value)) || 'Must be a valid number',
             })}
             error={errors.dgt_sequential?.message}
+          />
+
+          <FormField
+            label="Resource Code"
+            type="text"
+            {...register('resource_code')}
+            error={errors.resource_code?.message}
+          />
+
+          <FormField
+            label="Date"
+            type="date"
+            {...register('Date')}
+            error={errors.Date?.message}
+          />
+
+          <FormField
+            label="Week Number"
+            type="number"
+            {...register('week_num', {
+              validate: (value) =>
+                !value || !isNaN(Number(value)) || 'Must be a valid number',
+            })}
+            error={errors.week_num?.message}
+          />
+
+          <FormField
+            label="Project ID"
+            type="text"
+            {...register('dgt_projectid')}
+            error={errors.dgt_projectid?.message}
+          />
+
+          <FormField
+            label="Version Number"
+            type="number"
+            {...register('versionnumber', {
+              validate: (value) =>
+                !value || !isNaN(Number(value)) || 'Must be a valid number',
+            })}
+            error={errors.versionnumber?.message}
+          />
+
+          <FormField
+            label="Business Unit"
+            type="text"
+            {...register('owningbusinessunit')}
+            error={errors.owningbusinessunit?.message}
           />
 
           <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
