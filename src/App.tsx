@@ -14,6 +14,8 @@ import { PaymentsForm } from '@/forms/PaymentsForm'
 import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
 import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
 import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
+import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
+import { P6RunTriggerForm } from '@/forms/P6RunTriggerForm'
 import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 
 type TabKey =
@@ -32,12 +34,15 @@ type TabKey =
   | 'referencedata'
   | 'p6activityoutput'
   | 'p6activityupdates'
+  | 'p6projectmapping'
+  | 'p6runtrigger'
   | 'photos'
 
 interface Tab {
   key: TabKey
   label: string
   icon: JSX.Element
+  group?: string
 }
 
 const tabs: Tab[] = [
@@ -141,8 +146,19 @@ const tabs: Tab[] = [
     ),
   },
   {
+    key: 'p6activityupdates',
+    label: 'Activity Updates',
+    group: 'P6 Scheduler',
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    ),
+  },
+  {
     key: 'p6activityoutput',
-    label: 'P6 Activity Output',
+    label: 'Activity Output',
+    group: 'P6 Scheduler',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -150,11 +166,22 @@ const tabs: Tab[] = [
     ),
   },
   {
-    key: 'p6activityupdates',
-    label: 'P6 Activity Updates',
+    key: 'p6projectmapping',
+    label: 'Project Mapping',
+    group: 'P6 Scheduler',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+      </svg>
+    ),
+  },
+  {
+    key: 'p6runtrigger',
+    label: 'Run Trigger',
+    group: 'P6 Scheduler',
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
   },
@@ -251,6 +278,10 @@ function App() {
         return <P6ActivityOutputForm />
       case 'p6activityupdates':
         return <P6ActivityUpdatesForm projectTextId={projectTextId} />
+      case 'p6projectmapping':
+        return <P6ProjectMappingForm />
+      case 'p6runtrigger':
+        return <P6RunTriggerForm />
       case 'photos':
         return <PhotoUploadForm projectId={selectedProjectId} />
       default:
@@ -364,25 +395,33 @@ function App() {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              title={!sidebarExpanded ? tab.label : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
-                sidebarExpanded ? '' : 'justify-center'
-              } ${
-                activeTab === tab.key
-                  ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              {tab.icon}
-              {sidebarExpanded && (
-                <span className="truncate">{tab.label}</span>
-              )}
-            </button>
-          ))}
+          {tabs.map((tab, idx) => {
+            const prevGroup = idx > 0 ? tabs[idx - 1].group : undefined
+            const isNewGroup = tab.group && tab.group !== prevGroup
+            return (
+              <div key={tab.key}>
+                {isNewGroup && (
+                  sidebarExpanded
+                    ? <div className="px-3 pt-3 pb-1"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{tab.group}</span></div>
+                    : <div className="mx-3 my-2 border-t border-gray-200" />
+                )}
+                <button
+                  onClick={() => setActiveTab(tab.key)}
+                  title={!sidebarExpanded ? tab.label : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
+                    sidebarExpanded ? '' : 'justify-center'
+                  } ${
+                    activeTab === tab.key
+                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  {tab.icon}
+                  {sidebarExpanded && <span className="truncate">{tab.label}</span>}
+                </button>
+              </div>
+            )
+          })}
         </nav>
 
         {/* Toggle button */}

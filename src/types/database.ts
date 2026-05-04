@@ -244,6 +244,21 @@ export interface P6ActivityUpdate {
   submitted_at: string | null
 }
 
+export interface P6ProjectMapping {
+  id: number
+  dgt_projectid: string
+  p6_project_code: string
+}
+
+export interface P6RunTrigger {
+  id: number
+  project_code: string
+  triggered: boolean | null
+  triggered_at: string | null
+  completed_at: string | null
+  status: string | null
+}
+
 export interface Photo {
   id: string
   dgt_dbp6bd00projectdataid: string | null

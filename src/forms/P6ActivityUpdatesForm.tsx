@@ -139,6 +139,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const [runUpdateLoading, setRunUpdateLoading] = useState(false)
+  const [p6ProjectCode, setP6ProjectCode] = useState<string | null | undefined>(undefined)
   // Edit All mode
   const [editAllMode, setEditAllMode] = useState(false)
   const [editAllValues, setEditAllValues] = useState<Record<number, EditValues>>({})
@@ -172,17 +173,37 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
   }
 
+  // Look up p6_project_code from mapping whenever the selected project changes
+  useEffect(() => {
+    if (!projectTextId) { setP6ProjectCode(null); return }
+    setP6ProjectCode(undefined) // undefined = still loading
+    supabase
+      .from('p6_project_mapping')
+      .select('p6_project_code')
+      .eq('dgt_projectid', projectTextId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const row = data as { p6_project_code: string } | null
+        setP6ProjectCode(row?.p6_project_code ?? null)
+      })
+  }, [projectTextId])
+
   const fetchData = async () => {
+    // undefined = mapping lookup still in progress, wait
+    if (p6ProjectCode === undefined) return
     setLoading(true)
     const PAGE_SIZE = 1000
     let allRecords: P6ActivityUpdate[] = []
     let from = 0
     while (true) {
-      const { data: records, error } = await supabase
+      let query = supabase
         .from('p6_activity_updates')
         .select('*')
         .order('task_code', { ascending: true })
         .range(from, from + PAGE_SIZE - 1)
+      // If a mapping exists filter by it; if null (no mapping) load all records
+      if (p6ProjectCode) query = query.eq('project_code', p6ProjectCode)
+      const { data: records, error } = await query
       if (error) { showError('Failed to fetch data: ' + error.message); break }
       allRecords = allRecords.concat((records as P6ActivityUpdate[] | null) || [])
       if (!records || records.length < PAGE_SIZE) break
@@ -192,7 +213,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [p6ProjectCode])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
