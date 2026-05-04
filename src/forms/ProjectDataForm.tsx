@@ -60,7 +60,7 @@ const DATE_FIELDS = new Set([
   'dgt_datadate',
 ])
 const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_weeknum'])
-const NON_EDITABLE_FIELDS = new Set(['dgt_datadate', 'dgt_weeknum'])
+const NON_EDITABLE_FIELDS = new Set(['dgt_weeknum'])
 
 // All columns except the sticky-first (dgt_projectname) and sticky-last (Actions)
 const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
