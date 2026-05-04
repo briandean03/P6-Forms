@@ -6,19 +6,19 @@ export interface Database {
         Insert: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
         Update: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
       }
-      dbp6_000402_qaqc_hse: {
+      dbp6_000402_qaqc_hse_storage: {
         Row: QaqcHse
         Insert: Omit<QaqcHse, 'dgt_dbp6bd0402qaqchseid' | 'created_at'>
         Update: Partial<QaqcHse>
       }
-      dbp6_000501_actualresources: {
+      dbp6_000501_actualresources_storage: {
         Row: ActualResources
         Insert: Omit<ActualResources, 'dgt_dbp6ud0501actualresourcesid' | 'created_at'>
         Update: Partial<ActualResources>
       }
-      dbp6_0006_progressdata: {
+      dbp6_0006_progressdata_storage: {
         Row: DynamicActualData
-        Insert: Omit<DynamicActualData, 'dgt_dbp6bd06dynamicactualdataid'>
+        Insert: Omit<DynamicActualData, 'dgt_dbp6bd06progressstorageid'>
         Update: Partial<DynamicActualData>
       }
       dbp6_0000_projectdata: {
@@ -68,6 +68,9 @@ export interface QaqcHse {
   versionnumber: number | null
   owningbusinessunit: string | null
   created_at: string | null
+  week_num: number | null
+  dgt_projectid: string | null
+  dgt_date_issued_to_contractor: string | null
 }
 
 export interface ActualResources {
@@ -81,17 +84,21 @@ export interface ActualResources {
   versionnumber: number | null
   owningbusinessunit: string | null
   created_at: string | null
+  week_num: number | null
+  dgt_projectid: string | null
+  Date: string | null
+  resource_code: string | null
 }
 
 export interface DynamicActualData {
-  dgt_dbp6bd06dynamicactualdataid: string
+  dgt_dbp6bd06progressstorageid: string
   dgt_dbp6bd00projectdataid: string | null
   dgt_activityid: string | null
   dgt_actualstart: string | null
   dgt_actualfinish: string | null
-  dgt_pctcomplete: number | null
-  mod_id: number | null
-  version_num: number | null
+  dgt_complete: number | null
+  status_code: number | null
+  dgt_weeknum: number | null
   dgt_projectid: string | null
 }
 

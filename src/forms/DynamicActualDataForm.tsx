@@ -19,19 +19,19 @@ interface DynamicActualDataFormData {
   dgt_activityid: string
   dgt_actualstart: string
   dgt_actualfinish: string
-  dgt_pctcomplete: string
+  dgt_complete: string
 }
 
 const ITEMS_PER_PAGE = 15
 
-type EditableField = 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
+type EditableField = 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_complete'
 
 type EditingCell = {
   recordId: string
   field: EditableField
 } | null
 
-type SortField = 'dgt_activityid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_pctcomplete'
+type SortField = 'dgt_activityid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_complete'
 type SortDirection = 'asc' | 'desc'
 
 export function DynamicActualDataForm({ projectId }: { projectId: string }) {
@@ -88,10 +88,10 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_0006_progressdata')
+      .from('dbp6_0006_progressdata_storage')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
-      .order('dgt_dbp6bd06dynamicactualdataid', { ascending: false })
+      .order('dgt_dbp6bd06progressstorageid', { ascending: false })
 
     if (error) {
       showError('Failed to fetch data: ' + error.message)
@@ -236,7 +236,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
       dgt_activityid: '',
       dgt_actualstart: '',
       dgt_actualfinish: '',
-      dgt_pctcomplete: '',
+      dgt_complete: '',
     })
     setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
@@ -250,12 +250,12 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
       dgt_activityid: formData.dgt_activityid || null,
       dgt_actualstart: formData.dgt_actualstart || null,
       dgt_actualfinish: formData.dgt_actualfinish || null,
-      dgt_pctcomplete: formData.dgt_pctcomplete
-        ? parseFloat(formData.dgt_pctcomplete)
+      dgt_complete: formData.dgt_complete
+        ? parseFloat(formData.dgt_complete)
         : null,
     }
 
-    const { error } = await supabase.from('dbp6_0006_progressdata').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_0006_progressdata_storage').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -289,23 +289,23 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   const saveInlineEdit = async (recordId: string, field: EditableField) => {
     let updateValue: string | number | null = cellValue || null
 
-    if (field === 'dgt_pctcomplete' && cellValue) {
+    if (field === 'dgt_complete' && cellValue) {
       updateValue = parseFloat(cellValue)
     }
 
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_0006_progressdata')
+      .from('dbp6_0006_progressdata_storage')
       .update(updatePayload as never)
-      .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
+      .eq('dgt_dbp6bd06progressstorageid', recordId)
 
     if (error) {
       showError('Failed to update: ' + error.message)
     } else {
       setData((prev) =>
         prev.map((item) =>
-          item.dgt_dbp6bd06dynamicactualdataid === recordId
+          item.dgt_dbp6bd06progressstorageid === recordId
             ? { ...item, [field]: updateValue }
             : item
         )
@@ -327,14 +327,14 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_0006_progressdata')
+      .from('dbp6_0006_progressdata_storage')
       .delete()
-      .eq('dgt_dbp6bd06dynamicactualdataid', recordId)
+      .eq('dgt_dbp6bd06progressstorageid', recordId)
 
     if (error) {
       showError('Failed to delete record: ' + error.message)
     } else {
-      setData((prev) => prev.filter((item) => item.dgt_dbp6bd06dynamicactualdataid !== recordId))
+      setData((prev) => prev.filter((item) => item.dgt_dbp6bd06progressstorageid !== recordId))
       showSuccess('Record deleted successfully')
     }
     setDeleting(false)
@@ -342,8 +342,8 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
   }
 
   const handleExport = () => {
-    const headers = ['dgt_activityid', 'dgt_actualstart', 'dgt_actualfinish', 'dgt_pctcomplete', 'dgt_projectid']
-    const rows = data.map(r => [r.dgt_activityid, r.dgt_actualstart, r.dgt_actualfinish, r.dgt_pctcomplete, r.dgt_projectid])
+    const headers = ['dgt_activityid', 'dgt_actualstart', 'dgt_actualfinish', 'dgt_complete', 'dgt_projectid']
+    const rows = data.map(r => [r.dgt_activityid, r.dgt_actualstart, r.dgt_actualfinish, r.dgt_complete, r.dgt_projectid])
     exportToCsv('dynamic-actual-data', headers, rows)
   }
 
@@ -351,16 +351,16 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const inserts = rows
       .filter(r => r.dgt_activityid)
-      .map(({ dgt_activityid, dgt_actualstart, dgt_actualfinish, dgt_pctcomplete, dgt_projectid }) => ({
+      .map(({ dgt_activityid, dgt_actualstart, dgt_actualfinish, dgt_complete, dgt_projectid }) => ({
         dgt_dbp6bd00projectdataid: projectId,
         dgt_activityid: dgt_activityid || null,
         dgt_actualstart: dgt_actualstart || null,
         dgt_actualfinish: dgt_actualfinish || null,
-        dgt_pctcomplete: Number(dgt_pctcomplete) || null,
+        dgt_complete: Number(dgt_complete) || null,
         dgt_projectid: dgt_projectid || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_0006_progressdata').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_0006_progressdata_storage').insert(inserts as never)
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
@@ -519,10 +519,10 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                   <th className="px-2 py-1.5 text-left align-top w-24">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_pctcomplete')}
+                      onClick={() => handleSort('dgt_complete')}
                     >
                       % Complete
-                      <SortIcon field="dgt_pctcomplete" />
+                      <SortIcon field="dgt_complete" />
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-16">
@@ -539,25 +539,25 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
-                    <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
+                    <tr key={record.dgt_dbp6bd06progressstorageid} className="hover:bg-gray-50">
                       <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
                         {record.dgt_activityid || '-'}
                       </td>
                       {/* Actual Start - Editable */}
                       <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualstart' ? (
+                        {editingCell?.recordId === record.dgt_dbp6bd06progressstorageid && editingCell?.field === 'dgt_actualstart' ? (
                           <input
                             type="date"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart')}
+                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06progressstorageid, 'dgt_actualstart')}
+                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06progressstorageid, 'dgt_actualstart')}
                             className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
                           <span
-                            onClick={() => startEditing(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualstart', record.dgt_actualstart)}
+                            onClick={() => startEditing(record.dgt_dbp6bd06progressstorageid, 'dgt_actualstart', record.dgt_actualstart)}
                             className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
                             title="Click to edit"
                           >
@@ -570,19 +570,19 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                       </td>
                       {/* Actual Finish - Editable */}
                       <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_actualfinish' ? (
+                        {editingCell?.recordId === record.dgt_dbp6bd06progressstorageid && editingCell?.field === 'dgt_actualfinish' ? (
                           <input
                             type="date"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish')}
+                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06progressstorageid, 'dgt_actualfinish')}
+                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06progressstorageid, 'dgt_actualfinish')}
                             className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
                           <span
-                            onClick={() => startEditing(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_actualfinish', record.dgt_actualfinish)}
+                            onClick={() => startEditing(record.dgt_dbp6bd06progressstorageid, 'dgt_actualfinish', record.dgt_actualfinish)}
                             className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
                             title="Click to edit"
                           >
@@ -595,7 +595,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                       </td>
                       {/* % Complete - Editable */}
                       <td className="px-2 py-1.5 text-xs">
-                        {editingCell?.recordId === record.dgt_dbp6bd06dynamicactualdataid && editingCell?.field === 'dgt_pctcomplete' ? (
+                        {editingCell?.recordId === record.dgt_dbp6bd06progressstorageid && editingCell?.field === 'dgt_complete' ? (
                           <input
                             type="number"
                             step="0.1"
@@ -603,27 +603,27 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                             max="100"
                             value={cellValue}
                             onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_pctcomplete')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06dynamicactualdataid, 'dgt_pctcomplete')}
+                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06progressstorageid, 'dgt_complete')}
+                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06progressstorageid, 'dgt_complete')}
                             className="w-16 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : (
                           <div
-                            onClick={() => startEditing(record.dgt_dbp6bd06dynamicactualdataid, 'dgt_pctcomplete', record.dgt_pctcomplete)}
+                            onClick={() => startEditing(record.dgt_dbp6bd06progressstorageid, 'dgt_complete', record.dgt_complete)}
                             className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded group"
                             title="Click to edit"
                           >
                             <div className="w-16 bg-gray-200 rounded-full h-1.5">
                               <div
-                                className={`h-1.5 rounded-full ${getProgressColor(record.dgt_pctcomplete)}`}
+                                className={`h-1.5 rounded-full ${getProgressColor(record.dgt_complete)}`}
                                 style={{
-                                  width: `${Math.min((record.dgt_pctcomplete || 0) * 100, 100)}%`,
+                                  width: `${Math.min((record.dgt_complete || 0) * 100, 100)}%`,
                                 }}
                               />
                             </div>
                             <span className="text-xs text-gray-600 font-mono">
-                              {formatPercentage(record.dgt_pctcomplete)}
+                              {formatPercentage(record.dgt_complete)}
                             </span>
                             <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -634,7 +634,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                       {/* Actions */}
                       <td className="px-2 py-1.5">
                         <button
-                          onClick={() => setDeleteConfirm(record.dgt_dbp6bd06dynamicactualdataid)}
+                          onClick={() => setDeleteConfirm(record.dgt_dbp6bd06progressstorageid)}
                           className="p-1 text-red-500 rounded"
                           title="Delete record"
                         >
@@ -714,7 +714,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
             step="0.1"
             min="0"
             max="100"
-            {...register('dgt_pctcomplete', {
+            {...register('dgt_complete', {
               validate: (value) => {
                 if (!value) return true
                 const num = parseFloat(value)
@@ -723,7 +723,7 @@ export function DynamicActualDataForm({ projectId }: { projectId: string }) {
                 return true
               },
             })}
-            error={errors.dgt_pctcomplete?.message}
+            error={errors.dgt_complete?.message}
             helpText="Enter a value between 0 and 100"
           />
 

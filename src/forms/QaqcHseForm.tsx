@@ -103,7 +103,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000402_qaqc_hse')
+      .from('dbp6_000402_qaqc_hse_storage')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
@@ -286,7 +286,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_storage').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -318,7 +318,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
     const updatePayload: Record<string, string | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse')
+      .from('dbp6_000402_qaqc_hse_storage')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -349,7 +349,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse')
+      .from('dbp6_000402_qaqc_hse_storage')
       .delete()
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -386,7 +386,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
         dgt_status: dgt_status || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_storage').insert(inserts as never)
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
