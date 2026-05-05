@@ -283,9 +283,34 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     setEditAllValues({})
   }
 
+  const deriveFields = (vals: EditValues, origCompletePct: number | null): Pick<EditValues, 'status_code' | 'update_type'> => {
+    const pct = vals.complete_pct !== '' ? parseFloat(vals.complete_pct) : 0
+    const origPct = origCompletePct ?? 0
+    if (!vals.act_start_date && pct === 0)
+      return { status_code: 'Not Started', update_type: 'reset' }
+    if (vals.act_start_date && !vals.act_end_date && pct > 0)
+      return { status_code: 'In Progress', update_type: pct < origPct ? 'deprogress' : 'progress' }
+    if (vals.act_start_date && vals.act_end_date && pct === 100)
+      return { status_code: 'Completed', update_type: 'progress' }
+    if (pct < origPct)
+      return { status_code: vals.status_code, update_type: 'deprogress' }
+    return { status_code: vals.status_code, update_type: vals.update_type }
+  }
+
+  const DERIVED_TRIGGER: (keyof EditValues)[] = ['act_start_date', 'act_end_date', 'complete_pct']
+
   const evAll = (id: number, field: keyof EditValues) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setEditAllValues(p => ({ ...p, [id]: { ...p[id], [field]: e.target.value } }))
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const newValue = e.target.value
+      setEditAllValues(p => {
+        const updated = { ...p[id], [field]: newValue }
+        if (DERIVED_TRIGGER.includes(field)) {
+          const origPct = data.find(r => r.id === id)?.complete_pct ?? null
+          return { ...p, [id]: { ...updated, ...deriveFields(updated, origPct) } }
+        }
+        return { ...p, [id]: updated }
+      })
+    }
 
   const handleSaveAll = async () => {
     setSaveAllLoading(true)
@@ -324,8 +349,17 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   }
 
   // Single-row edit handler
-  const ev = (field: keyof EditValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setEditValues(p => ({ ...p, [field]: e.target.value }))
+  const ev = (field: keyof EditValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const newValue = e.target.value
+    setEditValues(p => {
+      const updated = { ...p, [field]: newValue }
+      if (DERIVED_TRIGGER.includes(field)) {
+        const origPct = data.find(r => r.id === editingId)?.complete_pct ?? null
+        return { ...updated, ...deriveFields(updated, origPct) }
+      }
+      return updated
+    })
+  }
 
   // CSV Export
   const handleExportCSV = () => {
