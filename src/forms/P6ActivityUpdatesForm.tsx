@@ -606,7 +606,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                         <td className="px-2 py-1.5"><input value={rowVals?.project_code ?? ''} onChange={isEditAll ? evAll(record.id, 'project_code') : ev('project_code')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input value={rowVals?.task_code ?? ''} onChange={isEditAll ? evAll(record.id, 'task_code') : ev('task_code')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input value={rowVals?.task_name ?? ''} onChange={isEditAll ? evAll(record.id, 'task_name') : ev('task_name')} className={inputCls} /></td>
-                        <td className="px-2 py-1.5"><input value={rowVals?.status_code ?? ''} onChange={isEditAll ? evAll(record.id, 'status_code') : ev('status_code')} className={inputCls} /></td>
+                        <td className="px-2 py-1.5"><select value={rowVals?.status_code ?? ''} onChange={isEditAll ? evAll(record.id, 'status_code') : ev('status_code')} className={inputCls}><option value="">-</option><option value="Not Started">Not Started</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option></select></td>
                         <td className="px-2 py-1.5"><input value={rowVals?.wbs_id ?? ''} onChange={isEditAll ? evAll(record.id, 'wbs_id') : ev('wbs_id')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="number" step="0.01" value={rowVals?.complete_pct ?? ''} onChange={isEditAll ? evAll(record.id, 'complete_pct') : ev('complete_pct')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.act_start_date ?? ''} onChange={isEditAll ? evAll(record.id, 'act_start_date') : ev('act_start_date')} className={inputCls} /></td>
@@ -698,7 +698,15 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
             <FormField label="Task Code *" type="text" {...register('task_code', { required: 'Task Code is required' })} error={errors.task_code?.message} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="Status Code" type="text" {...register('status_code')} error={errors.status_code?.message} />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Status</label>
+              <select {...register('status_code')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">-</option>
+                <option value="Not Started">Not Started</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
             <FormField label="WBS ID" type="text" {...register('wbs_id')} error={errors.wbs_id?.message} />
           </div>
           <FormField label="Task Name" type="text" {...register('task_name')} error={errors.task_name?.message} />
