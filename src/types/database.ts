@@ -251,6 +251,7 @@ export interface P6ActivityUpdate {
   delete_record_flag: number | null
   data_date: string | null
   submitted_at: string | null
+  update_type: string | null
 }
 
 export interface P6ProjectMapping {

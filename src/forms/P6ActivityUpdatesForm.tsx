@@ -24,6 +24,7 @@ interface P6ActivityUpdateFormData {
   mrk_uptd: string
   delete_record_flag: string
   data_date: string
+  update_type: string
 }
 
 interface EditValues {
@@ -39,6 +40,7 @@ interface EditValues {
   mrk_uptd: string
   delete_record_flag: string
   data_date: string
+  update_type: string
 }
 
 const ITEMS_PER_PAGE = 15
@@ -62,7 +64,7 @@ const toDateInputValue = (d: string | null) => {
 const blankEdit = (): EditValues => ({
   project_code: '', task_code: '', status_code: '', wbs_id: '', task_name: '',
   act_start_date: '', act_end_date: '', complete_pct: '',
-  remain_drtn_hr_cnt: '', mrk_uptd: '0', delete_record_flag: '0', data_date: '',
+  remain_drtn_hr_cnt: '', mrk_uptd: '0', delete_record_flag: '0', data_date: '', update_type: 'progress',
 })
 
 const recordToEditValues = (r: P6ActivityUpdate): EditValues => ({
@@ -78,6 +80,7 @@ const recordToEditValues = (r: P6ActivityUpdate): EditValues => ({
   mrk_uptd: r.mrk_uptd != null ? String(r.mrk_uptd) : '0',
   delete_record_flag: r.delete_record_flag != null ? String(r.delete_record_flag) : '0',
   data_date: toDateInputValue(r.data_date),
+  update_type: r.update_type || 'progress',
 })
 
 const editValuesToRow = (vals: EditValues) => ({
@@ -93,6 +96,7 @@ const editValuesToRow = (vals: EditValues) => ({
   mrk_uptd: vals.mrk_uptd !== '' ? parseInt(vals.mrk_uptd) : 0,
   delete_record_flag: vals.delete_record_flag !== '' ? parseInt(vals.delete_record_flag) : 0,
   data_date: vals.data_date || null,
+  update_type: vals.update_type || 'progress',
 })
 
 // Simple CSV helpers
@@ -120,7 +124,7 @@ function parseCSVLine(line: string): string[] {
   return result
 }
 
-const CSV_HEADERS = ['id', 'project_code', 'task_code', 'task_name', 'status_code', 'wbs_id', 'complete_pct', 'act_start_date', 'act_end_date', 'remain_drtn_hr_cnt', 'data_date', 'mrk_uptd', 'delete_record_flag'] as const
+const CSV_HEADERS = ['id', 'project_code', 'task_code', 'task_name', 'status_code', 'wbs_id', 'complete_pct', 'act_start_date', 'act_end_date', 'remain_drtn_hr_cnt', 'data_date', 'mrk_uptd', 'delete_record_flag', 'update_type'] as const
 
 export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string }) {
   const [data, setData] = useState<P6ActivityUpdate[]>([])
@@ -371,6 +375,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
           data_date: obj['data_date'] || null,
           mrk_uptd: obj['mrk_uptd'] !== '' && obj['mrk_uptd'] != null ? parseInt(obj['mrk_uptd']) : 0,
           delete_record_flag: obj['delete_record_flag'] !== '' && obj['delete_record_flag'] != null ? parseInt(obj['delete_record_flag']) : 0,
+          update_type: obj['update_type'] || 'progress',
         }
         if (idVal && !isNaN(parseInt(idVal))) {
           toUpdate.push({ id: parseInt(idVal), ...row })
@@ -411,6 +416,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     { key: 'data_date', label: 'Data Date' },
     { key: null, label: 'Mrk Upd' },
     { key: null, label: 'Del Flag' },
+    { key: null, label: 'Update Type' },
     { key: null, label: 'Actions' },
   ]
 
@@ -606,6 +612,13 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                             <option value="1">1</option>
                           </select>
                         </td>
+                        <td className="px-2 py-1.5">
+                          <select value={rowVals?.update_type ?? 'progress'} onChange={isEditAll ? evAll(record.id, 'update_type') : ev('update_type')} className={inputCls}>
+                            <option value="progress">progress</option>
+                            <option value="deprogress">deprogress</option>
+                            <option value="reset">reset</option>
+                          </select>
+                        </td>
                         <td className="px-2 py-1.5 whitespace-nowrap">
                           {isEditAll ? (
                             <button onClick={() => setDeleteConfirm(record.id)} title="Delete" className="p-1 text-red-400 hover:bg-red-50 rounded">
@@ -650,6 +663,11 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                       <td className="px-3 py-2.5 text-sm text-center whitespace-nowrap">
                         <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${record.delete_record_flag ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
                           {record.delete_record_flag ?? 0}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-sm whitespace-nowrap">
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${record.update_type === 'deprogress' ? 'bg-orange-100 text-orange-700' : record.update_type === 'reset' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {record.update_type || 'progress'}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -715,6 +733,14 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                 <option value="1">1</option>
               </select>
             </div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Update Type</label>
+            <select {...register('update_type')} defaultValue="progress" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="progress">progress</option>
+              <option value="deprogress">deprogress</option>
+              <option value="reset">reset</option>
+            </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <button type="button" onClick={handleCancelModal} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
