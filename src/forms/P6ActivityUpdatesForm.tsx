@@ -83,10 +83,18 @@ const recordToEditValues = (r: P6ActivityUpdate): EditValues => ({
   update_type: r.update_type || 'progress',
 })
 
+const resolveStatusCode = (vals: EditValues): string | null => {
+  const pct = vals.complete_pct !== '' ? parseFloat(vals.complete_pct) : 0
+  if (vals.act_start_date && !vals.act_end_date && pct > 0) return 'In Progress'
+  if (vals.act_start_date && vals.act_end_date && pct === 100) return 'Completed'
+  if (!vals.act_start_date && pct === 0) return 'Not Started'
+  return vals.status_code || null
+}
+
 const editValuesToRow = (vals: EditValues) => ({
   project_code: vals.project_code,
   task_code: vals.task_code,
-  status_code: vals.status_code || null,
+  status_code: resolveStatusCode(vals),
   wbs_id: vals.wbs_id || null,
   task_name: vals.task_name || null,
   act_start_date: vals.act_start_date || null,
@@ -253,8 +261,17 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     setEditValues(recordToEditValues(record))
   }
 
+  const validateDates = (vals: EditValues | P6ActivityUpdateFormData): boolean => {
+    if (vals.act_start_date && vals.act_end_date && vals.act_end_date < vals.act_start_date) {
+      showError('Actual Finish date cannot be before Actual Start date')
+      return false
+    }
+    return true
+  }
+
   const handleSaveEdit = async () => {
     if (editingId == null) return
+    if (!validateDates(editValues)) return
     setSaving(true)
     const { error } = await supabase
       .from('p6_activity_updates')
@@ -313,6 +330,9 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     }
 
   const handleSaveAll = async () => {
+    for (const [, vals] of Object.entries(editAllValues)) {
+      if (!validateDates(vals)) return
+    }
     setSaveAllLoading(true)
     const upsertRows = Object.entries(editAllValues).map(([idStr, vals]) => ({
       id: parseInt(idStr),
@@ -331,6 +351,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   }
 
   const onSubmit = async (formData: P6ActivityUpdateFormData) => {
+    if (!validateDates(formData)) return
     setSaving(true)
     const { error } = await supabase
       .from('p6_activity_updates')
