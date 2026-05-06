@@ -229,10 +229,27 @@ export interface ActivityWorkType {
 
 export interface P6ActivityOutput {
   id: number
-  project_code: string
+  project_code: string | null
   activity_id: string | null
-  field_name: string
-  field_value: string | null
+  activity_name: string | null
+  status: string | null
+  activity_type: string | null
+  wbs_code: string | null
+  wbs_name: string | null
+  duration_pct_complete: string | null
+  percent_complete: string | null
+  actual_start: string | null
+  actual_finish: string | null
+  planned_start: string | null
+  planned_finish: string | null
+  early_start: string | null
+  early_finish: string | null
+  late_start: string | null
+  late_finish: string | null
+  remaining_duration: string | null
+  planned_duration: string | null
+  total_float: string | null
+  free_float: string | null
   last_updated: string | null
 }
 

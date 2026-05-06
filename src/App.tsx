@@ -275,7 +275,7 @@ function App() {
       case 'referencedata':
         return <ReferenceDataForm />
       case 'p6activityoutput':
-        return <P6ActivityOutputForm />
+        return <P6ActivityOutputForm projectTextId={projectTextId} />
       case 'p6activityupdates':
         return <P6ActivityUpdatesForm projectTextId={projectTextId} />
       case 'p6projectmapping':
