@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import type { P6ActivityUpdate } from '@/types/database'
+import type { P6ActivityUpdate, ProjectData } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -43,11 +43,26 @@ interface EditValues {
   update_type: string
 }
 
+interface ProjectHeader {
+  project_code: string | null
+  project_name: string | null
+  data_date: string | null
+}
+
+interface ColumnFilters {
+  task_code: string
+  task_name: string
+  status_code: string
+  wbs_id: string
+  complete_pct: string
+}
+
 const ITEMS_PER_PAGE = 15
 type SortField = 'project_code' | 'task_code' | 'task_name' | 'status_code' | 'complete_pct' | 'data_date' | 'wbs_id'
 type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
+const filterCls = 'w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white'
 
 const formatDate = (d: string | null) => {
   if (!d) return '-'
@@ -158,6 +173,12 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   // CSV
   const [importLoading, setImportLoading] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  // Project header
+  const [projectHeader, setProjectHeader] = useState<ProjectHeader | null>(null)
+  // Column filters
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({
+    task_code: '', task_name: '', status_code: '', wbs_id: '', complete_pct: '',
+  })
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -184,6 +205,21 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
   }
 
+  const fetchProjectHeader = async () => {
+    if (!projectTextId) { setProjectHeader(null); return }
+    const { data: row } = await supabase
+      .from('dbp6_0000_projectdata')
+      .select('dgt_projectid, dgt_projectname, dgt_datadate')
+      .eq('dgt_projectid', projectTextId)
+      .single()
+    if (row) {
+      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate'>
+      setProjectHeader({ project_code: d.dgt_projectid, project_name: d.dgt_projectname, data_date: d.dgt_datadate })
+    } else {
+      setProjectHeader(null)
+    }
+  }
+
   const fetchData = async () => {
     setLoading(true)
     const PAGE_SIZE = 1000
@@ -206,20 +242,41 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [projectTextId])
+  useEffect(() => { fetchData(); fetchProjectHeader() }, [projectTextId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
+  useEffect(() => { setCurrentPage(1) }, [columnFilters])
+  useEffect(() => {
+    setColumnFilters({ task_code: '', task_name: '', status_code: '', wbs_id: '', complete_pct: '' })
+  }, [projectTextId])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter(item =>
-        item.project_code?.toLowerCase().includes(term) ||
         item.task_code?.toLowerCase().includes(term) ||
         item.task_name?.toLowerCase().includes(term) ||
         item.status_code?.toLowerCase().includes(term) ||
         item.wbs_id?.toLowerCase().includes(term)
       )
+    }
+    if (columnFilters.task_code) {
+      const f = columnFilters.task_code.toLowerCase()
+      result = result.filter(item => item.task_code?.toLowerCase().includes(f))
+    }
+    if (columnFilters.task_name) {
+      const f = columnFilters.task_name.toLowerCase()
+      result = result.filter(item => item.task_name?.toLowerCase().includes(f))
+    }
+    if (columnFilters.status_code) {
+      result = result.filter(item => item.status_code === columnFilters.status_code)
+    }
+    if (columnFilters.wbs_id) {
+      const f = columnFilters.wbs_id.toLowerCase()
+      result = result.filter(item => item.wbs_id?.toLowerCase().includes(f))
+    }
+    if (columnFilters.complete_pct) {
+      result = result.filter(item => String(item.complete_pct ?? '').includes(columnFilters.complete_pct))
     }
     if (sortField) {
       result = [...result].sort((a, b) => {
@@ -235,7 +292,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
       })
     }
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm, columnFilters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) { setSortDirection(d => d === 'asc' ? 'desc' : 'asc') }
@@ -261,9 +318,14 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     setEditValues(recordToEditValues(record))
   }
 
-  const validateDates = (vals: EditValues | P6ActivityUpdateFormData): boolean => {
+  const validateInput = (vals: EditValues | P6ActivityUpdateFormData): boolean => {
     if (vals.act_start_date && vals.act_end_date && vals.act_end_date < vals.act_start_date) {
       showError('Actual Finish date cannot be before Actual Start date')
+      return false
+    }
+    const pct = vals.complete_pct !== '' ? parseFloat(String(vals.complete_pct)) : null
+    if (pct !== null && !isNaN(pct) && pct > 100) {
+      showError('% Complete cannot exceed 100')
       return false
     }
     return true
@@ -271,7 +333,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
 
   const handleSaveEdit = async () => {
     if (editingId == null) return
-    if (!validateDates(editValues)) return
+    if (!validateInput(editValues)) return
     setSaving(true)
     const { error } = await supabase
       .from('p6_activity_updates')
@@ -331,7 +393,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
 
   const handleSaveAll = async () => {
     for (const [, vals] of Object.entries(editAllValues)) {
-      if (!validateDates(vals)) return
+      if (!validateInput(vals)) return
     }
     setSaveAllLoading(true)
     const upsertRows = Object.entries(editAllValues).map(([idStr, vals]) => ({
@@ -351,7 +413,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   }
 
   const onSubmit = async (formData: P6ActivityUpdateFormData) => {
-    if (!validateDates(formData)) return
+    if (!validateInput(formData)) return
     setSaving(true)
     const { error } = await supabase
       .from('p6_activity_updates')
@@ -402,7 +464,6 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    // Reset input so same file can be re-imported
     if (importInputRef.current) importInputRef.current.value = ''
     setImportLoading(true)
     try {
@@ -458,9 +519,9 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     setImportLoading(false)
   }
 
+  // Columns: project_code and delete_record_flag hidden from table; renamed task_code → Activity ID
   const colHeaders: { key: SortField | null; label: string }[] = [
-    { key: 'project_code', label: 'Project Code' },
-    { key: 'task_code', label: 'Task Code' },
+    { key: 'task_code', label: 'Activity ID' },
     { key: 'task_name', label: 'Task Name' },
     { key: 'status_code', label: 'Status' },
     { key: 'wbs_id', label: 'WBS ID' },
@@ -470,19 +531,43 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     { key: null, label: 'Rem. Hrs' },
     { key: 'data_date', label: 'Data Date' },
     { key: null, label: 'Mrk Upd' },
-    { key: null, label: 'Del Flag' },
     { key: null, label: 'Update Type' },
     { key: null, label: 'Actions' },
   ]
+
+  const setFilter = (field: keyof ColumnFilters, value: string) =>
+    setColumnFilters(p => ({ ...p, [field]: value }))
+
+  const hasActiveFilters = Object.values(columnFilters).some(v => v !== '')
 
   return (
     <div className="space-y-4">
       {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
 
+      {/* Project header bar */}
+      {projectHeader && (
+        <div className="flex flex-wrap items-center gap-6 px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <div>
+            <p className="text-xs text-blue-500 font-medium uppercase tracking-wide">Project Code</p>
+            <p className="text-sm font-mono font-semibold text-blue-900">{projectHeader.project_code || '-'}</p>
+          </div>
+          <div className="h-8 w-px bg-blue-200" />
+          <div>
+            <p className="text-xs text-blue-500 font-medium uppercase tracking-wide">Project Name</p>
+            <p className="text-sm font-semibold text-blue-900">{projectHeader.project_name || '-'}</p>
+          </div>
+          <div className="h-8 w-px bg-blue-200" />
+          <div>
+            <p className="text-xs text-blue-500 font-medium uppercase tracking-wide">Data Date</p>
+            <p className="text-sm font-semibold text-blue-900">{formatDate(projectHeader.data_date)}</p>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row justify-between gap-3">
         <div className="w-full sm:w-72">
-          <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Task Code, Name, Status, WBS..." />
+          <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Activity ID, Name, Status, WBS..." />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Edit All / Save All */}
@@ -609,17 +694,27 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
 
       {loading ? <LoadingSpinner /> : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <span className="text-sm text-gray-600">
               Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
             </span>
+            {hasActiveFilters && (
+              <button
+                onClick={() => setColumnFilters({ task_code: '', task_name: '', status_code: '', wbs_id: '', complete_pct: '' })}
+                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                Clear filters
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
+                {/* Column headers */}
                 <tr>
                   {colHeaders.map(({ key, label }) => (
-                    <th key={label} className="px-3 py-3 text-left">
+                    <th key={label} className={`px-3 py-3 text-left${label === 'Task Name' ? ' min-w-[300px]' : ''}`}>
                       {key ? (
                         <div
                           className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -633,10 +728,35 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                     </th>
                   ))}
                 </tr>
+                {/* Column filter row */}
+                <tr className="bg-white border-b border-gray-200">
+                  <td className="px-3 py-1.5">
+                    <input type="text" value={columnFilters.task_code} onChange={e => setFilter('task_code', e.target.value)} placeholder="Filter..." className={filterCls} />
+                  </td>
+                  <td className="px-3 py-1.5 min-w-[300px]">
+                    <input type="text" value={columnFilters.task_name} onChange={e => setFilter('task_name', e.target.value)} placeholder="Filter..." className={filterCls} />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <select value={columnFilters.status_code} onChange={e => setFilter('status_code', e.target.value)} className={filterCls}>
+                      <option value="">All</option>
+                      <option value="Not Started">Not Started</option>
+                      <option value="In Progress">In Progress</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <input type="text" value={columnFilters.wbs_id} onChange={e => setFilter('wbs_id', e.target.value)} placeholder="Filter..." className={filterCls} />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <input type="text" value={columnFilters.complete_pct} onChange={e => setFilter('complete_pct', e.target.value)} placeholder="Filter..." className={filterCls} />
+                  </td>
+                  {/* Empty cells for remaining columns */}
+                  <td /><td /><td /><td /><td /><td /><td />
+                </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={13} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={12} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => {
                   const isEditAll = editAllMode
                   const isSingleEdit = !editAllMode && editingId === record.id
@@ -645,24 +765,17 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                   if (isEditAll || isSingleEdit) {
                     return (
                       <tr key={record.id} className="bg-amber-50">
-                        <td className="px-2 py-1.5"><input value={rowVals?.project_code ?? ''} onChange={isEditAll ? evAll(record.id, 'project_code') : ev('project_code')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input value={rowVals?.task_code ?? ''} onChange={isEditAll ? evAll(record.id, 'task_code') : ev('task_code')} className={inputCls} /></td>
-                        <td className="px-2 py-1.5"><input value={rowVals?.task_name ?? ''} onChange={isEditAll ? evAll(record.id, 'task_name') : ev('task_name')} className={inputCls} /></td>
+                        <td className="px-2 py-1.5 min-w-[300px]"><input value={rowVals?.task_name ?? ''} onChange={isEditAll ? evAll(record.id, 'task_name') : ev('task_name')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><select value={rowVals?.status_code ?? ''} onChange={isEditAll ? evAll(record.id, 'status_code') : ev('status_code')} className={inputCls}><option value="">-</option><option value="Not Started">Not Started</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option></select></td>
                         <td className="px-2 py-1.5"><input value={rowVals?.wbs_id ?? ''} onChange={isEditAll ? evAll(record.id, 'wbs_id') : ev('wbs_id')} className={inputCls} /></td>
-                        <td className="px-2 py-1.5"><input type="number" step="0.01" value={rowVals?.complete_pct ?? ''} onChange={isEditAll ? evAll(record.id, 'complete_pct') : ev('complete_pct')} className={inputCls} /></td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" max="100" step="0.01" value={rowVals?.complete_pct ?? ''} onChange={isEditAll ? evAll(record.id, 'complete_pct') : ev('complete_pct')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.act_start_date ?? ''} onChange={isEditAll ? evAll(record.id, 'act_start_date') : ev('act_start_date')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.act_end_date ?? ''} onChange={isEditAll ? evAll(record.id, 'act_end_date') : ev('act_end_date')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="number" step="0.01" value={rowVals?.remain_drtn_hr_cnt ?? ''} onChange={isEditAll ? evAll(record.id, 'remain_drtn_hr_cnt') : ev('remain_drtn_hr_cnt')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.data_date ?? ''} onChange={isEditAll ? evAll(record.id, 'data_date') : ev('data_date')} className={inputCls} /></td>
                         <td className="px-2 py-1.5">
                           <select value={rowVals?.mrk_uptd ?? '0'} onChange={isEditAll ? evAll(record.id, 'mrk_uptd') : ev('mrk_uptd')} className={inputCls}>
-                            <option value="0">0</option>
-                            <option value="1">1</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <select value={rowVals?.delete_record_flag ?? '0'} onChange={isEditAll ? evAll(record.id, 'delete_record_flag') : ev('delete_record_flag')} className={inputCls}>
                             <option value="0">0</option>
                             <option value="1">1</option>
                           </select>
@@ -696,9 +809,8 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
 
                   return (
                     <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 text-sm font-mono text-gray-900 whitespace-nowrap">{record.project_code}</td>
                       <td className="px-3 py-2.5 text-sm font-mono text-gray-900 whitespace-nowrap">{record.task_code}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-900">{record.task_name || '-'}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-900 min-w-[300px]">{record.task_name || '-'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-700 whitespace-nowrap">{record.status_code || '-'}</td>
                       <td className="px-3 py-2.5 text-sm font-mono text-gray-700 whitespace-nowrap">{record.wbs_id || '-'}</td>
                       <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">
@@ -713,11 +825,6 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                       <td className="px-3 py-2.5 text-sm text-center whitespace-nowrap">
                         <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${record.mrk_uptd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                           {record.mrk_uptd ?? 0}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-center whitespace-nowrap">
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${record.delete_record_flag ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {record.delete_record_flag ?? 0}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-sm whitespace-nowrap">
@@ -749,7 +856,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Project Code *" type="text" {...register('project_code', { required: 'Project Code is required' })} error={errors.project_code?.message} />
-            <FormField label="Task Code *" type="text" {...register('task_code', { required: 'Task Code is required' })} error={errors.task_code?.message} />
+            <FormField label="Activity ID *" type="text" {...register('task_code', { required: 'Activity ID is required' })} error={errors.task_code?.message} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -769,7 +876,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
             <FormField label="Actual End" type="date" {...register('act_end_date')} error={errors.act_end_date?.message} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="% Complete" type="number" step="0.01" {...register('complete_pct')} error={errors.complete_pct?.message} />
+            <FormField label="% Complete" type="number" step="0.01" min="0" max="100" {...register('complete_pct')} error={errors.complete_pct?.message} />
             <FormField label="Remaining Hours" type="number" step="0.01" {...register('remain_drtn_hr_cnt')} error={errors.remain_drtn_hr_cnt?.message} />
           </div>
           <FormField label="Data Date" type="date" {...register('data_date')} error={errors.data_date?.message} />
