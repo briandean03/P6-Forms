@@ -78,7 +78,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
     register,
     handleSubmit,
     reset,
-    setValue,
     formState: { errors, isDirty },
   } = useForm<QaqcHseFormData>()
 

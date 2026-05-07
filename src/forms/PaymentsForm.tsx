@@ -36,7 +36,7 @@ type SortField = 'dgt_iparef' | 'dgt_datesubmitted' | 'dgt_dateapproved' | 'stat
 type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-1.5 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
-const selectCls = 'w-full px-1.5 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white'
+
 
 const formatDate = (v: string | null) => v ? new Date(v).toLocaleDateString() : '-'
 const fmtAmt = (v: number | null) => v != null ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'

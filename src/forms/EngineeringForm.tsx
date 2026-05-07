@@ -344,12 +344,6 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
     return type?.type_name || `Code: ${typeCode}`
   }
 
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
-    return project?.dgt_projectname || id
-  }
-
   const startEdit = (record: Engineering) => {
     setEditingId(record.dgt_dbp6bd041engineeringid)
     setEditValues({
