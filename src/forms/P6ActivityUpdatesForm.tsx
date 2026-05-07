@@ -377,16 +377,18 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   }
 
   const DERIVED_TRIGGER: (keyof EditValues)[] = ['act_start_date', 'act_end_date', 'complete_pct']
+  const MRK_UPTD_TRIGGER: (keyof EditValues)[] = ['act_start_date', 'act_end_date', 'complete_pct', 'status_code', 'update_type']
 
   const evAll = (id: number, field: keyof EditValues) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const newValue = e.target.value
       setEditAllValues(p => {
-        const updated = { ...p[id], [field]: newValue }
+        let updated = { ...p[id], [field]: newValue }
         if (DERIVED_TRIGGER.includes(field)) {
           const origPct = data.find(r => r.id === id)?.complete_pct ?? null
-          return { ...p, [id]: { ...updated, ...deriveFields(updated, origPct) } }
+          updated = { ...updated, ...deriveFields(updated, origPct) }
         }
+        if (MRK_UPTD_TRIGGER.includes(field)) updated = { ...updated, mrk_uptd: '1' }
         return { ...p, [id]: updated }
       })
     }
@@ -435,11 +437,12 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
   const ev = (field: keyof EditValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const newValue = e.target.value
     setEditValues(p => {
-      const updated = { ...p, [field]: newValue }
+      let updated = { ...p, [field]: newValue }
       if (DERIVED_TRIGGER.includes(field)) {
         const origPct = data.find(r => r.id === editingId)?.complete_pct ?? null
-        return { ...updated, ...deriveFields(updated, origPct) }
+        updated = { ...updated, ...deriveFields(updated, origPct) }
       }
+      if (MRK_UPTD_TRIGGER.includes(field)) updated = { ...updated, mrk_uptd: '1' }
       return updated
     })
   }
@@ -528,7 +531,6 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
     { key: 'complete_pct', label: '% Complete' },
     { key: null, label: 'Act Start' },
     { key: null, label: 'Act End' },
-    { key: null, label: 'Rem. Hrs' },
     { key: 'data_date', label: 'Data Date' },
     { key: null, label: 'Mrk Upd' },
     { key: null, label: 'Update Type' },
@@ -751,12 +753,12 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                     <input type="text" value={columnFilters.complete_pct} onChange={e => setFilter('complete_pct', e.target.value)} placeholder="Filter..." className={filterCls} />
                   </td>
                   {/* Empty cells for remaining columns */}
-                  <td /><td /><td /><td /><td /><td /><td />
+                  <td /><td /><td /><td /><td /><td />
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={12} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={11} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => {
                   const isEditAll = editAllMode
                   const isSingleEdit = !editAllMode && editingId === record.id
@@ -772,7 +774,6 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                         <td className="px-2 py-1.5"><input type="number" min="0" max="100" step="0.01" value={rowVals?.complete_pct ?? ''} onChange={isEditAll ? evAll(record.id, 'complete_pct') : ev('complete_pct')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.act_start_date ?? ''} onChange={isEditAll ? evAll(record.id, 'act_start_date') : ev('act_start_date')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.act_end_date ?? ''} onChange={isEditAll ? evAll(record.id, 'act_end_date') : ev('act_end_date')} className={inputCls} /></td>
-                        <td className="px-2 py-1.5"><input type="number" step="0.01" value={rowVals?.remain_drtn_hr_cnt ?? ''} onChange={isEditAll ? evAll(record.id, 'remain_drtn_hr_cnt') : ev('remain_drtn_hr_cnt')} className={inputCls} /></td>
                         <td className="px-2 py-1.5"><input type="date" value={rowVals?.data_date ?? ''} onChange={isEditAll ? evAll(record.id, 'data_date') : ev('data_date')} className={inputCls} /></td>
                         <td className="px-2 py-1.5">
                           <select value={rowVals?.mrk_uptd ?? '0'} onChange={isEditAll ? evAll(record.id, 'mrk_uptd') : ev('mrk_uptd')} className={inputCls}>
@@ -818,9 +819,6 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{formatDate(record.act_start_date)}</td>
                       <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{formatDate(record.act_end_date)}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 whitespace-nowrap">
-                        {record.remain_drtn_hr_cnt != null ? record.remain_drtn_hr_cnt : '-'}
-                      </td>
                       <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{formatDate(record.data_date)}</td>
                       <td className="px-3 py-2.5 text-sm text-center whitespace-nowrap">
                         <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${record.mrk_uptd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
