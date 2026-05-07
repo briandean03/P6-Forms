@@ -8,8 +8,6 @@ import { DynamicActualDataForm } from '@/forms/DynamicActualDataForm'
 import { ProjectDataForm } from '@/forms/ProjectDataForm'
 import { AreasOfConcernForm } from '@/forms/AreasOfConcernForm'
 import { VariationsForm } from '@/forms/VariationsForm'
-import { TradesForm } from '@/forms/TradesForm'
-import { SubtradesForm } from '@/forms/SubtradesForm'
 import { PaymentsForm } from '@/forms/PaymentsForm'
 import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
 import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
@@ -26,8 +24,6 @@ type TabKey =
   | 'projectdata'
   | 'aoc'
   | 'variations'
-  | 'trades'
-  | 'subtrades'
   | 'discipline'
   | 'type'
   | 'payments'
@@ -106,24 +102,6 @@ const tabs: Tab[] = [
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 8v-4m0 4l-4-4m4 4l4-4M3 12h18" />
-      </svg>
-    ),
-  },
-  {
-    key: 'trades',
-    label: 'Trades',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-    ),
-  },
-  {
-    key: 'subtrades',
-    label: 'Subtrades',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
       </svg>
     ),
   },
@@ -266,14 +244,10 @@ function App() {
         return <AreasOfConcernForm projectId={selectedProjectId} />
       case 'variations':
         return <VariationsForm projectTextId={projectTextId} />
-      case 'trades':
-        return <TradesForm projectId={selectedProjectId} />
-      case 'subtrades':
-        return <SubtradesForm projectId={selectedProjectId} />
       case 'payments':
         return <PaymentsForm projectId={selectedProjectId} />
       case 'referencedata':
-        return <ReferenceDataForm />
+        return <ReferenceDataForm projectId={selectedProjectId} />
       case 'p6activityoutput':
         return <P6ActivityOutputForm projectTextId={projectTextId} />
       case 'p6activityupdates':

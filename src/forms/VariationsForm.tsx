@@ -14,7 +14,6 @@ import { CsvControls } from '@/components/CsvControls'
 import { exportToCsv } from '@/utils/csv'
 
 interface VariationsFormData {
-  dgt_projectid: string
   dgt_voref: string
   dgt_voappliedamount: string
   dgt_voapprovedamount: string
@@ -27,19 +26,18 @@ interface VariationsFormData {
 }
 
 const ITEMS_PER_PAGE = 15
-type SortField = 'dgt_voref' | 'dgt_projectid' | 'dgt_datesubmitted' | 'dgt_dateapproved' | 'statuscode'
+type SortField = 'dgt_voref' | 'dgt_datesubmitted' | 'dgt_dateapproved' | 'statuscode'
 type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-1.5 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
 
 type EditValues = {
-  projectid: string; voref: string; appliedamt: string; approvedamt: string
+  voref: string; appliedamt: string; approvedamt: string
   receivedamt: string; receiveddate: string; datesubmitted: string; dateapproved: string; statuscode: string
 }
 
 export function VariationsForm({ projectTextId }: { projectTextId: string }) {
   const [data, setData] = useState<Variations[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -51,12 +49,12 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<EditValues>({ projectid: '', voref: '', appliedamt: '', approvedamt: '', receivedamt: '', receiveddate: '', datesubmitted: '', dateapproved: '', statuscode: '' })
+  const [editValues, setEditValues] = useState<EditValues>({ voref: '', appliedamt: '', approvedamt: '', receivedamt: '', receiveddate: '', datesubmitted: '', dateapproved: '', statuscode: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
-  const { register, handleSubmit, reset, setValue, formState: { errors, isDirty } } = useForm<VariationsFormData>()
+  const { register, handleSubmit, reset, formState: { errors, isDirty } } = useForm<VariationsFormData>()
 
   const handleCancelModal = () => {
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
@@ -70,12 +68,7 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
     setLoading(false)
   }
 
-  const fetchProjects = async () => {
-    const { data: records } = await supabase.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname, dgt_projectid').order('dgt_projectname', { ascending: true })
-    setProjects(records || [])
-  }
-
-  useEffect(() => { fetchData(); fetchProjects() }, [projectTextId])
+  useEffect(() => { fetchData() }, [projectTextId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -84,7 +77,6 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
       const term = searchTerm.toLowerCase()
       result = result.filter(item =>
         item.dgt_voref?.toLowerCase().includes(term) ||
-        item.dgt_projectid?.toLowerCase().includes(term) ||
         item.statuscode?.toString().includes(term)
       )
     }
@@ -123,7 +115,6 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
   const startEdit = (record: Variations) => {
     setEditingId(record.dgt_dbp6bd0004variationsid)
     setEditValues({
-      projectid: record.dgt_projectid || '',
       voref: record.dgt_voref || '',
       appliedamt: record.dgt_voappliedamount || '',
       approvedamt: record.dgt_voapprovedamount || '',
@@ -139,7 +130,6 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
     if (!editingId) return
     setSaving(true)
     const { error } = await supabase.from('dbp6_0010_variations').update({
-      dgt_projectid: editValues.projectid || null,
       dgt_voref: editValues.voref || null,
       dgt_voappliedamount: editValues.appliedamt || null,
       dgt_voapprovedamount: editValues.approvedamt || null,
@@ -153,7 +143,6 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
     else {
       setData(prev => prev.map(r => r.dgt_dbp6bd0004variationsid === editingId ? {
         ...r,
-        dgt_projectid: editValues.projectid || null,
         dgt_voref: editValues.voref || null,
         dgt_voappliedamount: editValues.appliedamt || null,
         dgt_voapprovedamount: editValues.approvedamt || null,
@@ -171,7 +160,7 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
   const onSubmit = async (formData: VariationsFormData) => {
     setSaving(true)
     const { error } = await supabase.from('dbp6_0010_variations').insert({
-      dgt_projectid: formData.dgt_projectid || projectTextId || null,
+      dgt_projectid: projectTextId || null,
       dgt_voref: formData.dgt_voref || null,
       dgt_voappliedamount: formData.dgt_voappliedamount || null,
       dgt_voapprovedamount: formData.dgt_voapprovedamount || null,
@@ -223,7 +212,7 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
   }
 
   const colHeaders: [SortField, string][] = [
-    ['dgt_projectid', 'Project ID'], ['dgt_voref', 'VO Ref'],
+    ['dgt_voref', 'VO Ref'],
     ['dgt_datesubmitted', 'Submitted'], ['dgt_dateapproved', 'Approved'], ['statuscode', 'Status'],
   ]
 
@@ -236,7 +225,7 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
         </div>
         <div className="flex items-center gap-2">
           <CsvControls onExport={handleExport} onImport={handleImport} />
-          <button onClick={() => { reset({}); setValue('dgt_projectid', projectTextId); setIsModalOpen(true) }}
+          <button onClick={() => { reset({}); setIsModalOpen(true) }}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
             <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Create New
@@ -268,14 +257,13 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={10} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => {
                   const isEditing = editingId === record.dgt_dbp6bd0004variationsid
                   return (
                     <tr key={record.dgt_dbp6bd0004variationsid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
                       {isEditing ? (
                         <>
-                          <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.projectid} onChange={set('projectid')} className={inputCls} placeholder="Project ID" /></td>
                           <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.voref} onChange={set('voref')} className={inputCls} /></td>
                           <td className="px-2 py-1.5 min-w-[110px]"><input type="date" value={editValues.datesubmitted} onChange={set('datesubmitted')} className={inputCls} /></td>
                           <td className="px-2 py-1.5 min-w-[110px]"><input type="date" value={editValues.dateapproved} onChange={set('dateapproved')} className={inputCls} /></td>
@@ -293,7 +281,6 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
                         </>
                       ) : (
                         <>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{fmt(record.dgt_projectid)}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{fmt(record.dgt_voref)}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_datesubmitted)}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_dateapproved)}</td>
@@ -322,13 +309,6 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
 
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Variation">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Project</label>
-            <select {...register('dgt_projectid')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select Project --</option>
-              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_projectid ?? ''}>{p.dgt_projectname || p.dgt_projectid || p.dgt_dbp6bd00projectdataid}</option>)}
-            </select>
-          </div>
           <FormField label="VO Reference" type="text" {...register('dgt_voref')} error={errors.dgt_voref?.message} />
           <FormField label="Applied Amount" type="text" {...register('dgt_voappliedamount')} error={errors.dgt_voappliedamount?.message} />
           <FormField label="Approved Amount" type="text" {...register('dgt_voapprovedamount')} error={errors.dgt_voapprovedamount?.message} />

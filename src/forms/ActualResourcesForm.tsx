@@ -53,7 +53,6 @@ const inputCls = 'w-full px-1 py-0.5 text-xs border border-blue-400 rounded focu
 
 export function ActualResourcesForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<ActualResources[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -115,14 +114,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     }
   }
 
-  const fetchProjects = async () => {
-    const { data: projectRecords } = await supabase
-      .from('dbp6_0000_projectdata')
-      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
-      .order('dgt_projectname', { ascending: true })
-    setProjects(projectRecords || [])
-  }
-
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
@@ -151,7 +142,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     fetchData()
-    fetchProjects()
     fetchDisciplines()
     fetchTypes()
   }, [projectId])
@@ -383,12 +373,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     setDeleteConfirm(null)
   }
 
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
-    return project?.dgt_projectname || id
-  }
-
   const handleExport = () => {
     const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential', 'resource_code', 'Date', 'week_num', 'dgt_projectid', 'versionnumber', 'owningbusinessunit']
     const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential, r.resource_code, r.Date, r.week_num, r.dgt_projectid, r.versionnumber, r.owningbusinessunit])
@@ -571,11 +555,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                       <ColumnFilter data={data} field="resource_name" value={filters.resource_name} onChange={(v) => updateFilter('resource_name', v)} label="Resource Name" />
                     </div>
                   </th>
-                  <th className="px-2 py-1.5 text-left align-top w-36">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Project
-                    </div>
-                  </th>
                   <th className="px-2 py-1.5 text-left align-top w-24">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -639,11 +618,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                       Week No.
                     </div>
                   </th>
-                  <th className="px-2 py-1.5 text-left align-top w-32">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Project ID
-                    </div>
-                  </th>
                   <th className="px-2 py-1.5 text-left align-top w-20">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
                       Version No.
@@ -662,7 +636,7 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={11} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -677,23 +651,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                             <input type="text" value={editValues.resource_name} onChange={e => setEditValues(p => ({ ...p, resource_name: e.target.value }))} className={inputCls} />
                           ) : (
                             record.resource_name || '-'
-                          )}
-                        </td>
-                        {/* Project */}
-                        <td className="px-2 py-1.5 text-xs text-gray-900">
-                          {isEditing ? (
-                            <select value={editValues.dgt_dbp6bd00projectdataid} onChange={e => setEditValues(p => ({ ...p, dgt_dbp6bd00projectdataid: e.target.value }))} className={inputCls}>
-                              <option value="">-- Select --</option>
-                              {projects.map((p) => (
-                                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
-                                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div className="whitespace-nowrap font-medium" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>
-                              {getProjectName(record.dgt_dbp6bd00projectdataid)}
-                            </div>
                           )}
                         </td>
                         {/* Discipline */}
@@ -755,14 +712,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                             <input type="number" value={editValues.week_num} onChange={e => setEditValues(p => ({ ...p, week_num: e.target.value }))} className={inputCls} />
                           ) : (
                             record.week_num ?? '-'
-                          )}
-                        </td>
-                        {/* Project ID */}
-                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
-                          {isEditing ? (
-                            <input type="text" value={editValues.dgt_projectid} onChange={e => setEditValues(p => ({ ...p, dgt_projectid: e.target.value }))} className={inputCls} />
-                          ) : (
-                            record.dgt_projectid || '-'
                           )}
                         </td>
                         {/* Version No. */}
@@ -845,26 +794,6 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
         title="Create Actual Resources Record"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">
-              Project <span className="text-red-500">*</span>
-            </label>
-            <select
-              {...register('dgt_dbp6bd00projectdataid', { required: 'Project is required' })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
-                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
-                </option>
-              ))}
-            </select>
-            {errors.dgt_dbp6bd00projectdataid && (
-              <p className="text-xs text-red-500">{errors.dgt_dbp6bd00projectdataid.message}</p>
-            )}
-          </div>
-
           <FormField
             label="Resource Name"
             type="text"

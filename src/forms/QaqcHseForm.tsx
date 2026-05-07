@@ -16,7 +16,6 @@ import { CsvControls } from '@/components/CsvControls'
 import { exportToCsv } from '@/utils/csv'
 
 interface QaqcHseFormData {
-  dgt_dbp6bd00projectdataid: string
   dgt_docid: string
   dgt_docref: string
   dgt_documentsubject: string
@@ -42,7 +41,6 @@ type SortDirection = 'asc' | 'desc'
 
 export function QaqcHseForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<QaqcHse[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -92,14 +90,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
     }
   }
 
-  const fetchProjects = async () => {
-    const { data: projectRecords } = await supabase
-      .from('dbp6_0000_projectdata')
-      .select('dgt_dbp6bd00projectdataid, dgt_projectname')
-      .order('dgt_projectname', { ascending: true })
-    setProjects(projectRecords || [])
-  }
-
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
@@ -128,7 +118,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     fetchData()
-    fetchProjects()
     fetchDisciplines()
     fetchTypes()
   }, [projectId])
@@ -266,7 +255,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
       dgt_revision: '',
       dgt_status: '',
     })
-    setValue('dgt_dbp6bd00projectdataid', projectId)
     setIsModalOpen(true)
   }
 
@@ -274,7 +262,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
     setSaving(true)
 
     const insertData = {
-      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
+      dgt_dbp6bd00projectdataid: projectId,
       dgt_docid: formData.dgt_docid || null,
       dgt_docref: formData.dgt_docref || null,
       dgt_documentsubject: formData.dgt_documentsubject || null,
@@ -394,12 +382,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
-  }
-
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === id)
-    return project?.dgt_projectname || id
   }
 
   return (
@@ -544,11 +526,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
             <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2 text-left align-top w-36">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Project
-                    </div>
-                  </th>
                   <th className="px-3 py-2 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -650,21 +627,13 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
                     <tr key={record.dgt_dbp6bd0402qaqchseid} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 text-sm text-gray-900">
-                        <div
-                          className="whitespace-nowrap font-medium"
-                          title={getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        >
-                          {getProjectName(record.dgt_dbp6bd00projectdataid)}
-                        </div>
-                      </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docid || '-'}
                       </td>
@@ -753,26 +722,6 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
         title="Create QAQC/HSE Record"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">
-              Project <span className="text-red-500">*</span>
-            </label>
-            <select
-              {...register('dgt_dbp6bd00projectdataid', { required: 'Project is required' })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
-                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
-                </option>
-              ))}
-            </select>
-            {errors.dgt_dbp6bd00projectdataid && (
-              <p className="text-xs text-red-500">{errors.dgt_dbp6bd00projectdataid.message}</p>
-            )}
-          </div>
-
           <FormField
             label="Doc ID"
             type="text"

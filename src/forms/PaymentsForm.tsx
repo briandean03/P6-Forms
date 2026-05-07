@@ -15,7 +15,6 @@ import { exportToCsv } from '@/utils/csv'
 
 interface PaymentsFormData {
   dbp6bd0003paymentsid: string
-  dgt_dbp6bd00projectdataid: string
   dgt_iparef: string
   dgt_ipaamount: string
   dgt_ipaamount_base: string
@@ -43,13 +42,12 @@ const formatDate = (v: string | null) => v ? new Date(v).toLocaleDateString() : 
 const fmtAmt = (v: number | null) => v != null ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
 
 type EditValues = {
-  projectid: string; iparef: string; ipaamount: string; ipcamount: string
+  iparef: string; ipaamount: string; ipcamount: string
   receivedamount: string; receiveddate: string; datesubmitted: string; dateapproved: string; statuscode: string
 }
 
 export function PaymentsForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Payments[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -61,7 +59,7 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<EditValues>({ projectid: '', iparef: '', ipaamount: '', ipcamount: '', receivedamount: '', receiveddate: '', datesubmitted: '', dateapproved: '', statuscode: '' })
+  const [editValues, setEditValues] = useState<EditValues>({ iparef: '', ipaamount: '', ipcamount: '', receivedamount: '', receiveddate: '', datesubmitted: '', dateapproved: '', statuscode: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -72,11 +70,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
   }
 
-  const fetchProjects = async () => {
-    const { data: records } = await supabase.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname').order('dgt_projectname', { ascending: true })
-    setProjects(records || [])
-  }
-
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase.from('dbp6_0009_payments').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('dgt_datesubmitted', { ascending: false })
@@ -84,13 +77,8 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [projectId])
+  useEffect(() => { fetchData() }, [projectId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
-
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    return projects.find(p => p.dgt_dbp6bd00projectdataid === id)?.dgt_projectname || id
-  }
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -136,7 +124,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
   const startEdit = (record: Payments) => {
     setEditingId(record.dbp6bd0003paymentsid)
     setEditValues({
-      projectid: record.dgt_dbp6bd00projectdataid || '',
       iparef: record.dgt_iparef || '',
       ipaamount: record.dgt_ipaamount != null ? String(record.dgt_ipaamount) : '',
       ipcamount: record.dgt_ipcamount != null ? String(record.dgt_ipcamount) : '',
@@ -152,7 +139,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
     if (!editingId) return
     setSaving(true)
     const { error } = await supabase.from('dbp6_0009_payments').update({
-      dgt_dbp6bd00projectdataid: editValues.projectid || null,
       dgt_iparef: editValues.iparef || null,
       dgt_ipaamount: editValues.ipaamount ? parseFloat(editValues.ipaamount) : null,
       dgt_ipcamount: editValues.ipcamount ? parseFloat(editValues.ipcamount) : null,
@@ -166,7 +152,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
     else {
       setData(prev => prev.map(r => r.dbp6bd0003paymentsid === editingId ? {
         ...r,
-        dgt_dbp6bd00projectdataid: editValues.projectid || null,
         dgt_iparef: editValues.iparef || null,
         dgt_ipaamount: editValues.ipaamount ? parseFloat(editValues.ipaamount) : null,
         dgt_ipcamount: editValues.ipcamount ? parseFloat(editValues.ipcamount) : null,
@@ -185,7 +170,7 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
     setSaving(true)
     const { error } = await supabase.from('dbp6_0009_payments').insert({
       dbp6bd0003paymentsid: formData.dbp6bd0003paymentsid,
-      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid || null,
+      dgt_dbp6bd00projectdataid: projectId || null,
       dgt_iparef: formData.dgt_iparef || null,
       dgt_ipaamount: formData.dgt_ipaamount ? parseFloat(formData.dgt_ipaamount) : null,
       dgt_ipaamount_base: formData.dgt_ipaamount_base ? parseFloat(formData.dgt_ipaamount_base) : null,
@@ -250,7 +235,7 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
         </div>
         <div className="flex items-center gap-2">
           <CsvControls onExport={handleExport} onImport={handleImport} />
-          <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
+          <button onClick={() => { reset({}); setIsModalOpen(true) }}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
             <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Create New
@@ -266,7 +251,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
             <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap w-36">Project</th>
                   <th className="px-3 py-3 text-left">
                     <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('dgt_iparef')}>IPA Ref<SortIcon field="dgt_iparef" /></div>
                   </th>
@@ -288,19 +272,13 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={10} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => {
                   const isEditing = editingId === record.dbp6bd0003paymentsid
                   return (
                     <tr key={record.dbp6bd0003paymentsid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
                       {isEditing ? (
                         <>
-                          <td className="px-2 py-1.5 min-w-[130px]">
-                            <select value={editValues.projectid} onChange={e => setEditValues(p => ({ ...p, projectid: e.target.value }))} className={selectCls}>
-                              <option value="">-- No Project --</option>
-                              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-                            </select>
-                          </td>
                           <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.iparef} onChange={set('iparef')} className={inputCls} /></td>
                           <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.ipaamount} onChange={set('ipaamount')} className={inputCls} /></td>
                           <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.ipcamount} onChange={set('ipcamount')} className={inputCls} /></td>
@@ -318,7 +296,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
                         </>
                       ) : (
                         <>
-                          <td className="px-3 py-2.5 text-sm text-gray-900"><div className="whitespace-nowrap" title={getProjectName(record.dgt_dbp6bd00projectdataid ?? null)}>{getProjectName(record.dgt_dbp6bd00projectdataid ?? null)}</div></td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_iparef || '-'}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_ipaamount)}</td>
                           <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_ipcamount)}</td>
@@ -348,13 +325,6 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Payment">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <FormField label="Payment ID" type="text" {...register('dbp6bd0003paymentsid', { required: 'Payment ID is required' })} error={errors.dbp6bd0003paymentsid?.message} />
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Project</label>
-            <select {...register('dgt_dbp6bd00projectdataid')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select Project --</option>
-              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-            </select>
-          </div>
           <FormField label="IPA Reference" type="text" {...register('dgt_iparef')} error={errors.dgt_iparef?.message} />
           <div className="grid grid-cols-2 gap-3">
             <FormField label="IPA Amount" type="number" {...register('dgt_ipaamount')} error={errors.dgt_ipaamount?.message} />

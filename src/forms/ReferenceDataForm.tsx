@@ -4,6 +4,8 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { SearchFilter } from '@/components/SearchFilter'
+import { TradesForm } from '@/forms/TradesForm'
+import { SubtradesForm } from '@/forms/SubtradesForm'
 
 interface RefTableConfig {
   title: string
@@ -431,7 +433,7 @@ function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
   )
 }
 
-export function ReferenceDataForm() {
+export function ReferenceDataForm({ projectId }: { projectId: string }) {
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const handleNotify = (type: 'success' | 'error', message: string) => {
@@ -440,7 +442,7 @@ export function ReferenceDataForm() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {notification && (
         <Notification type={notification.type} message={notification.message} onClose={hideNotification} />
       )}
@@ -449,6 +451,8 @@ export function ReferenceDataForm() {
           <ReferenceCard key={config.table} config={config} onNotify={handleNotify} />
         ))}
       </div>
+      <TradesForm projectId={projectId} />
+      <SubtradesForm projectId={projectId} />
     </div>
   )
 }

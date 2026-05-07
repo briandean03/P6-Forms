@@ -12,7 +12,6 @@ import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 interface DisciplineFormData {
-  dgt_dbp6bd00projectdataid: string
   discipline_name: string
   discipline_code: string
 }
@@ -23,7 +22,6 @@ type SortDirection = 'asc' | 'desc'
 
 export function DisciplineForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Discipline[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -35,7 +33,7 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [editValues, setEditValues] = useState({ dgt_dbp6bd00projectdataid: '', discipline_code: '', discipline_name: '' })
+  const [editValues, setEditValues] = useState({ discipline_code: '', discipline_name: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -46,11 +44,6 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
   }
 
-  const fetchProjects = async () => {
-    const { data: records } = await supabase.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname').order('dgt_projectname', { ascending: true })
-    setProjects(records || [])
-  }
-
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase.from('dbp6_0018_discipline').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('discipline_code', { ascending: true })
@@ -58,7 +51,7 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [projectId])
+  useEffect(() => { fetchData() }, [projectId])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -96,17 +89,12 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
   const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
   const paginatedData = filteredAndSortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
 
-  const getProjectName = (id: string | null) => {
-    if (!id) return '-'
-    return projects.find(p => p.dgt_dbp6bd00projectdataid === id)?.dgt_projectname || id
-  }
-
   const onSubmit = async (formData: DisciplineFormData) => {
     setSaving(true)
     const { error } = await supabase.from('dbp6_0018_discipline').insert({
       discipline_name: formData.discipline_name || null,
       discipline_code: formData.discipline_code ? parseFloat(formData.discipline_code) : null,
-      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid || projectId || null,
+      dgt_dbp6bd00projectdataid: projectId || null,
     } as never)
     if (error) { showError('Failed to create record: ' + error.message) }
     else { showSuccess('Record created successfully'); setIsModalOpen(false); fetchData() }
@@ -124,7 +112,6 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
   const startEdit = (record: Discipline) => {
     setEditingId(record.id)
     setEditValues({
-      dgt_dbp6bd00projectdataid: record.dgt_dbp6bd00projectdataid || '',
       discipline_code: record.discipline_code?.toString() || '',
       discipline_name: record.discipline_name || '',
     })
@@ -133,14 +120,13 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
   const handleSaveEdit = async () => {
     if (editingId === null) return
     const { error } = await supabase.from('dbp6_0018_discipline').update({
-      dgt_dbp6bd00projectdataid: editValues.dgt_dbp6bd00projectdataid || null,
       discipline_code: editValues.discipline_code ? parseFloat(editValues.discipline_code) : null,
       discipline_name: editValues.discipline_name || null,
     } as never).eq('id', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
     else {
       setData(prev => prev.map(item => item.id === editingId
-        ? { ...item, dgt_dbp6bd00projectdataid: editValues.dgt_dbp6bd00projectdataid || null, discipline_code: editValues.discipline_code ? parseFloat(editValues.discipline_code) : null, discipline_name: editValues.discipline_name || null }
+        ? { ...item, discipline_code: editValues.discipline_code ? parseFloat(editValues.discipline_code) : null, discipline_name: editValues.discipline_name || null }
         : item))
       showSuccess('Record updated'); setEditingId(null)
     }
@@ -153,7 +139,7 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by name or code..." />
         </div>
-        <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
+        <button onClick={() => { reset({}); setIsModalOpen(true) }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
           <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create New
@@ -168,7 +154,6 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
             <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide w-40">Project</th>
                   <th className="px-3 py-3 text-left w-28">
                     <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('discipline_code')}>Code<SortIcon field="discipline_code" /></div>
                   </th>
@@ -180,17 +165,11 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={3} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => {
                   const isEditing = editingId === record.id
                   if (isEditing) return (
                     <tr key={record.id} className="bg-amber-50">
-                      <td className="px-3 py-2.5">
-                        <select value={editValues.dgt_dbp6bd00projectdataid} onChange={e => setEditValues(v => ({ ...v, dgt_dbp6bd00projectdataid: e.target.value }))} className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500">
-                          <option value="">-- None --</option>
-                          {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-                        </select>
-                      </td>
                       <td className="px-3 py-2.5"><input type="number" value={editValues.discipline_code} onChange={e => setEditValues(v => ({ ...v, discipline_code: e.target.value }))} className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500" onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} /></td>
                       <td className="px-3 py-2.5"><input type="text" value={editValues.discipline_name} onChange={e => setEditValues(v => ({ ...v, discipline_name: e.target.value }))} className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500" onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} /></td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -203,7 +182,6 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
                   )
                   return (
                   <tr key={record.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2.5 text-sm text-gray-900"><div className="whitespace-nowrap" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>{getProjectName(record.dgt_dbp6bd00projectdataid)}</div></td>
                     <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.discipline_code ?? '-'}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-900">{record.discipline_name || '-'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
@@ -224,13 +202,6 @@ export function DisciplineForm({ projectId }: { projectId: string }) {
 
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Discipline">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Project</label>
-            <select {...register('dgt_dbp6bd00projectdataid')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select Project --</option>
-              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-            </select>
-          </div>
           <FormField label="Discipline Code" type="number" {...register('discipline_code')} error={errors.discipline_code?.message} />
           <FormField label="Discipline Name" type="text" {...register('discipline_name')} error={errors.discipline_name?.message} />
           <div className="flex justify-end gap-3 pt-4">

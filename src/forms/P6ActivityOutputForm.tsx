@@ -155,7 +155,7 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
                     <td className="px-3 py-2.5 text-sm text-gray-900">{record.activity_name || '-'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">{statusBadge(record.status)}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-700 whitespace-nowrap">
-                      {record.duration_pct_complete != null ? `${record.duration_pct_complete}%` : '-'}
+                      {record.duration_pct_complete != null ? `${Math.round(parseFloat(record.duration_pct_complete) * 100)}%` : '-'}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{formatDate(record.actual_start)}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{formatDate(record.actual_finish)}</td>

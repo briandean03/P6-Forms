@@ -613,11 +613,6 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
             <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2 text-left align-top w-36">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Project
-                    </div>
-                  </th>
                   <th className="px-3 py-2 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -731,7 +726,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -740,11 +735,6 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
                     const isEditing = editingId === record.dgt_dbp6bd041engineeringid
                     return (
                       <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">
-                          <div className="whitespace-nowrap font-medium" title={getProjectName(record.dgt_dbp6bd00projectdataid)}>
-                            {getProjectName(record.dgt_dbp6bd00projectdataid)}
-                          </div>
-                        </td>
                         {isEditing ? (
                           <>
                             <td className="px-2 py-1.5"><input type="text" value={editValues.dtfid} onChange={e => setEditValues(p => ({ ...p, dtfid: e.target.value }))} className={inputCls} /></td>

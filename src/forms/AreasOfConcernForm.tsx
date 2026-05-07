@@ -13,19 +13,17 @@ import { CsvControls } from '@/components/CsvControls'
 import { exportToCsv } from '@/utils/csv'
 
 interface AocFormData {
-  project_id: string
   description: string
   status: string
 }
 
 const ITEMS_PER_PAGE = 15
 
-type SortField = 'aoc_number' | 'description' | 'project_id' | 'created_at' | 'status'
+type SortField = 'aoc_number' | 'description' | 'created_at' | 'status'
 type SortDirection = 'asc' | 'desc'
         
 export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const [data, setData] = useState<AreaOfConcern[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -38,7 +36,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ project_id: '', description: '' })
+  const [editValues, setEditValues] = useState({ description: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -47,7 +45,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
     register,
     handleSubmit,
     reset,
-    setValue,
     formState: { errors, isDirty },
   } = useForm<AocFormData>()
 
@@ -57,19 +54,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
     } else {
       setIsModalOpen(false)
     }
-  }
-
-  const fetchProjects = async () => {
-    const { data: projectRecords } = await supabase
-      .from('dbp6_0000_projectdata')
-      .select('dgt_dbp6bd00projectdataid, dgt_projectname, dgt_projectid')
-      .order('dgt_projectname', { ascending: true })
-    setProjects(projectRecords || [])
-  }
-
-  const getTextProjectId = (uuid: string | null) => {
-    if (!uuid) return null
-    return projects.find(p => p.dgt_dbp6bd00projectdataid === uuid)?.dgt_projectid ?? null
   }
 
   const fetchData = async () => {
@@ -90,7 +74,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     fetchData()
-    fetchProjects()
   }, [projectId])
 
   const filteredAndSortedData = useMemo(() => {
@@ -101,8 +84,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
       result = result.filter(
         (item) =>
           item.aoc_number?.toLowerCase().includes(term) ||
-          item.description?.toLowerCase().includes(term) ||
-          item.project_id?.toLowerCase().includes(term)
+          item.description?.toLowerCase().includes(term)
       )
     }
 
@@ -166,8 +148,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   }, [searchTerm])
 
   const openCreateModal = () => {
-    reset({ project_id: '', description: '' })
-    setValue('project_id', projectId)
+    reset({ description: '' })
     setIsModalOpen(true)
   }
 
@@ -178,7 +159,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
       const normalized = formData.description.trim().toLowerCase()
       const duplicate = data.find(
         (item) =>
-          item.project_id === formData.project_id &&
+          item.project_id === projectId &&
           item.description?.trim().toLowerCase() === normalized &&
           item.status === 'open'
       )
@@ -193,8 +174,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
     setSaving(true)
 
     const { error } = await supabase.from('dbp6_areas_of_concern').insert({
-      project_id: formData.project_id || null,
-      dgt_projectid: getTextProjectId(formData.project_id),
+      project_id: projectId || null,
       description: formData.description.trim(),
       status: selectedStatus,
     } as never)
@@ -247,7 +227,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const startEdit = (record: AreaOfConcern) => {
     setEditingId(record.id)
     setEditValues({
-      project_id: record.project_id || '',
       description: record.description || '',
     })
   }
@@ -257,8 +236,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
     const { error } = await supabase
       .from('dbp6_areas_of_concern')
       .update({
-        project_id: editValues.project_id || null,
-        dgt_projectid: getTextProjectId(editValues.project_id),
         description: editValues.description.trim(),
       } as never)
       .eq('id', editingId)
@@ -269,7 +246,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
       setData((prev) =>
         prev.map((item) =>
           item.id === editingId
-            ? { ...item, project_id: editValues.project_id || null, dgt_projectid: getTextProjectId(editValues.project_id), description: editValues.description.trim() }
+            ? { ...item, description: editValues.description.trim() }
             : item
         )
       )
@@ -303,12 +280,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleDateString()
-  }
-
-  const getProjectName = (projectId: string | null) => {
-    if (!projectId) return '-'
-    const project = projects.find((p) => p.dgt_dbp6bd00projectdataid === projectId)
-    return project?.dgt_projectname || projectId
   }
 
   const openCount = data.filter((d) => d.status === 'open').length
@@ -392,15 +363,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
                       <SortIcon field="aoc_number" />
                     </div>
                   </th>
-                  <th className="px-3 py-3 text-left w-40">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('project_id')}
-                    >
-                      Project
-                      <SortIcon field="project_id" />
-                    </div>
-                  </th>
                   <th className="px-3 py-3 text-left">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -438,7 +400,7 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                       No areas of concern
                     </td>
                   </tr>
@@ -453,20 +415,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
                         <tr key={record.id} className="bg-amber-50">
                           <td className="px-3 py-2.5 whitespace-nowrap text-sm font-mono font-medium text-gray-900">
                             {record.aoc_number}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <select
-                              value={editValues.project_id}
-                              onChange={(e) => setEditValues((v) => ({ ...v, project_id: e.target.value }))}
-                              className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                            >
-                              <option value="">-- None --</option>
-                              {projects.map((p) => (
-                                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
-                                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
-                                </option>
-                              ))}
-                            </select>
                           </td>
                           <td className="px-3 py-2.5">
                             <textarea
@@ -516,11 +464,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
                       <tr key={record.id} className={`hover:bg-gray-50 ${!isOpen ? 'opacity-70' : ''}`}>
                         <td className="px-3 py-2.5 whitespace-nowrap text-sm font-mono font-medium text-gray-900">
                           {record.aoc_number}
-                        </td>
-                        <td className="px-3 py-2.5 text-sm text-gray-900">
-                          <div className="whitespace-nowrap" title={getProjectName(record.project_id)}>
-                            {getProjectName(record.project_id)}
-                          </div>
                         </td>
                         <td className="px-3 py-2.5 text-sm text-gray-900 max-w-md break-words">
                           {record.description || '-'}
@@ -601,26 +544,6 @@ export function AreasOfConcernForm({ projectId }: { projectId: string }) {
         title="Add Area of Concern"
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">
-              Project <span className="text-red-500">*</span>
-            </label>
-            <select
-              {...register('project_id', { required: 'Project is required' })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
-                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
-                </option>
-              ))}
-            </select>
-            {errors.project_id && (
-              <p className="text-xs text-red-500">{errors.project_id.message}</p>
-            )}
-          </div>
-
           <div className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">
               Description <span className="text-red-500">*</span>
