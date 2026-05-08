@@ -27,10 +27,15 @@ const statusBadge = (status: string | null) => {
   return <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}>{status}</span>
 }
 
+const selectCls = 'h-8 px-2 text-xs border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400'
+
 export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string }) {
   const [data, setData] = useState<P6ActivityOutput[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [wbsFilter, setWbsFilter] = useState('')
+  const [activityTypeFilter, setActivityTypeFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -59,7 +64,19 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
   }
 
   useEffect(() => { fetchData() }, [projectTextId])
-  useEffect(() => { setCurrentPage(1) }, [searchTerm])
+  useEffect(() => { setCurrentPage(1) }, [searchTerm, statusFilter, wbsFilter, activityTypeFilter])
+
+  const statusOptions = useMemo(() =>
+    [...new Set(data.map(r => r.status).filter(Boolean))].sort() as string[]
+  , [data])
+
+  const wbsOptions = useMemo(() =>
+    [...new Set(data.map(r => r.wbs_code).filter(Boolean))].sort() as string[]
+  , [data])
+
+  const activityTypeOptions = useMemo(() =>
+    [...new Set(data.map(r => r.activity_type).filter(Boolean))].sort() as string[]
+  , [data])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -72,6 +89,9 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
         item.wbs_code?.toLowerCase().includes(term)
       )
     }
+    if (statusFilter) result = result.filter(item => item.status === statusFilter)
+    if (wbsFilter) result = result.filter(item => item.wbs_code === wbsFilter)
+    if (activityTypeFilter) result = result.filter(item => item.activity_type === activityTypeFilter)
     if (sortField) {
       result = [...result].sort((a, b) => {
         const aVal = a[sortField]; const bVal = b[sortField]
@@ -83,7 +103,7 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
       })
     }
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm, statusFilter, wbsFilter, activityTypeFilter, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) { setSortDirection(d => d === 'asc' ? 'desc' : 'asc') }
@@ -109,6 +129,14 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
     { key: 'total_float', label: 'Total Float' },
   ]
 
+  const hasActiveFilters = statusFilter || wbsFilter || activityTypeFilter
+
+  const clearFilters = () => {
+    setStatusFilter('')
+    setWbsFilter('')
+    setActivityTypeFilter('')
+  }
+
   const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
   const paginatedData = filteredAndSortedData.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -119,8 +147,31 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
     <div className="space-y-4">
       {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
 
-      <div className="w-full sm:w-72">
-        <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Activity ID, Name, Status, WBS..." />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-full sm:w-72">
+          <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Activity ID, Name, Status, WBS..." />
+        </div>
+
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className={selectCls}>
+          <option value="">All Statuses</option>
+          {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <select value={wbsFilter} onChange={e => setWbsFilter(e.target.value)} className={selectCls}>
+          <option value="">All WBS</option>
+          {wbsOptions.map(w => <option key={w} value={w}>{w}</option>)}
+        </select>
+
+        <select value={activityTypeFilter} onChange={e => setActivityTypeFilter(e.target.value)} className={selectCls}>
+          <option value="">All Activity Types</option>
+          {activityTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        {hasActiveFilters && (
+          <button onClick={clearFilters} className="h-8 px-3 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+            Clear filters
+          </button>
+        )}
       </div>
 
       {loading ? <LoadingSpinner /> : (

@@ -320,4 +320,5 @@ export interface ProjectData {
   dgt_weeknum: number | null
   owningbusinessunit: string | null
   project_id: string | null
+  current_p6_project_code: string | null
 }

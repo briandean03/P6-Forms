@@ -66,6 +66,7 @@ const NON_EDITABLE_FIELDS = new Set(['dgt_weeknum'])
 const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
   { field: 'dgt_projectid' },
   { field: 'project_id' },
+  { field: 'current_p6_project_code' },
   { field: 'dgt_employersname' },
   { field: 'dgt_contractorsname' },
   { field: 'dgt_consultantsname' },
