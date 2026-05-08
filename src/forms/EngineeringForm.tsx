@@ -344,6 +344,11 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
     return type?.type_name || `Code: ${typeCode}`
   }
 
+  const getDisciplineName = (code: number | null) => {
+    if (code == null) return '-'
+    return disciplines.find(d => d.discipline_code === code)?.discipline_name || `Code: ${code}`
+  }
+
   const startEdit = (record: Engineering) => {
     setEditingId(record.dgt_dbp6bd041engineeringid)
     setEditValues({
@@ -649,7 +654,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
                       <SortIcon field="dgt_discipline" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" />
+                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(Number(v))} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-24">
@@ -775,7 +780,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
                             <td className="px-3 py-2.5 text-sm text-gray-900">
                               <div className="whitespace-nowrap" title={record.dgt_transmittalsubject || '-'}>{record.dgt_transmittalsubject || '-'}</div>
                             </td>
-                            <td className="px-3 py-2.5 text-sm text-gray-900">{record.dgt_discipline || '-'}</td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900">{getDisciplineName(record.dgt_discipline)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900">{getTypeName(record.dgt_transmittaltype)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualsubmissiondate)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualreturndate)}</td>

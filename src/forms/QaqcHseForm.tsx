@@ -232,6 +232,16 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
     )
   }
 
+  const getDisciplineName = (code: number | null) => {
+    if (code == null) return '-'
+    return disciplines.find(d => d.discipline_code === code)?.discipline_name || `Code: ${code}`
+  }
+
+  const getDocTypeName = (code: string | null) => {
+    if (!code) return '-'
+    return types.find(t => t.type_code?.toString() === code)?.type_name || code
+  }
+
   const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
   const paginatedData = filteredAndSortedData.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -567,7 +577,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
                       <SortIcon field="dgt_discipline" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" />
+                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(Number(v))} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -579,7 +589,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
                       <SortIcon field="dgt_documenttype" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" />
+                      <ColumnFilter data={data} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" formatValue={(v) => getDocTypeName(v)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -643,10 +653,10 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
                         {record.dgt_documentsubject || '-'}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
-                        {record.dgt_discipline || '-'}
+                        {getDisciplineName(record.dgt_discipline)}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
-                        {record.dgt_documenttype || '-'}
+                        {getDocTypeName(record.dgt_documenttype)}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(record.dgt_submissiondate)}
