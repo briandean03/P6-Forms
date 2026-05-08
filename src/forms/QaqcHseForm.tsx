@@ -589,7 +589,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
                       <SortIcon field="dgt_documenttype" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" formatValue={(v) => getDocTypeName(v)} />
+                      <ColumnFilter data={data} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" formatValue={(v) => getDocTypeName(v as string | null)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
