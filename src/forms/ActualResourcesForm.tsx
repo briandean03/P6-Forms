@@ -229,6 +229,15 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
     )
   }
 
+  const getDisciplineName = (code: number | null) => {
+    if (code == null) return '-'
+    return disciplines.find(d => d.discipline_code === code)?.discipline_name || `Code: ${code}`
+  }
+  const getTypeName = (code: number | null) => {
+    if (code == null) return '-'
+    return types.find(t => t.type_code === code)?.type_name || `Code: ${code}`
+  }
+
   const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
   const paginatedData = filteredAndSortedData.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -564,7 +573,7 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                       <SortIcon field="dgt_resourcediscipline" />
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_resourcediscipline" value={filters.dgt_resourcediscipline} onChange={(v) => updateFilter('dgt_resourcediscipline', v)} label="Discipline" />
+                      <ColumnFilter data={data} field="dgt_resourcediscipline" value={filters.dgt_resourcediscipline} onChange={(v) => updateFilter('dgt_resourcediscipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(Number(v))} />
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-20">
@@ -576,7 +585,7 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                       <SortIcon field="dgt_resourcetype" />
                     </div>
                     <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_resourcetype" value={filters.dgt_resourcetype} onChange={(v) => updateFilter('dgt_resourcetype', v)} label="Type" />
+                      <ColumnFilter data={data} field="dgt_resourcetype" value={filters.dgt_resourcetype} onChange={(v) => updateFilter('dgt_resourcetype', v)} label="Type" formatValue={(v) => getTypeName(Number(v))} />
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-20">
@@ -658,7 +667,7 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                           {isEditing ? (
                             <input type="number" value={editValues.dgt_resourcediscipline} onChange={e => setEditValues(p => ({ ...p, dgt_resourcediscipline: e.target.value }))} className={inputCls} />
                           ) : (
-                            record.dgt_resourcediscipline ?? '-'
+                            getDisciplineName(record.dgt_resourcediscipline)
                           )}
                         </td>
                         {/* Type */}
@@ -671,7 +680,7 @@ export function ActualResourcesForm({ projectId }: { projectId: string }) {
                               ))}
                             </select>
                           ) : (
-                            record.dgt_resourcetype ?? '-'
+                            getTypeName(record.dgt_resourcetype)
                           )}
                         </td>
                         {/* Count */}
