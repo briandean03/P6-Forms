@@ -447,7 +447,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const inserts = rows
-      .filter(r => r.dgt_dtfid)
+      .filter(r => r.dgt_transmittalref)
       .map(({ dgt_dtfid, dgt_transmittalref, dgt_transmittalsubject, dgt_discipline, dgt_transmittaltype, dgt_actualsubmissiondate, dgt_actualreturndate, dgt_revision, dgt_status, is_long_lead, importsequencenumber }) => ({
         dgt_dbp6bd00projectdataid: projectId,
         dgt_dtfid,
