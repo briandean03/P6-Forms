@@ -160,8 +160,20 @@ export function ProjectDataForm({ projectId }: { projectId: string }) {
     return 'text'
   }
 
+  // dgt_datadate helpers — stores previous day at 23:00 UTC so P6 reads 07:00 GST
+  const encodeDataDate = (dateStr: string): string => {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    return new Date(Date.UTC(year, month - 1, day - 1, 23, 0, 0)).toISOString()
+  }
+  const decodeDataDate = (stored: string): string => {
+    const d = new Date(stored)
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1))
+      .toISOString().slice(0, 10)
+  }
+
   const formatCellValue = (field: string, value: string | number | null | undefined) => {
     if (value === null || value === undefined) return '-'
+    if (field === 'dgt_datadate') return new Date(decodeDataDate(value as string)).toLocaleDateString()
     if (DATE_FIELDS.has(field)) return new Date(value as string).toLocaleDateString()
     return String(value)
   }
@@ -178,6 +190,8 @@ export function ProjectDataForm({ projectId }: { projectId: string }) {
       const val = formData[key]
       if (!val) {
         insertData[key] = null
+      } else if (key === 'dgt_datadate') {
+        insertData[key] = encodeDataDate(val)
       } else if (NUMBER_FIELDS.has(key)) {
         insertData[key] = parseInt(val) || null
       } else {
@@ -207,7 +221,9 @@ export function ProjectDataForm({ projectId }: { projectId: string }) {
     currentValue: string | number | null | undefined
   ) => {
     setEditingCell({ recordId, field })
-    if (DATE_FIELDS.has(field)) {
+    if (field === 'dgt_datadate') {
+      setCellValue(currentValue ? decodeDataDate(currentValue as string) : '')
+    } else if (DATE_FIELDS.has(field)) {
       setCellValue(
         currentValue ? new Date(currentValue as string).toISOString().slice(0, 10) : ''
       )
@@ -218,7 +234,9 @@ export function ProjectDataForm({ projectId }: { projectId: string }) {
 
   const saveInlineEdit = async (recordId: string, field: EditableField) => {
     let updateValue: string | number | null = cellValue || null
-    if (NUMBER_FIELDS.has(field) && cellValue) {
+    if (field === 'dgt_datadate' && cellValue) {
+      updateValue = encodeDataDate(cellValue)
+    } else if (NUMBER_FIELDS.has(field) && cellValue) {
       updateValue = parseInt(cellValue) || null
     }
 
