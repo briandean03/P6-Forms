@@ -383,7 +383,7 @@ export function QaqcHseForm({ projectId }: { projectId: string }) {
         dgt_status: dgt_status || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse_storage').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_storage').upsert(inserts as never[], { onConflict: 'dgt_docref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }

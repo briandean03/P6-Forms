@@ -221,7 +221,7 @@ export function PaymentsForm({ projectId }: { projectId: string }) {
         statuscode: Number(statuscode) || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_0009_payments').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_0009_payments').upsert(inserts as never[], { onConflict: 'dgt_iparef' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }

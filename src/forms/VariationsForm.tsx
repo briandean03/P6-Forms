@@ -206,7 +206,7 @@ export function VariationsForm({ projectTextId }: { projectTextId: string }) {
         dgt_voreceiveddate: dgt_voreceiveddate || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_0010_variations').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_0010_variations').upsert(inserts as never[], { onConflict: 'dgt_voref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }

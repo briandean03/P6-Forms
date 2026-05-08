@@ -463,7 +463,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
         importsequencenumber: importsequencenumber || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000401_engineering_storage').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_000401_engineering_storage').upsert(inserts as never[], { onConflict: 'dgt_transmittalref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
