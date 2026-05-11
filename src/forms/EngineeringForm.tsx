@@ -120,17 +120,22 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase
-      .from('dbp6_000401_engineering_storage')
-      .select('*')
-      .eq('dgt_dbp6bd00projectdataid', projectId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      showError('Failed to fetch data: ' + error.message)
-    } else {
-      setData(records || [])
+    const pageSize = 1000
+    let page = 0
+    const all: typeof data = []
+    while (true) {
+      const { data: records, error } = await supabase
+        .from('dbp6_000401_engineering_storage')
+        .select('*')
+        .eq('dgt_dbp6bd00projectdataid', projectId)
+        .order('created_at', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      if (error) { showError('Failed to fetch data: ' + error.message); break }
+      all.push(...(records || []))
+      if (!records || records.length < pageSize) break
+      page++
     }
+    setData(all)
     setLoading(false)
   }
 
