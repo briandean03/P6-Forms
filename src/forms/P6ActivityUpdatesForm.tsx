@@ -496,12 +496,20 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
         }
         toInsert.push(row)
       }
+      // Deduplicate by project_code+task_code — keep last occurrence to avoid
+      // "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+      const deduped = Object.values(
+        (toInsert as { project_code: string; task_code: string }[]).reduce<Record<string, object>>(
+          (acc, row) => { acc[`${row.project_code}|${row.task_code}`] = row; return acc },
+          {}
+        )
+      )
       const { error } = await supabase
         .from('p6_activity_updates')
-        .upsert(toInsert as never[], { onConflict: 'project_code,task_code' })
+        .upsert(deduped as never[], { onConflict: 'project_code,task_code' })
       if (error) { showError(error.message) }
       else {
-        showSuccess(`Imported ${toInsert.length} records`)
+        showSuccess(`Imported ${deduped.length} records`)
         fetchData()
       }
     } catch (err) {
