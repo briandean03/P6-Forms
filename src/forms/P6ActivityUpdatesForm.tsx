@@ -475,12 +475,10 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
       if (lines.length < 2) { showError('CSV has no data rows'); setImportLoading(false); return }
       const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase())
       const toInsert: object[] = []
-      const toUpdate: object[] = []
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i])
         const obj: Record<string, string> = {}
         headers.forEach((h, idx) => { obj[h] = cols[idx]?.trim() ?? '' })
-        const idVal = obj['id']
         const row = {
           project_code: obj['project_code'] || '',
           task_code: obj['task_code'] || '',
@@ -496,24 +494,14 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
           delete_record_flag: obj['delete_record_flag'] !== '' && obj['delete_record_flag'] != null ? parseInt(obj['delete_record_flag']) : 0,
           update_type: obj['update_type'] || 'progress',
         }
-        if (idVal && !isNaN(parseInt(idVal))) {
-          toUpdate.push({ id: parseInt(idVal), ...row })
-        } else {
-          toInsert.push(row)
-        }
+        toInsert.push(row)
       }
-      let errMsg = ''
-      if (toUpdate.length) {
-        const { error } = await supabase.from('p6_activity_updates').upsert(toUpdate as never[], { onConflict: 'id' })
-        if (error) errMsg += `Update error: ${error.message}. `
-      }
-      if (toInsert.length) {
-        const { error } = await supabase.from('p6_activity_updates').insert(toInsert as never[])
-        if (error) errMsg += `Insert error: ${error.message}.`
-      }
-      if (errMsg) { showError(errMsg) }
+      const { error } = await supabase
+        .from('p6_activity_updates')
+        .upsert(toInsert as never[], { onConflict: 'project_code,task_code' })
+      if (error) { showError(error.message) }
       else {
-        showSuccess(`Imported ${toUpdate.length} updated + ${toInsert.length} new records`)
+        showSuccess(`Imported ${toInsert.length} records`)
         fetchData()
       }
     } catch (err) {
