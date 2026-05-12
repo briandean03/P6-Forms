@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '../lib/supabase'
+import { schemaClient } from '../lib/supabase'
 import { ProjectData } from '../types/database'
 import { useNotification } from '../hooks/useNotification'
 import { Notification } from '../components/Notification'
@@ -88,7 +88,8 @@ const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
 const formatHeader = (field: string) =>
   field.startsWith('dgt_') ? field.slice(4) : field
 
-export function ProjectDataForm({ projectId }: { projectId: string }) {
+export function ProjectDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<ProjectData[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { supabase, schemaClient } from '@/lib/supabase'
 import type { P6ActivityUpdate, ProjectData } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -149,7 +149,7 @@ function parseCSVLine(line: string): string[] {
 
 const CSV_HEADERS = ['id', 'project_code', 'task_code', 'task_name', 'status_code', 'wbs_id', 'complete_pct', 'act_start_date', 'act_end_date', 'remain_drtn_hr_cnt', 'data_date', 'mrk_uptd', 'delete_record_flag', 'update_type'] as const
 
-export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string }) {
+export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTextId: string; schemaName: string }) {
   const [data, setData] = useState<P6ActivityUpdate[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -207,7 +207,7 @@ export function P6ActivityUpdatesForm({ projectTextId }: { projectTextId: string
 
   const fetchProjectHeader = async () => {
     if (!projectTextId) { setProjectHeader(null); return }
-    const { data: row } = await supabase
+    const { data: row } = await schemaClient(schemaName)
       .from('dbp6_0000_projectdata')
       .select('dgt_projectid, dgt_projectname, dgt_datadate')
       .eq('dgt_projectid', projectTextId)

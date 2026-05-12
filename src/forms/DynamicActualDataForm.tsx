@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { DynamicActualData } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -34,7 +34,8 @@ type EditingCell = {
 type SortField = 'dgt_activityid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_complete'
 type SortDirection = 'asc' | 'desc'
 
-export function DynamicActualDataForm({ projectId }: { projectId: string }) {
+export function DynamicActualDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<DynamicActualData[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
   const [loading, setLoading] = useState(true)

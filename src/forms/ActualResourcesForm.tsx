@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { ActualResources, Discipline, Type } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -51,7 +51,8 @@ type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-1 py-0.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500'
 
-export function ActualResourcesForm({ projectId }: { projectId: string }) {
+export function ActualResourcesForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<ActualResources[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { Engineering, Type, Discipline } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -40,7 +40,8 @@ type SortDirection = 'asc' | 'desc'
 
 
 
-export function EngineeringForm({ projectId }: { projectId: string }) {
+export function EngineeringForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<Engineering[]>([])
   const [types, setTypes] = useState<Type[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
@@ -451,7 +452,7 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
 
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
-    const inserts = rows
+    const mapped = rows
       .filter(r => r.dgt_transmittalref)
       .map(({ dgt_dtfid, dgt_transmittalref, dgt_transmittalsubject, dgt_discipline, dgt_transmittaltype, dgt_actualsubmissiondate, dgt_actualreturndate, dgt_revision, dgt_status, is_long_lead, importsequencenumber }) => ({
         dgt_dbp6bd00projectdataid: projectId,
@@ -467,10 +468,38 @@ export function EngineeringForm({ projectId }: { projectId: string }) {
         is_long_lead: is_long_lead === 'true',
         importsequencenumber: importsequencenumber || null,
       }))
-    if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000401_engineering_storage').upsert(inserts as never[], { onConflict: 'dgt_transmittalref' })
-    if (error) { showError('Import failed: ' + error.message) }
-    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+    if (mapped.length === 0) { showError('No valid rows to import'); return }
+
+    // Fetch existing ref+revision pairs for this project
+    const { data: existing, error: fetchErr } = await supabase
+      .from('dbp6_000401_engineering_storage')
+      .select('dgt_transmittalref, dgt_revision')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
+    if (fetchErr) { showError('Import failed: ' + fetchErr.message); return }
+
+    const existingSet = new Set(
+      (existing as { dgt_transmittalref: string | null; dgt_revision: number | null }[] || [])
+        .map(r => `${r.dgt_transmittalref}|${r.dgt_revision}`)
+    )
+
+    const toUpsert = mapped.filter(r => existingSet.has(`${r.dgt_transmittalref}|${r.dgt_revision}`))
+    const toInsert = mapped.filter(r => !existingSet.has(`${r.dgt_transmittalref}|${r.dgt_revision}`))
+
+    let errMsg = ''
+    if (toUpsert.length) {
+      const { error } = await supabase
+        .from('dbp6_000401_engineering_storage')
+        .upsert(toUpsert as never[], { onConflict: 'dgt_transmittalref,dgt_revision' })
+      if (error) errMsg += `Update error: ${error.message}. `
+    }
+    if (toInsert.length) {
+      const { error } = await supabase
+        .from('dbp6_000401_engineering_storage')
+        .insert(toInsert as never[])
+      if (error) errMsg += `Insert error: ${error.message}.`
+    }
+    if (errMsg) { showError(errMsg) }
+    else { showSuccess(`${toUpsert.length} updated, ${toInsert.length} inserted`); fetchData() }
   }
 
   return (

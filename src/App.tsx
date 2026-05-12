@@ -202,6 +202,7 @@ function App() {
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+  const [selectedSchemaName, setSelectedSchemaName] = useState<string>('public')
 
   const fetchProjectInfo = async () => {
     const { data } = await supabase
@@ -226,8 +227,19 @@ function App() {
     fetchProjectInfo()
   }, [])
 
-  const handleSelectProject = (projectId: string) => {
+  const handleSelectProject = async (projectId: string) => {
     setSelectedProjectId(projectId)
+    const project = projectInfo.find(p => p.id === projectId)
+    let schemaName = 'public'
+    if (project?.textProjectId) {
+      const { data } = await supabase
+        .from('p6_project_mapping')
+        .select('schema_name')
+        .eq('dgt_projectid', project.textProjectId)
+        .maybeSingle()
+      schemaName = (data as { schema_name?: string } | null)?.schema_name || 'public'
+    }
+    setSelectedSchemaName(schemaName)
     setActiveTab('engineering')
     setView('app')
   }
@@ -243,27 +255,27 @@ function App() {
     const projectTextId = selectedProject?.textProjectId || ''
     switch (activeTab) {
       case 'engineering':
-        return <EngineeringForm projectId={selectedProjectId} />
+        return <EngineeringForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'qaqc':
-        return <QaqcHseForm projectId={selectedProjectId} />
+        return <QaqcHseForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'resources':
-        return <ActualResourcesForm projectId={selectedProjectId} />
+        return <ActualResourcesForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'dynamic':
-        return <DynamicActualDataForm projectId={selectedProjectId} />
+        return <DynamicActualDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'projectdata':
-        return <ProjectDataForm projectId={selectedProjectId} />
+        return <ProjectDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'aoc':
-        return <AreasOfConcernForm projectId={selectedProjectId} />
+        return <AreasOfConcernForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'variations':
-        return <VariationsForm projectTextId={projectTextId} />
+        return <VariationsForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'payments':
-        return <PaymentsForm projectId={selectedProjectId} />
+        return <PaymentsForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'referencedata':
-        return <ReferenceDataForm projectId={selectedProjectId} />
+        return <ReferenceDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'p6activityoutput':
         return <P6ActivityOutputForm projectTextId={projectTextId} />
       case 'p6activityupdates':
-        return <P6ActivityUpdatesForm projectTextId={projectTextId} />
+        return <P6ActivityUpdatesForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'p6projectmapping':
         return <P6ProjectMappingForm />
       case 'p6runtrigger':

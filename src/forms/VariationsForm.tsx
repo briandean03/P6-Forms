@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { Variations } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -36,7 +36,8 @@ type EditValues = {
   receivedamt: string; receiveddate: string; datesubmitted: string; dateapproved: string; statuscode: string
 }
 
-export function VariationsForm({ projectTextId }: { projectTextId: string }) {
+export function VariationsForm({ projectTextId, schemaName }: { projectTextId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<Variations[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { QaqcHse, Discipline, Type } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -39,7 +39,8 @@ type EditingCell = {
 type SortField = 'dgt_docid' | 'dgt_docref' | 'dgt_documentsubject' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_status'
 type SortDirection = 'asc' | 'desc'
 
-export function QaqcHseForm({ projectId }: { projectId: string }) {
+export function QaqcHseForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<QaqcHse[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)

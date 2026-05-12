@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -58,10 +58,12 @@ type Row = Record<string, string | number | null>
 
 interface ReferenceCardProps {
   config: RefTableConfig
+  schemaName: string
   onNotify: (type: 'success' | 'error', message: string) => void
 }
 
-function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
+function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
+  const supabase = schemaClient(schemaName)
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -433,7 +435,7 @@ function ReferenceCard({ config, onNotify }: ReferenceCardProps) {
   )
 }
 
-export function ReferenceDataForm({ projectId }: { projectId: string }) {
+export function ReferenceDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const handleNotify = (type: 'success' | 'error', message: string) => {
@@ -448,11 +450,11 @@ export function ReferenceDataForm({ projectId }: { projectId: string }) {
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {REF_TABLES.map(config => (
-          <ReferenceCard key={config.table} config={config} onNotify={handleNotify} />
+          <ReferenceCard key={config.table} config={config} schemaName={schemaName} onNotify={handleNotify} />
         ))}
       </div>
-      <TradesForm projectId={projectId} />
-      <SubtradesForm projectId={projectId} />
+      <TradesForm projectId={projectId} schemaName={schemaName} />
+      <SubtradesForm projectId={projectId} schemaName={schemaName} />
     </div>
   )
 }

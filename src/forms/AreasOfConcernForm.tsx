@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { AreaOfConcern } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -22,7 +22,8 @@ const ITEMS_PER_PAGE = 15
 type SortField = 'aoc_number' | 'description' | 'created_at' | 'status'
 type SortDirection = 'asc' | 'desc'
         
-export function AreasOfConcernForm({ projectId }: { projectId: string }) {
+export function AreasOfConcernForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<AreaOfConcern[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
