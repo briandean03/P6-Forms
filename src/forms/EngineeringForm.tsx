@@ -46,6 +46,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const [types, setTypes] = useState<Type[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
+  const [webhookStatus, setWebhookStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -450,6 +451,16 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   exportToCsv('engineering-transmittals', headers, rows)
 }
 
+  const triggerWebhook51 = async () => {
+    setWebhookStatus('loading')
+    try {
+      await fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec', { method: 'GET' })
+      setWebhookStatus('success')
+    } catch {
+      setWebhookStatus('error')
+    }
+  }
+
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const mapped = rows
@@ -571,6 +582,24 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
           </button>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={triggerWebhook51}
+            disabled={webhookStatus === 'loading'}
+            className={`inline-flex items-center px-4 py-2 border text-sm font-medium rounded-md shadow-sm transition-colors disabled:cursor-not-allowed ${
+              webhookStatus === 'success' ? 'bg-green-100 text-green-700 border-green-300' :
+              webhookStatus === 'error'   ? 'bg-red-100 text-red-700 border-red-300' :
+              webhookStatus === 'loading' ? 'bg-gray-100 text-gray-400 border-gray-200' :
+              'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {webhookStatus === 'loading' && (
+              <svg className="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            )}
+            {webhookStatus === 'success' ? 'Posted!' : webhookStatus === 'error' ? 'Failed' : 'Post Update'}
+          </button>
           <CsvControls onExport={handleExport} onImport={handleImport} />
           <button
             onClick={openCreateModal}
