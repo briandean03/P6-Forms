@@ -1,17 +1,17 @@
 export interface Database {
   public: {
     Tables: {
-      dbp6_000401_engineering_storage: {
+      dbp6_000401_engineering: {
         Row: Engineering
         Insert: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
         Update: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
       }
-      dbp6_000402_qaqc_hse_storage: {
+      dbp6_000402_qaqc_hse: {
         Row: QaqcHse
         Insert: Omit<QaqcHse, 'dgt_dbp6bd0402qaqchseid' | 'created_at'>
         Update: Partial<QaqcHse>
       }
-      dbp6_000501_actualresources_storage: {
+      dbp6_000501_actualresources: {
         Row: ActualResources
         Insert: Omit<ActualResources, 'dgt_dbp6ud0501actualresourcesid' | 'created_at'>
         Update: Partial<ActualResources>
@@ -34,7 +34,7 @@ export interface Engineering {
   dgt_dbp6bd041engineeringid: string
   dgt_actualreturndate: string | null
   dgt_actualsubmissiondate: string | null
-  dgt_discipline: number | null
+  dgt_discipline: string | null
   dgt_dtfid: string | null
   importsequencenumber: string | null
   dgt_plannedapprovaldate: string | null
@@ -43,12 +43,11 @@ export interface Engineering {
   dgt_status: string | null
   dgt_transmittalref: string | null
   dgt_transmittalsubject: string | null
-  dgt_transmittaltype: number | null
+  dgt_transmittaltype: string | null
   utcconversiontimezonecode: string | null
-  versionnumber: number | null
+  mod_id: number | null
   owningbusinessunit: string | null
   created_at: string | null
-  week_num: number | null
   is_long_lead: boolean | null
   dgt_dbp6bd00projectdataid: string | null
   dgt_projectid: string | null
@@ -57,7 +56,7 @@ export interface Engineering {
 export interface QaqcHse {
   dgt_dbp6bd0402qaqchseid: string
   dgt_dbp6bd00projectdataid: string | null
-  dgt_discipline: number | null
+  dgt_discipline: string | null
   dgt_docid: string | null
   dgt_docref: string | null
   dgt_documentsubject: string | null
@@ -67,7 +66,7 @@ export interface QaqcHse {
   dgt_responsedate: string | null
   dgt_revision: number | null
   dgt_status: string | null
-  versionnumber: number | null
+  mod_id: number | null
   owningbusinessunit: string | null
   created_at: string | null
   week_num: number | null
@@ -83,12 +82,11 @@ export interface ActualResources {
   dgt_resourcediscipline: number | null
   dgt_resourcetype: number | null
   dgt_sequential: number | null
-  versionnumber: number | null
+  mod_id: number | null
   owningbusinessunit: string | null
   created_at: string | null
-  week_num: number | null
   dgt_projectid: string | null
-  Date: string | null
+  date: string | null
   resource_code: string | null
 }
 

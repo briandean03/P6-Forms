@@ -22,10 +22,8 @@ interface ActualResourcesFormData {
   dgt_resourcetype: string
   dgt_sequential: string
   resource_code: string
-  Date: string
-  week_num: string
+  date: string
   dgt_projectid: string
-  versionnumber: string
   owningbusinessunit: string
 }
 
@@ -37,10 +35,8 @@ interface EditValues {
   dgt_resourcecount: string
   dgt_sequential: string
   resource_code: string
-  Date: string
-  week_num: string
+  date: string
   dgt_projectid: string
-  versionnumber: string
   owningbusinessunit: string
 }
 
@@ -68,10 +64,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     dgt_resourcecount: '',
     dgt_sequential: '',
     resource_code: '',
-    Date: '',
-    week_num: '',
+    date: '',
     dgt_projectid: '',
-    versionnumber: '',
     owningbusinessunit: '',
   })
   const [savingRow, setSavingRow] = useState(false)
@@ -118,7 +112,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000501_actualresources_storage')
+      .from('dbp6_000501_actualresources')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
@@ -257,10 +251,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcetype: '',
       dgt_sequential: '',
       resource_code: '',
-      Date: '',
-      week_num: '',
+      date: '',
       dgt_projectid: '',
-      versionnumber: '',
       owningbusinessunit: '',
     })
     setValue('dgt_dbp6bd00projectdataid', projectId)
@@ -273,27 +265,17 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     const insertData = {
       dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
       resource_name: formData.resource_name || null,
-      dgt_resourcecount: formData.dgt_resourcecount
-        ? parseInt(formData.dgt_resourcecount)
-        : null,
-      dgt_resourcediscipline: formData.dgt_resourcediscipline
-        ? parseInt(formData.dgt_resourcediscipline)
-        : null,
-      dgt_resourcetype: formData.dgt_resourcetype
-        ? parseInt(formData.dgt_resourcetype)
-        : null,
-      dgt_sequential: formData.dgt_sequential
-        ? parseInt(formData.dgt_sequential)
-        : null,
+      dgt_resourcecount: formData.dgt_resourcecount ? parseInt(formData.dgt_resourcecount) : null,
+      dgt_resourcediscipline: formData.dgt_resourcediscipline ? parseInt(formData.dgt_resourcediscipline) : null,
+      dgt_resourcetype: formData.dgt_resourcetype ? parseInt(formData.dgt_resourcetype) : null,
+      dgt_sequential: formData.dgt_sequential ? parseInt(formData.dgt_sequential) : null,
       resource_code: formData.resource_code || null,
-      Date: formData.Date || null,
-      week_num: formData.week_num ? parseInt(formData.week_num) : null,
+      date: formData.date || null,
       dgt_projectid: formData.dgt_projectid || null,
-      versionnumber: formData.versionnumber ? parseInt(formData.versionnumber) : null,
       owningbusinessunit: formData.owningbusinessunit || null,
     }
 
-    const { error } = await supabase.from('dbp6_000501_actualresources_storage').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000501_actualresources').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -316,10 +298,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcecount: record.dgt_resourcecount?.toString() ?? '',
       dgt_sequential: record.dgt_sequential?.toString() ?? '',
       resource_code: record.resource_code ?? '',
-      Date: record.Date ?? '',
-      week_num: record.week_num?.toString() ?? '',
+      date: record.date ?? '',
       dgt_projectid: record.dgt_projectid ?? '',
-      versionnumber: record.versionnumber?.toString() ?? '',
       owningbusinessunit: record.owningbusinessunit ?? '',
     })
   }
@@ -338,15 +318,13 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcecount: editValues.dgt_resourcecount ? parseInt(editValues.dgt_resourcecount) : null,
       dgt_sequential: editValues.dgt_sequential ? parseInt(editValues.dgt_sequential) : null,
       resource_code: editValues.resource_code || null,
-      Date: editValues.Date || null,
-      week_num: editValues.week_num ? parseInt(editValues.week_num) : null,
+      date: editValues.date || null,
       dgt_projectid: editValues.dgt_projectid || null,
-      versionnumber: editValues.versionnumber ? parseInt(editValues.versionnumber) : null,
       owningbusinessunit: editValues.owningbusinessunit || null,
     }
 
     const { error } = await supabase
-      .from('dbp6_000501_actualresources_storage')
+      .from('dbp6_000501_actualresources')
       .update(updatePayload as never)
       .eq('dgt_dbp6ud0501actualresourcesid', recordId)
 
@@ -369,7 +347,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000501_actualresources_storage')
+      .from('dbp6_000501_actualresources')
       .delete()
       .eq('dgt_dbp6ud0501actualresourcesid', recordId)
 
@@ -384,8 +362,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   }
 
   const handleExport = () => {
-    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential', 'resource_code', 'Date', 'week_num', 'dgt_projectid', 'versionnumber', 'owningbusinessunit']
-    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential, r.resource_code, r.Date, r.week_num, r.dgt_projectid, r.versionnumber, r.owningbusinessunit])
+    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential', 'resource_code', 'date', 'dgt_projectid', 'owningbusinessunit']
+    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential, r.resource_code, r.date, r.dgt_projectid, r.owningbusinessunit])
     exportToCsv('actual-resources', headers, rows)
   }
 
@@ -393,7 +371,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const inserts = rows
       .filter(r => r.resource_name)
-      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential, resource_code, Date: dateVal, week_num, dgt_projectid, versionnumber, owningbusinessunit }) => ({
+      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential, resource_code, date, dgt_projectid, owningbusinessunit }) => ({
         dgt_dbp6bd00projectdataid: projectId,
         resource_name: resource_name || null,
         dgt_resourcediscipline: Number(dgt_resourcediscipline) || null,
@@ -401,14 +379,12 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
         dgt_resourcecount: Number(dgt_resourcecount) || null,
         dgt_sequential: Number(dgt_sequential) || null,
         resource_code: resource_code || null,
-        Date: dateVal || null,
-        week_num: Number(week_num) || null,
+        date: date || null,
         dgt_projectid: dgt_projectid || null,
-        versionnumber: Number(versionnumber) || null,
         owningbusinessunit: owningbusinessunit || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000501_actualresources_storage').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_000501_actualresources').insert(inserts as never)
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
@@ -623,16 +599,6 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                       Date
                     </div>
                   </th>
-                  <th className="px-2 py-1.5 text-left align-top w-20">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Week No.
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-20">
-                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Version No.
-                    </div>
-                  </th>
                   <th className="px-2 py-1.5 text-left align-top w-32">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
                       Business Unit
@@ -646,7 +612,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={9} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -711,25 +677,9 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                         {/* Date */}
                         <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
                           {isEditing ? (
-                            <input type="date" value={editValues.Date} onChange={e => setEditValues(p => ({ ...p, Date: e.target.value }))} className={inputCls} />
+                            <input type="date" value={editValues.date} onChange={e => setEditValues(p => ({ ...p, date: e.target.value }))} className={inputCls} />
                           ) : (
-                            record.Date || '-'
-                          )}
-                        </td>
-                        {/* Week No. */}
-                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
-                          {isEditing ? (
-                            <input type="number" value={editValues.week_num} onChange={e => setEditValues(p => ({ ...p, week_num: e.target.value }))} className={inputCls} />
-                          ) : (
-                            record.week_num ?? '-'
-                          )}
-                        </td>
-                        {/* Version No. */}
-                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
-                          {isEditing ? (
-                            <input type="number" value={editValues.versionnumber} onChange={e => setEditValues(p => ({ ...p, versionnumber: e.target.value }))} className={inputCls} />
-                          ) : (
-                            record.versionnumber ?? '-'
+                            record.date || '-'
                           )}
                         </td>
                         {/* Business Unit */}
@@ -864,18 +814,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
           <FormField
             label="Date"
             type="date"
-            {...register('Date')}
-            error={errors.Date?.message}
-          />
-
-          <FormField
-            label="Week Number"
-            type="number"
-            {...register('week_num', {
-              validate: (value) =>
-                !value || !isNaN(Number(value)) || 'Must be a valid number',
-            })}
-            error={errors.week_num?.message}
+            {...register('date')}
+            error={errors.date?.message}
           />
 
           <FormField
@@ -883,16 +823,6 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
             type="text"
             {...register('dgt_projectid')}
             error={errors.dgt_projectid?.message}
-          />
-
-          <FormField
-            label="Version Number"
-            type="number"
-            {...register('versionnumber', {
-              validate: (value) =>
-                !value || !isNaN(Number(value)) || 'Must be a valid number',
-            })}
-            error={errors.versionnumber?.message}
           />
 
           <FormField

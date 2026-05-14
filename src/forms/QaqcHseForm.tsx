@@ -93,7 +93,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000402_qaqc_hse_storage')
+      .from('dbp6_000402_qaqc_hse')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
@@ -233,9 +233,9 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     )
   }
 
-  const getDisciplineName = (code: number | null) => {
+  const getDisciplineName = (code: string | null) => {
     if (code == null) return '-'
-    return disciplines.find(d => d.discipline_code === code)?.discipline_name || `Code: ${code}`
+    return disciplines.find(d => d.discipline_code?.toString() === code)?.discipline_name || `Code: ${code}`
   }
 
   const getDocTypeName = (code: string | null) => {
@@ -276,7 +276,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
       dgt_docid: formData.dgt_docid || null,
       dgt_docref: formData.dgt_docref || null,
       dgt_documentsubject: formData.dgt_documentsubject || null,
-      dgt_discipline: formData.dgt_discipline ? parseInt(formData.dgt_discipline) : null,
+      dgt_discipline: formData.dgt_discipline || null,
       dgt_documenttype: formData.dgt_documenttype || null,
       dgt_submissiondate: formData.dgt_submissiondate || null,
       dgt_responsedate: formData.dgt_responsedate || null,
@@ -284,7 +284,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse_storage').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -316,7 +316,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     const updatePayload: Record<string, string | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse_storage')
+      .from('dbp6_000402_qaqc_hse')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -347,7 +347,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse_storage')
+      .from('dbp6_000402_qaqc_hse')
       .delete()
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -376,7 +376,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
         dgt_docid: dgt_docid || null,
         dgt_docref: dgt_docref || null,
         dgt_documentsubject: dgt_documentsubject || null,
-        dgt_discipline: Number(dgt_discipline) || null,
+        dgt_discipline: dgt_discipline || null,
         dgt_documenttype: dgt_documenttype || null,
         dgt_submissiondate: dgt_submissiondate || null,
         dgt_responsedate: dgt_responsedate || null,
@@ -384,7 +384,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
         dgt_status: dgt_status || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse_storage').upsert(inserts as never[], { onConflict: 'dgt_docref' })
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse').upsert(inserts as never[], { onConflict: 'dgt_docref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
@@ -578,7 +578,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_discipline" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(Number(v))} />
+                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(v as string)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -755,11 +755,8 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
 
           <FormField
             label="Discipline"
-            type="number"
-            {...register('dgt_discipline', {
-              validate: (value) =>
-                !value || !isNaN(Number(value)) || 'Must be a valid number',
-            })}
+            type="text"
+            {...register('dgt_discipline')}
             error={errors.dgt_discipline?.message}
           />
 

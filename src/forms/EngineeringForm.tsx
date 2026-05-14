@@ -126,7 +126,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     const all: typeof data = []
     while (true) {
       const { data: records, error } = await supabase
-        .from('dbp6_000401_engineering_storage')
+        .from('dbp6_000401_engineering')
         .select('*')
         .eq('dgt_dbp6bd00projectdataid', projectId)
         .order('created_at', { ascending: false })
@@ -310,10 +310,10 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       dgt_dtfid: formData.dgt_dtfid || null,
       dgt_transmittalref: formData.dgt_transmittalref || null,
       dgt_transmittalsubject: formData.dgt_transmittalsubject || null,
-      dgt_discipline: formData.dgt_discipline ? parseInt(formData.dgt_discipline) : null,
+      dgt_discipline: formData.dgt_discipline || null,
       dgt_plannedsubmissiondate: formData.dgt_plannedsubmissiondate || null,
       dgt_plannedapprovaldate: formData.dgt_plannedapprovaldate || null,
-      dgt_transmittaltype: formData.dgt_transmittaltype ? parseInt(formData.dgt_transmittaltype) : null,
+      dgt_transmittaltype: formData.dgt_transmittaltype || null,
       is_long_lead: formData.is_long_lead,
       dgt_actualsubmissiondate: formData.dgt_actualsubmissiondate || null,
       dgt_actualreturndate: formData.dgt_actualreturndate || null,
@@ -321,7 +321,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000401_engineering_storage').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000401_engineering').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -341,18 +341,18 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     return new Date(dateString).toLocaleDateString()
   }
 
-  const getTypeName = (typeCode: number | null) => {
+  const getTypeName = (typeCode: string | null) => {
     if (!typeCode) return '-'
-    const type = types.find((t) => t.type_code === typeCode)
+    const type = types.find((t) => t.type_code?.toString() === typeCode)
     if (!type) {
       console.log('Type not found for code:', typeCode, 'Available types:', types)
     }
     return type?.type_name || `Code: ${typeCode}`
   }
 
-  const getDisciplineName = (code: number | null) => {
+  const getDisciplineName = (code: string | null) => {
     if (code == null) return '-'
-    return disciplines.find(d => d.discipline_code === code)?.discipline_name || `Code: ${code}`
+    return disciplines.find(d => d.discipline_code?.toString() === code)?.discipline_name || `Code: ${code}`
   }
 
   const startEdit = (record: Engineering) => {
@@ -372,12 +372,12 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
   const handleSaveEdit = async () => {
     if (!editingId) return
-    const { error } = await supabase.from('dbp6_000401_engineering_storage').update({
+    const { error } = await supabase.from('dbp6_000401_engineering').update({
       dgt_dtfid: editValues.dtfid || null,
       dgt_transmittalref: editValues.transmittalref || null,
       dgt_transmittalsubject: editValues.transmittalsubject || null,
-      dgt_discipline: editValues.discipline ? parseInt(editValues.discipline) : null,
-      dgt_transmittaltype: editValues.transmittaltype ? parseInt(editValues.transmittaltype) : null,
+      dgt_discipline: editValues.discipline || null,
+      dgt_transmittaltype: editValues.transmittaltype || null,
       dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
       dgt_actualreturndate: editValues.actualreturndate || null,
       dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -390,8 +390,8 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
         dgt_dtfid: editValues.dtfid || null,
         dgt_transmittalref: editValues.transmittalref || null,
         dgt_transmittalsubject: editValues.transmittalsubject || null,
-        dgt_discipline: editValues.discipline ? parseInt(editValues.discipline) : null,
-        dgt_transmittaltype: editValues.transmittaltype ? parseInt(editValues.transmittaltype) : null,
+        dgt_discipline: editValues.discipline || null,
+        dgt_transmittaltype: editValues.transmittaltype || null,
         dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
         dgt_actualreturndate: editValues.actualreturndate || null,
         dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -404,7 +404,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000401_engineering_storage')
+      .from('dbp6_000401_engineering')
       .delete()
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -459,8 +459,8 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
         dgt_dtfid,
         dgt_transmittalref,
         dgt_transmittalsubject,
-        dgt_discipline: Number(dgt_discipline) || null,
-        dgt_transmittaltype: Number(dgt_transmittaltype) || null,
+        dgt_discipline: dgt_discipline || null,
+        dgt_transmittaltype: dgt_transmittaltype || null,
         dgt_actualsubmissiondate: dgt_actualsubmissiondate || null,
         dgt_actualreturndate: dgt_actualreturndate || null,
         dgt_revision: Number(dgt_revision) || null,
@@ -472,7 +472,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
     // Fetch existing ref+revision pairs for this project
     const { data: existing, error: fetchErr } = await supabase
-      .from('dbp6_000401_engineering_storage')
+      .from('dbp6_000401_engineering')
       .select('dgt_transmittalref, dgt_revision')
       .eq('dgt_dbp6bd00projectdataid', projectId)
     if (fetchErr) { showError('Import failed: ' + fetchErr.message); return }
@@ -488,13 +488,13 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     let errMsg = ''
     if (toUpsert.length) {
       const { error } = await supabase
-        .from('dbp6_000401_engineering_storage')
+        .from('dbp6_000401_engineering')
         .upsert(toUpsert as never[], { onConflict: 'dgt_transmittalref,dgt_revision' })
       if (error) errMsg += `Update error: ${error.message}. `
     }
     if (toInsert.length) {
       const { error } = await supabase
-        .from('dbp6_000401_engineering_storage')
+        .from('dbp6_000401_engineering')
         .insert(toInsert as never[])
       if (error) errMsg += `Insert error: ${error.message}.`
     }
@@ -688,7 +688,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_discipline" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(Number(v))} />
+                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(v as string)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-24">
@@ -700,7 +700,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_transmittaltype" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" formatValue={(v) => getTypeName(Number(v))} />
+                      <ColumnFilter data={data} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" formatValue={(v) => getTypeName(v as string)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
