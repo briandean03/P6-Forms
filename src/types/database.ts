@@ -119,6 +119,8 @@ export interface AreaOfConcern {
   status: string | null
   created_at: string
   dgt_projectid: string | null
+  status_description: string | null
+  action_by: string | null
 }
 
 export interface Payments {

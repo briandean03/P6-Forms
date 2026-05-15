@@ -37,7 +37,7 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ description: '' })
+  const [editValues, setEditValues] = useState({ description: '', status_description: '', action_by: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -229,6 +229,8 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
     setEditingId(record.id)
     setEditValues({
       description: record.description || '',
+      status_description: record.status_description || '',
+      action_by: record.action_by || '',
     })
   }
 
@@ -238,6 +240,8 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
       .from('dbp6_areas_of_concern')
       .update({
         description: editValues.description.trim(),
+        status_description: editValues.status_description.trim() || null,
+        action_by: editValues.action_by.trim() || null,
       } as never)
       .eq('id', editingId)
 
@@ -247,7 +251,12 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
       setData((prev) =>
         prev.map((item) =>
           item.id === editingId
-            ? { ...item, description: editValues.description.trim() }
+            ? {
+                ...item,
+                description: editValues.description.trim(),
+                status_description: editValues.status_description.trim() || null,
+                action_by: editValues.action_by.trim() || null,
+              }
             : item
         )
       )
@@ -381,6 +390,16 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
                       <SortIcon field="status" />
                     </div>
                   </th>
+                  <th className="px-3 py-3 text-left">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Status Description
+                    </div>
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Action By
+                    </div>
+                  </th>
                   <th className="px-3 py-3 text-left w-20">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide">
                       Actions
@@ -391,7 +410,7 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                       No areas of concern
                     </td>
                   </tr>
@@ -424,6 +443,30 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-400 italic">
                             (unchanged)
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <textarea
+                              value={editValues.status_description}
+                              onChange={(e) => setEditValues((v) => ({ ...v, status_description: e.target.value }))}
+                              rows={2}
+                              className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500 resize-none"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setShowSaveConfirm(true) }
+                                if (e.key === 'Escape') setShowEditCancelConfirm(true)
+                              }}
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="text"
+                              value={editValues.action_by}
+                              onChange={(e) => setEditValues((v) => ({ ...v, action_by: e.target.value }))}
+                              className="w-full text-xs border border-amber-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') { e.preventDefault(); setShowSaveConfirm(true) }
+                                if (e.key === 'Escape') setShowEditCancelConfirm(true)
+                              }}
+                            />
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <div className="flex items-center gap-1">
@@ -488,6 +531,12 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
                             )}
                             {isOpen ? 'Open' : 'Closed'}
                           </button>
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 max-w-xs break-words">
+                          {record.status_description || '-'}
+                        </td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 whitespace-nowrap">
+                          {record.action_by || '-'}
                         </td>
                         {/* Actions: Edit + Delete */}
                         <td className="px-3 py-2.5 whitespace-nowrap">
