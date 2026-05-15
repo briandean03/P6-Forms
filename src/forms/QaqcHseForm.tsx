@@ -29,7 +29,7 @@ interface QaqcHseFormData {
 
 const ITEMS_PER_PAGE = 15
 
-type EditableField = 'dgt_status'
+type EditableField = 'dgt_status' | 'mod_id'
 
 type EditingCell = {
   recordId: string
@@ -67,6 +67,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     dgt_submissiondate: '',
     dgt_responsedate: '',
     dgt_status: '',
+    mod_id: '',
   })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -179,6 +180,9 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     }
     if (filters.dgt_status) {
       result = result.filter((item) => item.dgt_status === filters.dgt_status)
+    }
+    if (filters.mod_id) {
+      result = result.filter((item) => item.mod_id?.toString() === filters.mod_id)
     }
 
     // Sort
@@ -312,8 +316,11 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   }
 
   const saveInlineEdit = async (recordId: string, field: EditableField) => {
-    const updateValue: string | null = cellValue || null
-    const updatePayload: Record<string, string | null> = { [field]: updateValue }
+    const isNumeric = field === 'mod_id'
+    const updateValue = isNumeric
+      ? (cellValue !== '' ? parseInt(cellValue) : null)
+      : (cellValue || null)
+    const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
       .from('dbp6_000402_qaqc_hse')
@@ -424,6 +431,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                   dgt_submissiondate: '',
                   dgt_responsedate: '',
                   dgt_status: '',
+                  mod_id: '',
                 })
                 setSortField(null)
                 setSortDirection('asc')
@@ -629,6 +637,12 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
                     </div>
                   </th>
+                  <th className="px-3 py-2 text-left align-top w-16">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Mod ID</div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="mod_id" value={filters.mod_id} onChange={(v) => updateFilter('mod_id', v)} label="Mod ID" />
+                    </div>
+                  </th>
                   <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
                     Actions
                   </th>
@@ -637,13 +651,13 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
-                    <tr key={record.dgt_dbp6bd0402qaqchseid} className="hover:bg-gray-50">
+                    <tr key={record.dgt_dbp6bd0402qaqchseid} className={record.mod_id === 0 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docid || '-'}
                       </td>
@@ -695,6 +709,27 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                             }`}
                           >
                             {record.dgt_status || '-'}
+                          </span>
+                        )}
+                      </td>
+                      {/* Mod ID */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {editingCell?.recordId === record.dgt_dbp6bd0402qaqchseid && editingCell?.field === 'mod_id' ? (
+                          <input
+                            type="number"
+                            value={cellValue}
+                            onChange={(e) => setCellValue(e.target.value)}
+                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd0402qaqchseid, 'mod_id')}
+                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd0402qaqchseid, 'mod_id')}
+                            className="w-16 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            onClick={() => startEditing(record.dgt_dbp6bd0402qaqchseid, 'mod_id', record.mod_id != null ? String(record.mod_id) : '')}
+                            className="text-sm text-gray-500 cursor-pointer hover:text-blue-600"
+                          >
+                            {record.mod_id ?? '-'}
                           </span>
                         )}
                       </td>

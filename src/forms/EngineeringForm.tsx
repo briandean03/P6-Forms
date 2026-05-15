@@ -52,7 +52,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ dtfid: '', transmittalref: '', transmittalsubject: '', discipline: '', transmittaltype: '', actualsubmissiondate: '', actualreturndate: '', revision: '', status: '' })
+  const [editValues, setEditValues] = useState({ dtfid: '', transmittalref: '', transmittalsubject: '', discipline: '', transmittaltype: '', actualsubmissiondate: '', actualreturndate: '', revision: '', status: '', mod_id: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
@@ -73,6 +73,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     dgt_actualreturndate: '',
     dgt_revision: '',
     dgt_status: '',
+    mod_id: '',
   })
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -221,6 +222,9 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     if (filters.dgt_status) {
       result = result.filter((item) => item.dgt_status === filters.dgt_status)
     }
+    if (filters.mod_id) {
+      result = result.filter((item) => item.mod_id?.toString() === filters.mod_id)
+    }
 
     // Sort
     if (sortField) {
@@ -368,6 +372,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       actualreturndate: record.dgt_actualreturndate ? record.dgt_actualreturndate.split('T')[0] : '',
       revision: record.dgt_revision != null ? String(record.dgt_revision) : '',
       status: record.dgt_status || '',
+      mod_id: record.mod_id != null ? String(record.mod_id) : '',
     })
   }
 
@@ -383,6 +388,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       dgt_actualreturndate: editValues.actualreturndate || null,
       dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
       dgt_status: editValues.status || null,
+      mod_id: editValues.mod_id !== '' ? parseInt(editValues.mod_id) : null,
     } as never).eq('dgt_dbp6bd041engineeringid', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
     else {
@@ -397,6 +403,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
         dgt_actualreturndate: editValues.actualreturndate || null,
         dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
         dgt_status: editValues.status || null,
+        mod_id: editValues.mod_id !== '' ? parseInt(editValues.mod_id) : null,
       } : r))
       showSuccess('Record updated'); setEditingId(null)
     }
@@ -544,6 +551,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                   dgt_actualreturndate: '',
                   dgt_revision: '',
                   dgt_status: '',
+                  mod_id: '',
                 })
                 setSortField(null)
                 setSortDirection('asc')
@@ -780,6 +788,12 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
                     </div>
                   </th>
+                  <th className="px-3 py-2 text-left align-top w-16">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Mod ID</div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="mod_id" value={filters.mod_id} onChange={(v) => updateFilter('mod_id', v)} label="Mod ID" />
+                    </div>
+                  </th>
                   <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
                     Actions
                   </th>
@@ -788,7 +802,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={11} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -796,7 +810,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                   paginatedData.map((record) => {
                     const isEditing = editingId === record.dgt_dbp6bd041engineeringid
                     return (
-                      <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
+                      <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : record.mod_id === 0 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
                         {isEditing ? (
                           <>
                             <td className="px-2 py-1.5"><input type="text" value={editValues.dtfid} onChange={e => setEditValues(p => ({ ...p, dtfid: e.target.value }))} className={inputCls} /></td>
@@ -825,6 +839,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                                 <option value="UR">UR</option>
                               </select>
                             </td>
+                            <td className="px-2 py-1.5"><input type="number" value={editValues.mod_id} onChange={e => setEditValues(p => ({ ...p, mod_id: e.target.value }))} className={inputCls} /></td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => setShowSaveConfirm(true)} className="p-1 text-green-600 rounded" title="Save"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg></button>
@@ -859,6 +874,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                                 : 'bg-gray-100 text-gray-800'
                               }`}>{record.dgt_status || '-'}</span>
                             </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{record.mod_id ?? '-'}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <div className="flex items-center gap-1">
                                 <button onClick={() => startEdit(record)} className="p-1 text-blue-500 rounded" title="Edit"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
