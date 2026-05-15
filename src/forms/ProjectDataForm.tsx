@@ -49,7 +49,7 @@ type WebhookStatus = 'idle' | 'loading' | 'success' | 'error'
 const WEBHOOKS = [
   { id: '51', label: 'Webhook 51', url: 'https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec' },
   { id: '52', label: 'Webhook 52', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
-  { id: '53', label: 'Webhook 53', url: 'https://pmc2p2c.app.n8n.cloud/webhook/dee9c559-16eb-474f-86c6-5707a4a72600' },
+  { id: '53', label: 'Webhook 53', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
   { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
 ] as const
 
