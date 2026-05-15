@@ -810,7 +810,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                   paginatedData.map((record) => {
                     const isEditing = editingId === record.dgt_dbp6bd041engineeringid
                     return (
-                      <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : record.mod_id === 0 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
+                      <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : record.mod_id === 1 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
                         {isEditing ? (
                           <>
                             <td className="px-2 py-1.5"><input type="text" value={editValues.dtfid} onChange={e => setEditValues(p => ({ ...p, dtfid: e.target.value }))} className={inputCls} /></td>

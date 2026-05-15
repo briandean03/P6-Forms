@@ -657,7 +657,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                   </tr>
                 ) : (
                   paginatedData.map((record) => (
-                    <tr key={record.dgt_dbp6bd0402qaqchseid} className={record.mod_id === 0 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
+                    <tr key={record.dgt_dbp6bd0402qaqchseid} className={record.mod_id === 1 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docid || '-'}
                       </td>
