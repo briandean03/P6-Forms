@@ -86,7 +86,18 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     dgt_resourcecount: '',
     dgt_sequential: '',
   })
+  const [webhookStatus, setWebhookStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+
+  const triggerWebhook51 = async () => {
+    setWebhookStatus('loading')
+    try {
+      await fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec', { method: 'GET' })
+      setWebhookStatus('success')
+    } catch {
+      setWebhookStatus('error')
+    }
+  }
 
   const updateFilter = (field: keyof typeof filters, value: string) => {
     setFilters(prev => ({ ...prev, [field]: value }))
@@ -456,6 +467,41 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
         </div>
         <div className="flex items-center gap-2">
           <CsvControls onExport={handleExport} onImport={handleImport} />
+          <button
+            onClick={triggerWebhook51}
+            disabled={webhookStatus === 'loading'}
+            className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${
+              webhookStatus === 'success' ? 'bg-green-600 hover:bg-green-700' :
+              webhookStatus === 'error' ? 'bg-red-600 hover:bg-red-700' :
+              'bg-indigo-600 hover:bg-indigo-700'
+            } disabled:opacity-60`}
+          >
+            {webhookStatus === 'loading' ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Posting...
+              </>
+            ) : webhookStatus === 'success' ? (
+              <>
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                Posted!
+              </>
+            ) : webhookStatus === 'error' ? (
+              <>
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Failed
+              </>
+            ) : (
+              'Post Update'
+            )}
+          </button>
           <button
             onClick={openCreateModal}
             className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
