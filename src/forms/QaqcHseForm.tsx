@@ -105,7 +105,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000402_qaqc_hse')
+      .from('dbp6_000402_qaqc_hse_history')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
@@ -299,7 +299,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_history').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -334,7 +334,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse')
+      .from('dbp6_000402_qaqc_hse_history')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -365,7 +365,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse')
+      .from('dbp6_000402_qaqc_hse_history')
       .delete()
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -402,7 +402,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
         dgt_status: dgt_status || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse').upsert(inserts as never[], { onConflict: 'dgt_docref' })
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_history').upsert(inserts as never[], { onConflict: 'dgt_docref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }

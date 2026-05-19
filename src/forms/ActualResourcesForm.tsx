@@ -126,7 +126,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000501_actualresources')
+      .from('dbp6_000501_actualresources_history')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
       .order('created_at', { ascending: false })
@@ -311,7 +311,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       owningbusinessunit: formData.owningbusinessunit || null,
     }
 
-    const { error } = await supabase.from('dbp6_000501_actualresources').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000501_actualresources_history').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -362,7 +362,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     }
 
     const { error } = await supabase
-      .from('dbp6_000501_actualresources')
+      .from('dbp6_000501_actualresources_history')
       .update(updatePayload as never)
       .eq('dgt_dbp6ud0501actualresourcesid', recordId)
 
@@ -385,7 +385,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000501_actualresources')
+      .from('dbp6_000501_actualresources_history')
       .delete()
       .eq('dgt_dbp6ud0501actualresourcesid', recordId)
 
@@ -422,7 +422,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
         owningbusinessunit: owningbusinessunit || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000501_actualresources').insert(inserts as never)
+    const { error } = await supabase.from('dbp6_000501_actualresources_history').insert(inserts as never)
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }

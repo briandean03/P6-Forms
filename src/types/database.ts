@@ -1,17 +1,17 @@
 export interface Database {
   public: {
     Tables: {
-      dbp6_000401_engineering: {
+      dbp6_000401_engineering_history: {
         Row: Engineering
         Insert: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
         Update: Partial<Omit<Engineering, 'dgt_dbp6bd041engineeringid' | 'created_at'>>
       }
-      dbp6_000402_qaqc_hse: {
+      dbp6_000402_qaqc_hse_history: {
         Row: QaqcHse
         Insert: Omit<QaqcHse, 'dgt_dbp6bd0402qaqchseid' | 'created_at'>
         Update: Partial<QaqcHse>
       }
-      dbp6_000501_actualresources: {
+      dbp6_000501_actualresources_history: {
         Row: ActualResources
         Insert: Omit<ActualResources, 'dgt_dbp6ud0501actualresourcesid' | 'created_at'>
         Update: Partial<ActualResources>
