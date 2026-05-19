@@ -128,7 +128,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     const all: typeof data = []
     while (true) {
       const { data: records, error } = await supabase
-        .from('dbp6_000401_engineering')
+        .from('dbp6_000401_engineering_history')
         .select('*')
         .eq('dgt_dbp6bd00projectdataid', projectId)
         .order('created_at', { ascending: false })
@@ -326,7 +326,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000401_engineering').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000401_engineering_history').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -412,7 +412,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000401_engineering')
+      .from('dbp6_000401_engineering_history')
       .delete()
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -490,7 +490,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
     // Fetch existing ref+revision pairs for this project
     const { data: existing, error: fetchErr } = await supabase
-      .from('dbp6_000401_engineering_storage')
+      .from('dbp6_000401_engineering_current')
       .select('dgt_transmittalref, dgt_revision')
       .eq('dgt_dbp6bd00projectdataid', projectId)
     if (fetchErr) { showError('Import failed: ' + fetchErr.message); return }
@@ -506,13 +506,13 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     let errMsg = ''
     if (toUpsert.length) {
       const { error } = await supabase
-        .from('dbp6_000401_engineering_storage')
+        .from('dbp6_000401_engineering_current')
         .upsert(toUpsert as never[], { onConflict: 'dgt_transmittalref,dgt_revision' })
       if (error) errMsg += `Update error: ${error.message}. `
     }
     if (toInsert.length) {
       const { error } = await supabase
-        .from('dbp6_000401_engineering_storage')
+        .from('dbp6_000401_engineering_current')
         .insert(toInsert as never[])
       if (error) errMsg += `Insert error: ${error.message}.`
     }
