@@ -378,7 +378,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
   const handleSaveEdit = async () => {
     if (!editingId) return
-    const { error } = await supabase.from('dbp6_000401_engineering').update({
+    const { error } = await supabase.from('dbp6_000401_engineering_history').update({
       dgt_dtfid: editValues.dtfid || null,
       dgt_transmittalref: editValues.transmittalref || null,
       dgt_transmittalsubject: editValues.transmittalsubject || null,

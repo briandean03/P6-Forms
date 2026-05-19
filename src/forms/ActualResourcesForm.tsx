@@ -36,6 +36,7 @@ interface EditValues {
   dgt_sequential: string
   resource_code: string
   week_num: string
+  mod_id: string
   dgt_projectid: string
   owningbusinessunit: string
 }
@@ -65,6 +66,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     dgt_sequential: '',
     resource_code: '',
     week_num: '',
+    mod_id: '',
     dgt_projectid: '',
     owningbusinessunit: '',
   })
@@ -333,6 +335,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_sequential: record.dgt_sequential?.toString() ?? '',
       resource_code: record.resource_code ?? '',
       week_num: record.week_num?.toString() ?? '',
+      mod_id: record.mod_id?.toString() ?? '',
       dgt_projectid: record.dgt_projectid ?? '',
       owningbusinessunit: record.owningbusinessunit ?? '',
     })
@@ -353,6 +356,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_sequential: editValues.dgt_sequential ? parseInt(editValues.dgt_sequential) : null,
       resource_code: editValues.resource_code || null,
       week_num: editValues.week_num ? parseInt(editValues.week_num) : null,
+      mod_id: editValues.mod_id ? parseInt(editValues.mod_id) : null,
       dgt_projectid: editValues.dgt_projectid || null,
       owningbusinessunit: editValues.owningbusinessunit || null,
     }
@@ -703,6 +707,11 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                       Business Unit
                     </div>
                   </th>
+                  <th className="px-2 py-1.5 text-left align-top w-20">
+                    <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                      Mod ID
+                    </div>
+                  </th>
                   <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-24">
                     Actions
                   </th>
@@ -711,7 +720,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={10} className="px-2 py-6 text-center text-xs text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -787,6 +796,14 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                             <input type="text" value={editValues.owningbusinessunit} onChange={e => setEditValues(p => ({ ...p, owningbusinessunit: e.target.value }))} className={inputCls} />
                           ) : (
                             record.owningbusinessunit || '-'
+                          )}
+                        </td>
+                        {/* Mod ID */}
+                        <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
+                          {isEditing ? (
+                            <input type="number" value={editValues.mod_id} onChange={e => setEditValues(p => ({ ...p, mod_id: e.target.value }))} className={inputCls} />
+                          ) : (
+                            record.mod_id ?? '-'
                           )}
                         </td>
                         {/* Actions */}
