@@ -22,7 +22,7 @@ interface ActualResourcesFormData {
   dgt_resourcetype: string
   dgt_sequential: string
   resource_code: string
-  date: string
+  week_num: string
   dgt_projectid: string
   owningbusinessunit: string
 }
@@ -35,7 +35,7 @@ interface EditValues {
   dgt_resourcecount: string
   dgt_sequential: string
   resource_code: string
-  date: string
+  week_num: string
   dgt_projectid: string
   owningbusinessunit: string
 }
@@ -64,7 +64,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     dgt_resourcecount: '',
     dgt_sequential: '',
     resource_code: '',
-    date: '',
+    week_num: '',
     dgt_projectid: '',
     owningbusinessunit: '',
   })
@@ -86,6 +86,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     dgt_resourcecount: '',
     dgt_sequential: '',
   })
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -147,6 +148,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   }
 
   useEffect(() => {
+    setSelectedWeek(null)
     fetchData()
     fetchDisciplines()
     fetchTypes()
@@ -154,6 +156,11 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
+
+    // Week filter — always applied
+    if (selectedWeek !== null) {
+      result = result.filter(item => item.week_num === selectedWeek)
+    }
 
     // Text search filter
     if (searchTerm) {
@@ -206,6 +213,22 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
 
     return result
   }, [data, searchTerm, filters, sortField, sortDirection])
+
+  // Distinct week numbers for the week selector, newest first
+  const availableWeeks = useMemo(() => {
+    const weeks = [...new Set(data.map(r => r.week_num).filter((w): w is number => w !== null))]
+    return weeks.sort((a, b) => b - a)
+  }, [data])
+
+  const latestWeek = availableWeeks[0] ?? null
+  const isCurrentWeek = selectedWeek !== null && selectedWeek === latestWeek
+
+  // Auto-select the latest week on first load
+  useEffect(() => {
+    if (latestWeek !== null && selectedWeek === null) {
+      setSelectedWeek(latestWeek)
+    }
+  }, [latestWeek, selectedWeek])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -262,7 +285,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcetype: '',
       dgt_sequential: '',
       resource_code: '',
-      date: '',
+      week_num: '',
       dgt_projectid: '',
       owningbusinessunit: '',
     })
@@ -281,7 +304,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcetype: formData.dgt_resourcetype ? parseInt(formData.dgt_resourcetype) : null,
       dgt_sequential: formData.dgt_sequential ? parseInt(formData.dgt_sequential) : null,
       resource_code: formData.resource_code || null,
-      date: formData.date || null,
+      week_num: formData.week_num ? parseInt(formData.week_num) : null,
       dgt_projectid: formData.dgt_projectid || null,
       owningbusinessunit: formData.owningbusinessunit || null,
     }
@@ -309,7 +332,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcecount: record.dgt_resourcecount?.toString() ?? '',
       dgt_sequential: record.dgt_sequential?.toString() ?? '',
       resource_code: record.resource_code ?? '',
-      date: record.date ?? '',
+      week_num: record.week_num?.toString() ?? '',
       dgt_projectid: record.dgt_projectid ?? '',
       owningbusinessunit: record.owningbusinessunit ?? '',
     })
@@ -329,7 +352,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
       dgt_resourcecount: editValues.dgt_resourcecount ? parseInt(editValues.dgt_resourcecount) : null,
       dgt_sequential: editValues.dgt_sequential ? parseInt(editValues.dgt_sequential) : null,
       resource_code: editValues.resource_code || null,
-      date: editValues.date || null,
+      week_num: editValues.week_num ? parseInt(editValues.week_num) : null,
       dgt_projectid: editValues.dgt_projectid || null,
       owningbusinessunit: editValues.owningbusinessunit || null,
     }
@@ -373,8 +396,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
   }
 
   const handleExport = () => {
-    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential', 'resource_code', 'date', 'dgt_projectid', 'owningbusinessunit']
-    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential, r.resource_code, r.date, r.dgt_projectid, r.owningbusinessunit])
+    const headers = ['resource_name', 'dgt_resourcediscipline', 'dgt_resourcetype', 'dgt_resourcecount', 'dgt_sequential', 'resource_code', 'week_num', 'dgt_projectid', 'owningbusinessunit']
+    const rows = data.map(r => [r.resource_name, r.dgt_resourcediscipline, r.dgt_resourcetype, r.dgt_resourcecount, r.dgt_sequential, r.resource_code, r.week_num, r.dgt_projectid, r.owningbusinessunit])
     exportToCsv('actual-resources', headers, rows)
   }
 
@@ -382,7 +405,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const inserts = rows
       .filter(r => r.resource_name)
-      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential, resource_code, date, dgt_projectid, owningbusinessunit }) => ({
+      .map(({ resource_name, dgt_resourcediscipline, dgt_resourcetype, dgt_resourcecount, dgt_sequential, resource_code, week_num, dgt_projectid, owningbusinessunit }) => ({
         dgt_dbp6bd00projectdataid: projectId,
         resource_name: resource_name || null,
         dgt_resourcediscipline: Number(dgt_resourcediscipline) || null,
@@ -390,7 +413,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
         dgt_resourcecount: Number(dgt_resourcecount) || null,
         dgt_sequential: Number(dgt_sequential) || null,
         resource_code: resource_code || null,
-        date: date || null,
+        week_num: Number(week_num) || null,
         dgt_projectid: dgt_projectid || null,
         owningbusinessunit: owningbusinessunit || null,
       }))
@@ -419,6 +442,34 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
               placeholder="Search records..."
             />
           </div>
+          {/* Week selector */}
+          {availableWeeks.length > 0 && (
+            <select
+              value={selectedWeek ?? ''}
+              onChange={(e) => { setSelectedWeek(parseInt(e.target.value)); setCurrentPage(1); setEditingRowId(null) }}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {availableWeeks.map(week => (
+                <option key={week} value={week}>Week {week}</option>
+              ))}
+            </select>
+          )}
+          {/* Mode badge */}
+          {selectedWeek !== null && (
+            isCurrentWeek ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Current Week
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Historical – Read Only
+              </span>
+            )
+          )}
           {(Object.values(filters).some(v => v !== '') || sortField !== null) && (
             <button
               onClick={() => {
@@ -502,15 +553,17 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
               'Post Update'
             )}
           </button>
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            New Record
-          </button>
+          {isCurrentWeek && (
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              New Record
+            </button>
+          )}
         </div>
       </div>
 
@@ -640,9 +693,9 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                       Resource Code
                     </div>
                   </th>
-                  <th className="px-2 py-1.5 text-left align-top w-28">
+                  <th className="px-2 py-1.5 text-left align-top w-20">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
-                      Date
+                      Week
                     </div>
                   </th>
                   <th className="px-2 py-1.5 text-left align-top w-32">
@@ -723,9 +776,9 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                         {/* Date */}
                         <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap">
                           {isEditing ? (
-                            <input type="date" value={editValues.date} onChange={e => setEditValues(p => ({ ...p, date: e.target.value }))} className={inputCls} />
+                            <input type="number" value={editValues.week_num} onChange={e => setEditValues(p => ({ ...p, week_num: e.target.value }))} className={inputCls} />
                           ) : (
-                            record.date || '-'
+                            record.week_num ?? '-'
                           )}
                         </td>
                         {/* Business Unit */}
@@ -754,7 +807,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                                 Cancel
                               </button>
                             </div>
-                          ) : (
+                          ) : isCurrentWeek ? (
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => startEdit(record)}
@@ -775,6 +828,8 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
                                 </svg>
                               </button>
                             </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
                       </tr>
@@ -858,10 +913,10 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
           />
 
           <FormField
-            label="Date"
-            type="date"
-            {...register('date')}
-            error={errors.date?.message}
+            label="Week Number"
+            type="number"
+            {...register('week_num')}
+            error={errors.week_num?.message}
           />
 
           <FormField

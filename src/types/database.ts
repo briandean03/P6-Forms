@@ -86,7 +86,7 @@ export interface ActualResources {
   owningbusinessunit: string | null
   created_at: string | null
   dgt_projectid: string | null
-  date: string | null
+  week_num: number | null
   resource_code: string | null
 }
 

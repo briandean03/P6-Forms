@@ -431,6 +431,8 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
 
   if (loading) return <LoadingSpinner />
 
+  const anyWebhookLoading = Object.values(webhookStatus).some(s => s === 'loading')
+
   return (
     <div className="space-y-4">
       {notification && (
@@ -710,7 +712,7 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
                 <span className="text-sm font-medium text-gray-700">{label}</span>
                 <button
                   onClick={() => triggerWebhook(id, url)}
-                  disabled={status === 'loading'}
+                  disabled={anyWebhookLoading}
                   className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed ${
                     status === 'success' ? 'bg-green-100 text-green-700 border border-green-300' :
                     status === 'error'   ? 'bg-red-100 text-red-700 border border-red-300' :
