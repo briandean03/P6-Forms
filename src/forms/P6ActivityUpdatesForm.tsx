@@ -49,6 +49,7 @@ interface ProjectHeader {
   data_date: string | null
   project_uuid: string | null
   week_num: number | null
+  rpt_week_offset: number | null
 }
 
 interface ColumnFilters {
@@ -220,17 +221,18 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     if (!projectTextId) { setProjectHeader(null); return }
     const { data: row } = await schemaClient(schemaName)
       .from('dbp6_0000_projectdata')
-      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_weeknum')
+      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_weeknum, rpt_week_offset')
       .eq('dgt_projectid', projectTextId)
       .single()
     if (row) {
-      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_weeknum'>
+      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_weeknum'> & { rpt_week_offset: number | null }
       setProjectHeader({
         project_code: d.dgt_projectid,
         project_name: d.dgt_projectname,
         data_date: d.dgt_datadate,
         project_uuid: d.dgt_dbp6bd00projectdataid,
         week_num: d.dgt_weeknum,
+        rpt_week_offset: d.rpt_week_offset,
       })
     } else {
       setProjectHeader(null)
@@ -350,6 +352,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
 
   const upsertProgressData = async (rows: EditValues[]) => {
     if (!projectHeader?.project_uuid) return
+    const rptWeekNum = (projectHeader.week_num ?? 0) + (projectHeader.rpt_week_offset ?? 0)
     const progressRows = rows.map(vals => ({
       dgt_activityid: vals.task_code,
       dgt_actualstart: vals.act_start_date || null,
@@ -359,6 +362,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       dgt_dbp6bd00projectdataid: projectHeader.project_uuid,
       dgt_datadate: projectHeader.data_date,
       dgt_weeknum: projectHeader.week_num,
+      rpt_weeknum: rptWeekNum,
     }))
     const { error } = await schemaDb
       .from('dbp6_0006_progressdata')
