@@ -185,10 +185,18 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   const handleRunUpdate = async () => {
     setRunUpdateLoading(true)
     try {
+      const { data: mapping } = await supabase
+        .from('p6_project_mapping')
+        .select('schema_name')
+        .eq('dgt_projectid', projectTextId)
+        .single() as { data: { schema_name: string } | null, error: unknown }
+
+      const schemaName = mapping?.schema_name || 'public'
+
       const response = await fetch('https://pmc2p2c.app.n8n.cloud/webhook/run-p6-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_code: projectTextId }),
+        body: JSON.stringify({ project_code: projectTextId, schema_name: schemaName }),
       })
       if (!response.ok) throw new Error(`Server responded with ${response.status}`)
       showSuccess('P6 update triggered successfully')
