@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { P6RunTrigger } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -51,7 +51,8 @@ const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
 }
 
-export function P6RunTriggerForm() {
+export function P6RunTriggerForm({ schemaName }: { schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<P6RunTrigger[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -88,7 +89,7 @@ export function P6RunTriggerForm() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [schemaName])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredData = useMemo(() => {

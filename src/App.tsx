@@ -261,13 +261,13 @@ function App() {
       case 'referencedata':
         return <ReferenceDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'p6activityoutput':
-        return <P6ActivityOutputForm projectTextId={projectTextId} />
+        return <P6ActivityOutputForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'p6activityupdates':
         return <P6ActivityUpdatesForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'p6projectmapping':
         return <P6ProjectMappingForm />
       case 'p6runtrigger':
-        return <P6RunTriggerForm />
+        return <P6RunTriggerForm schemaName={selectedSchemaName} />
       case 'photos':
         return <PhotoUploadForm projectId={selectedProjectId} />
       default:

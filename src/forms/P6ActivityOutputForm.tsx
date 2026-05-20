@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
 import type { P6ActivityOutput } from '@/types/database'
 import { Pagination } from '@/components/Pagination'
 import { SearchFilter } from '@/components/SearchFilter'
@@ -29,7 +29,8 @@ const statusBadge = (status: string | null) => {
 
 const selectCls = 'h-8 px-2 text-xs border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400'
 
-export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string }) {
+export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTextId: string; schemaName: string }) {
+  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<P6ActivityOutput[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -63,7 +64,7 @@ export function P6ActivityOutputForm({ projectTextId }: { projectTextId: string 
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [projectTextId])
+  useEffect(() => { fetchData() }, [projectTextId, schemaName])
   useEffect(() => { setCurrentPage(1) }, [searchTerm, statusFilter, wbsFilter, activityTypeFilter])
 
   const statusOptions = useMemo(() =>

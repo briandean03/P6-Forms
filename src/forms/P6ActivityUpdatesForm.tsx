@@ -181,6 +181,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   })
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+  const schemaDb = schemaClient(schemaName)
 
   const handleRunUpdate = async () => {
     setRunUpdateLoading(true)
@@ -234,7 +235,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     let allRecords: P6ActivityUpdate[] = []
     let from = 0
     while (true) {
-      let query = supabase
+      let query = schemaDb
         .from('p6_activity_updates')
         .select('*')
         .order('task_code', { ascending: true })
@@ -343,7 +344,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     if (editingId == null) return
     if (!validateInput(editValues)) return
     setSaving(true)
-    const { error } = await supabase
+    const { error } = await schemaDb
       .from('p6_activity_updates')
       .update(editValuesToRow(editValues) as never)
       .eq('id', editingId)
@@ -410,7 +411,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       id: parseInt(idStr),
       ...editValuesToRow(vals),
     }))
-    const { error } = await supabase
+    const { error } = await schemaDb
       .from('p6_activity_updates')
       .upsert(upsertRows as never[], { onConflict: 'id' })
     if (error) { showError('Failed to save changes: ' + error.message) }
@@ -425,7 +426,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   const onSubmit = async (formData: P6ActivityUpdateFormData) => {
     if (!validateInput(formData)) return
     setSaving(true)
-    const { error } = await supabase
+    const { error } = await schemaDb
       .from('p6_activity_updates')
       .insert(editValuesToRow(formData) as never)
     if (error) { showError('Failed to create record: ' + error.message) }
@@ -435,7 +436,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
 
   const handleDelete = async (id: number) => {
     setDeleting(true)
-    const { error } = await supabase.from('p6_activity_updates').delete().eq('id', id)
+    const { error } = await schemaDb.from('p6_activity_updates').delete().eq('id', id)
     if (error) { showError('Failed to delete: ' + error.message) }
     else { setData(prev => prev.filter(item => item.id !== id)); showSuccess('Record deleted') }
     setDeleting(false); setDeleteConfirm(null)
@@ -512,7 +513,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
           {}
         )
       )
-      const { error } = await supabase
+      const { error } = await schemaDb
         .from('p6_activity_updates')
         .upsert(deduped as never[], { onConflict: 'project_code,task_code' })
       if (error) { showError(error.message) }
