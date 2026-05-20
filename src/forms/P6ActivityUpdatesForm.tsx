@@ -47,6 +47,8 @@ interface ProjectHeader {
   project_code: string | null
   project_name: string | null
   data_date: string | null
+  project_uuid: string | null
+  week_num: number | null
 }
 
 interface ColumnFilters {
@@ -218,12 +220,18 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     if (!projectTextId) { setProjectHeader(null); return }
     const { data: row } = await schemaClient(schemaName)
       .from('dbp6_0000_projectdata')
-      .select('dgt_projectid, dgt_projectname, dgt_datadate')
+      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_weeknum')
       .eq('dgt_projectid', projectTextId)
       .single()
     if (row) {
-      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate'>
-      setProjectHeader({ project_code: d.dgt_projectid, project_name: d.dgt_projectname, data_date: d.dgt_datadate })
+      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_weeknum'>
+      setProjectHeader({
+        project_code: d.dgt_projectid,
+        project_name: d.dgt_projectname,
+        data_date: d.dgt_datadate,
+        project_uuid: d.dgt_dbp6bd00projectdataid,
+        week_num: d.dgt_weeknum,
+      })
     } else {
       setProjectHeader(null)
     }
@@ -340,6 +348,24 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     return true
   }
 
+  const upsertProgressData = async (rows: EditValues[]) => {
+    if (!projectHeader?.project_uuid) return
+    const progressRows = rows.map(vals => ({
+      dgt_activityid: vals.task_code,
+      dgt_actualstart: vals.act_start_date || null,
+      dgt_actualfinish: vals.act_end_date || null,
+      dgt_pctcomplete: vals.complete_pct !== '' ? parseFloat(vals.complete_pct) / 100 : null,
+      dgt_projectid: projectHeader.project_code,
+      dgt_dbp6bd00projectdataid: projectHeader.project_uuid,
+      dgt_datadate: projectHeader.data_date,
+      dgt_weeknum: projectHeader.week_num,
+    }))
+    const { error } = await schemaDb
+      .from('dbp6_0006_progressdata')
+      .upsert(progressRows as never[], { onConflict: 'dgt_activityid,dgt_weeknum' })
+    if (error) showError('Failed to sync progress data: ' + error.message)
+  }
+
   const handleSaveEdit = async () => {
     if (editingId == null) return
     if (!validateInput(editValues)) return
@@ -353,6 +379,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       setData(prev => prev.map(r => r.id === editingId ? { ...r, ...editValuesToRow(editValues) } : r))
       showSuccess('Record updated')
       setEditingId(null)
+      await upsertProgressData([editValues])
     }
     setSaving(false)
   }
@@ -419,6 +446,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       showSuccess(`Saved ${upsertRows.length} records`)
       await fetchData()
       exitEditAllMode()
+      await upsertProgressData(Object.values(editAllValues))
     }
     setSaveAllLoading(false)
   }
