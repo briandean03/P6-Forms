@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase, schemaClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import type { Trades } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -12,7 +12,6 @@ import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 interface TradesFormData {
-  dgt_dbp6bd00projectdataid: string
   dgt_tradeid: string
   dgt_tradecode: string
   dgt_tradename: string
@@ -24,10 +23,8 @@ type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
 
-export function TradesForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
-  const schemaDb = schemaClient(schemaName)
+export function TradesForm() {
   const [data, setData] = useState<Trades[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -39,7 +36,7 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ tradecode: '', tradename: '', projectid: '' })
+  const [editValues, setEditValues] = useState({ tradecode: '', tradename: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -50,19 +47,17 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
   }
 
-  const fetchProjects = async () => {
-    const { data: records } = await schemaDb.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname').order('dgt_projectname', { ascending: true })
-    setProjects(records || [])
-  }
-
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase.from('dbp6_0015_trades').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('dgt_tradeid', { ascending: true })
+    const { data: records, error } = await supabase
+      .from('dbp6_0015_trades')
+      .select('*')
+      .order('dgt_tradeid', { ascending: true })
     if (error) { showError('Failed to fetch data: ' + error.message) } else { setData(records || []) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [projectId])
+  useEffect(() => { fetchData() }, [])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -106,7 +101,6 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
     setEditValues({
       tradecode: record.dgt_tradecode || '',
       tradename: record.dgt_tradename || '',
-      projectid: record.dgt_dbp6bd00projectdataid || '',
     })
   }
 
@@ -116,12 +110,11 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
     const { error } = await supabase.from('dbp6_0015_trades').update({
       dgt_tradecode: editValues.tradecode || null,
       dgt_tradename: editValues.tradename || null,
-      dgt_dbp6bd00projectdataid: editValues.projectid || null,
     } as never).eq('dgt_tradeid', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
     else {
       setData(prev => prev.map(r => r.dgt_tradeid === editingId
-        ? { ...r, dgt_tradecode: editValues.tradecode || null, dgt_tradename: editValues.tradename || null, dgt_dbp6bd00projectdataid: editValues.projectid || null }
+        ? { ...r, dgt_tradecode: editValues.tradecode || null, dgt_tradename: editValues.tradename || null }
         : r))
       showSuccess('Record updated'); setEditingId(null)
     }
@@ -134,7 +127,6 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
       dgt_tradeid: formData.dgt_tradeid,
       dgt_tradecode: formData.dgt_tradecode || null,
       dgt_tradename: formData.dgt_tradename || null,
-      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid || null,
     } as never)
     if (error) { showError('Failed to create record: ' + error.message) }
     else { showSuccess('Record created successfully'); setIsModalOpen(false); fetchData() }
@@ -156,7 +148,7 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Trade ID, Code, Name..." />
         </div>
-        <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
+        <button onClick={() => { reset({}); setIsModalOpen(true) }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
           <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create New
@@ -222,13 +214,6 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
 
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Trade">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Project</label>
-            <select {...register('dgt_dbp6bd00projectdataid')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select Project --</option>
-              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-            </select>
-          </div>
           <FormField label="Trade ID" type="text" {...register('dgt_tradeid', { required: 'Trade ID is required' })} error={errors.dgt_tradeid?.message} />
           <FormField label="Trade Code" type="text" {...register('dgt_tradecode')} error={errors.dgt_tradecode?.message} />
           <FormField label="Trade Name" type="text" {...register('dgt_tradename')} error={errors.dgt_tradename?.message} />

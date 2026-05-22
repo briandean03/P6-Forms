@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase, schemaClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import type { Subtrades } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -12,7 +12,6 @@ import { useNotification } from '@/hooks/useNotification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 interface SubtradesFormData {
-  dgt_dbp6bd00projectdataid: string
   dgt_subtradecode: string
   dgt_subtradename: string
 }
@@ -23,10 +22,8 @@ type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
 
-export function SubtradesForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
-  const schemaDb = schemaClient(schemaName)
+export function SubtradesForm() {
   const [data, setData] = useState<Subtrades[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -38,7 +35,7 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ subtradecode: '', subtradename: '', projectid: '' })
+  const [editValues, setEditValues] = useState({ subtradecode: '', subtradename: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -49,19 +46,17 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
     if (isDirty) { setShowDiscardConfirm(true) } else { setIsModalOpen(false) }
   }
 
-  const fetchProjects = async () => {
-    const { data: records } = await schemaDb.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname').order('dgt_projectname', { ascending: true })
-    setProjects(records || [])
-  }
-
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase.from('dbp6_0016_subtrades').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('dgt_dbp6bd014subtradeid', { ascending: true })
+    const { data: records, error } = await supabase
+      .from('dbp6_0016_subtrades')
+      .select('*')
+      .order('dgt_dbp6bd014subtradeid', { ascending: true })
     if (error) { showError('Failed to fetch data: ' + error.message) } else { setData(records || []) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjects() }, [projectId])
+  useEffect(() => { fetchData() }, [])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
@@ -105,7 +100,6 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
     setEditValues({
       subtradecode: record.dgt_subtradecode || '',
       subtradename: record.dgt_subtradename || '',
-      projectid: record.dgt_dbp6bd00projectdataid || '',
     })
   }
 
@@ -115,12 +109,11 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
     const { error } = await supabase.from('dbp6_0016_subtrades').update({
       dgt_subtradecode: editValues.subtradecode || null,
       dgt_subtradename: editValues.subtradename || null,
-      dgt_dbp6bd00projectdataid: editValues.projectid || null,
     } as never).eq('dgt_dbp6bd014subtradeid', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
     else {
       setData(prev => prev.map(r => r.dgt_dbp6bd014subtradeid === editingId
-        ? { ...r, dgt_subtradecode: editValues.subtradecode || null, dgt_subtradename: editValues.subtradename || null, dgt_dbp6bd00projectdataid: editValues.projectid || null }
+        ? { ...r, dgt_subtradecode: editValues.subtradecode || null, dgt_subtradename: editValues.subtradename || null }
         : r))
       showSuccess('Record updated'); setEditingId(null)
     }
@@ -132,7 +125,6 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
     const { error } = await supabase.from('dbp6_0016_subtrades').insert({
       dgt_subtradecode: formData.dgt_subtradecode || null,
       dgt_subtradename: formData.dgt_subtradename || null,
-      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid || null,
     } as never)
     if (error) { showError('Failed to create record: ' + error.message) }
     else { showSuccess('Record created successfully'); setIsModalOpen(false); fetchData() }
@@ -154,7 +146,7 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
         <div className="w-full sm:w-72">
           <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by Subtrade ID, Code, Name..." />
         </div>
-        <button onClick={() => { reset({ dgt_dbp6bd00projectdataid: projectId }); setIsModalOpen(true) }}
+        <button onClick={() => { reset({}); setIsModalOpen(true) }}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
           <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create New
@@ -220,13 +212,6 @@ export function SubtradesForm({ projectId, schemaName }: { projectId: string; sc
 
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Subtrade">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Project</label>
-            <select {...register('dgt_dbp6bd00projectdataid')} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select Project --</option>
-              {projects.map(p => <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>{p.dgt_projectname || p.dgt_dbp6bd00projectdataid}</option>)}
-            </select>
-          </div>
           <FormField label="Subtrade Code" type="text" {...register('dgt_subtradecode')} error={errors.dgt_subtradecode?.message} />
           <FormField label="Subtrade Name" type="text" {...register('dgt_subtradename')} error={errors.dgt_subtradename?.message} />
           <div className="flex justify-end gap-3 pt-4">

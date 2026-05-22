@@ -497,8 +497,8 @@ export function ReferenceDataForm({ projectId, schemaName }: { projectId: string
           <ReferenceCard key={config.table} config={config} schemaName={schemaName} onNotify={handleNotify} />
         ))}
       </div>
-      <TradesForm projectId={projectId} schemaName={schemaName} />
-      <SubtradesForm projectId={projectId} schemaName={schemaName} />
+      <TradesForm />
+      <SubtradesForm />
     </div>
   )
 }
