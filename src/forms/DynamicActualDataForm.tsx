@@ -1,391 +1,184 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
+import { useState, useEffect } from 'react'
 import { schemaClient } from '@/lib/supabase'
 import type { DynamicActualData } from '@/types/database'
-import { Modal } from '@/components/Modal'
-import { Pagination } from '@/components/Pagination'
-import { SearchFilter } from '@/components/SearchFilter'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
-import { FormField } from '@/components/FormField'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
-import { ColumnFilter } from '@/components/ColumnFilter'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { CsvControls } from '@/components/CsvControls'
-import { exportToCsv } from '@/utils/csv'
 
-interface DynamicActualDataFormData {
-  dgt_dbp6bd00projectdataid: string
-  dgt_activityid: string
-  dgt_actualstart: string
-  dgt_actualfinish: string
-  dgt_complete: string
+const PAGE_SIZE = 50
+
+type SortField =
+  | 'dgt_activityid'
+  | 'dgt_projectid'
+  | 'dgt_weeknum'
+  | 'rpt_weeknum'
+  | 'dgt_datadate'
+  | 'dgt_actualstart'
+  | 'dgt_actualfinish'
+  | 'dgt_pctcomplete'
+
+interface AppliedFilters {
+  activityId: string
+  weekNum: string
+  rptWeekNum: string
 }
 
-const ITEMS_PER_PAGE = 15
-
-type EditableField = 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_complete'
-
-type EditingCell = {
-  recordId: string
-  field: EditableField
-} | null
-
-type SortField = 'dgt_activityid' | 'dgt_actualstart' | 'dgt_actualfinish' | 'dgt_complete'
-type SortDirection = 'asc' | 'desc'
-
 export function DynamicActualDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
-  const supabase = schemaClient(schemaName)
   const [data, setData] = useState<DynamicActualData[]>([])
-  const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null; dgt_projectid: string | null }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [totalCount, setTotalCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
-  const [saving, setSaving] = useState(false)
-  const [editingCell, setEditingCell] = useState<EditingCell>(null)
-  const [cellValue, setCellValue] = useState('')
-  const [sortField, setSortField] = useState<SortField | null>(null)
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
-  const [filters, setFilters] = useState({
-    dgt_activityid: '',
-    dgt_actualstart: '',
-    dgt_actualfinish: '',
-  })
-  const { notification, hideNotification, showSuccess, showError } = useNotification()
+  const [loading, setLoading] = useState(true)
 
-  const updateFilter = (field: keyof typeof filters, value: string) => {
-    setFilters(prev => ({ ...prev, [field]: value }))
+  // Pending filter inputs (not yet applied)
+  const [activityInput, setActivityInput] = useState('')
+  const [weekNumInput, setWeekNumInput] = useState('')
+  const [rptWeekNumInput, setRptWeekNumInput] = useState('')
+
+  // Applied filters (sent to Supabase)
+  const [applied, setApplied] = useState<AppliedFilters>({ activityId: '', weekNum: '', rptWeekNum: '' })
+
+  // Sort (applied immediately on header click)
+  const [sortField, setSortField] = useState<SortField>('dgt_activityid')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const { notification, hideNotification, showError } = useNotification()
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const hasActiveFilters = applied.activityId || applied.weekNum || applied.rptWeekNum
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchData = async () => {
+      setLoading(true)
+      const from = (currentPage - 1) * PAGE_SIZE
+      const to = from + PAGE_SIZE - 1
+
+      const supabase = schemaClient(schemaName)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query: any = supabase
+        .from('dbp6_0006_progressdata')
+        .select('*', { count: 'exact' })
+        .eq('dgt_dbp6bd00projectdataid', projectId)
+        .order(sortField, { ascending: sortDir === 'asc' })
+        .range(from, to)
+
+      if (applied.activityId.trim()) {
+        query = query.ilike('dgt_activityid', `%${applied.activityId.trim()}%`)
+      }
+      if (applied.weekNum.trim()) {
+        query = query.eq('dgt_weeknum', parseInt(applied.weekNum))
+      }
+      if (applied.rptWeekNum.trim()) {
+        query = query.eq('rpt_weeknum', parseInt(applied.rptWeekNum))
+      }
+
+      const { data: records, count, error } = await query
+
+      if (cancelled) return
+
+      if (error) {
+        showError('Failed to fetch data: ' + error.message)
+      } else {
+        setData(records || [])
+        setTotalCount(count ?? 0)
+      }
+      setLoading(false)
+    }
+
+    fetchData()
+    return () => { cancelled = true }
+  }, [projectId, schemaName, currentPage, applied, sortField, sortDir])
+
+  const applyFilters = () => {
+    setApplied({ activityId: activityInput, weekNum: weekNumInput, rptWeekNum: rptWeekNumInput })
     setCurrentPage(1)
   }
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    formState: { errors, isDirty },
-  } = useForm<DynamicActualDataFormData>()
-
-  const handleCancelModal = () => {
-    if (isDirty) {
-      setShowDiscardConfirm(true)
-    } else {
-      setIsModalOpen(false)
-    }
+  const clearFilters = () => {
+    setActivityInput('')
+    setWeekNumInput('')
+    setRptWeekNumInput('')
+    setApplied({ activityId: '', weekNum: '', rptWeekNum: '' })
+    setCurrentPage(1)
   }
 
-  const fetchProjects = async () => {
-    const { data: projectRecords } = await supabase
-      .from('dbp6_0000_projectdata')
-      .select('dgt_dbp6bd00projectdataid, dgt_projectname, dgt_projectid')
-      .order('dgt_projectname', { ascending: true })
-    setProjects(projectRecords || [])
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') applyFilters()
   }
-
-  const fetchData = async () => {
-    setLoading(true)
-    const { data: records, error } = await supabase
-      .from('dbp6_0006_progressdata_storage')
-      .select('*')
-      .eq('dgt_dbp6bd00projectdataid', projectId)
-      .order('dgt_dbp6bd06progressstorageid', { ascending: false })
-
-    if (error) {
-      showError('Failed to fetch data: ' + error.message)
-    } else {
-      setData(records || [])
-    }
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    fetchData()
-    fetchProjects()
-  }, [projectId])
-
-  // Extract unique month/year combinations for date filters
-  const dateFilterOptions = useMemo(() => {
-    const getMonthYearKey = (dateString: string | null) => {
-      if (!dateString) return null
-      const date = new Date(dateString)
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    }
-
-    const actualStartMonths = new Set<string>()
-    const actualFinishMonths = new Set<string>()
-
-    data.forEach((item) => {
-      const asKey = getMonthYearKey(item.dgt_actualstart)
-      const afKey = getMonthYearKey(item.dgt_actualfinish)
-      if (asKey) actualStartMonths.add(asKey)
-      if (afKey) actualFinishMonths.add(afKey)
-    })
-
-    const formatMonthYear = (key: string) => {
-      const [year, month] = key.split('-')
-      const date = new Date(parseInt(year), parseInt(month) - 1, 1)
-      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-    }
-
-    return {
-      actualStart: Array.from(actualStartMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
-      actualFinish: Array.from(actualFinishMonths).sort().map(key => ({ key, label: formatMonthYear(key) })),
-    }
-  }, [data])
-
-  const filteredAndSortedData = useMemo(() => {
-    let result = data
-
-    // Text search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(
-        (item) =>
-          item.dgt_activityid?.toLowerCase().includes(term)
-      )
-    }
-
-    // Column filters
-    if (filters.dgt_activityid) {
-      result = result.filter((item) => item.dgt_activityid === filters.dgt_activityid)
-    }
-    if (filters.dgt_actualstart) {
-      result = result.filter((item) => {
-        if (!item.dgt_actualstart) return false
-        const itemDate = new Date(item.dgt_actualstart)
-        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
-        return itemKey === filters.dgt_actualstart
-      })
-    }
-    if (filters.dgt_actualfinish) {
-      result = result.filter((item) => {
-        if (!item.dgt_actualfinish) return false
-        const itemDate = new Date(item.dgt_actualfinish)
-        const itemKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, '0')}`
-        return itemKey === filters.dgt_actualfinish
-      })
-    }
-
-    // Sort
-    if (sortField) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sortField]
-        const bVal = b[sortField]
-
-        if (aVal === null || aVal === undefined) return sortDirection === 'asc' ? 1 : -1
-        if (bVal === null || bVal === undefined) return sortDirection === 'asc' ? -1 : 1
-
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return sortDirection === 'asc'
-            ? aVal.localeCompare(bVal)
-            : bVal.localeCompare(aVal)
-        }
-
-        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-        return 0
-      })
-    }
-
-    return result
-  }, [data, searchTerm, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     } else {
       setSortField(field)
-      setSortDirection('asc')
+      setSortDir('asc')
     }
+    setCurrentPage(1)
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
       return (
-        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
         </svg>
       )
     }
-    return sortDirection === 'asc' ? (
-      <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    return sortDir === 'asc' ? (
+      <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
       </svg>
     ) : (
-      <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg className="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
       </svg>
     )
   }
 
-  const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
-  const paginatedData = filteredAndSortedData.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
+  const SortableHeader = ({
+    field,
+    label,
+    className = '',
+  }: {
+    field: SortField
+    label: string
+    className?: string
+  }) => (
+    <th
+      className={`px-3 py-2 text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:bg-gray-100 transition-colors ${className}`}
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <SortIcon field={field} />
+      </div>
+    </th>
   )
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm])
-
-  const openCreateModal = () => {
-    reset({
-      dgt_activityid: '',
-      dgt_actualstart: '',
-      dgt_actualfinish: '',
-      dgt_complete: '',
-    })
-    setValue('dgt_dbp6bd00projectdataid', projectId)
-    setIsModalOpen(true)
+  const formatDate = (d: string | null) => {
+    if (!d) return '-'
+    return new Date(d).toLocaleDateString()
   }
 
-  const onSubmit = async (formData: DynamicActualDataFormData) => {
-    setSaving(true)
-
-    const insertData = {
-      dgt_dbp6bd00projectdataid: formData.dgt_dbp6bd00projectdataid,
-      dgt_activityid: formData.dgt_activityid || null,
-      dgt_actualstart: formData.dgt_actualstart || null,
-      dgt_actualfinish: formData.dgt_actualfinish || null,
-      dgt_complete: formData.dgt_complete
-        ? parseFloat(formData.dgt_complete)
-        : null,
-    }
-
-    const { error } = await supabase.from('dbp6_0006_progressdata_storage').insert(insertData as never)
-
-    if (error) {
-      showError('Failed to create record: ' + error.message)
-    } else {
-      showSuccess('Record created successfully')
-      setIsModalOpen(false)
-      fetchData()
-    }
-
-    setSaving(false)
+  const formatPct = (v: number | null) => {
+    if (v === null || v === undefined) return '-'
+    return `${(v * 100).toFixed(1)}%`
   }
 
-  const startEditing = (
-    recordId: string,
-    field: EditableField,
-    currentValue: string | number | null
-  ) => {
-    setEditingCell({ recordId, field })
-    if (field === 'dgt_actualstart' || field === 'dgt_actualfinish') {
-      setCellValue(currentValue ? new Date(currentValue as string).toISOString().slice(0, 10) : '')
-    } else {
-      setCellValue(currentValue?.toString() || '')
-    }
-  }
-
-  const cancelEditing = () => {
-    setEditingCell(null)
-    setCellValue('')
-  }
-
-  const saveInlineEdit = async (recordId: string, field: EditableField) => {
-    let updateValue: string | number | null = cellValue || null
-
-    if (field === 'dgt_complete' && cellValue) {
-      updateValue = parseFloat(cellValue)
-    }
-
-    const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
-
-    const { error } = await supabase
-      .from('dbp6_0006_progressdata_storage')
-      .update(updatePayload as never)
-      .eq('dgt_dbp6bd06progressstorageid', recordId)
-
-    if (error) {
-      showError('Failed to update: ' + error.message)
-    } else {
-      setData((prev) =>
-        prev.map((item) =>
-          item.dgt_dbp6bd06progressstorageid === recordId
-            ? { ...item, [field]: updateValue }
-            : item
-        )
-      )
-      showSuccess('Updated successfully')
-    }
-    setEditingCell(null)
-    setCellValue('')
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent, recordId: string, field: EditableField) => {
-    if (e.key === 'Enter') {
-      saveInlineEdit(recordId, field)
-    } else if (e.key === 'Escape') {
-      cancelEditing()
-    }
-  }
-
-  const handleDelete = async (recordId: string) => {
-    setDeleting(true)
-    const { error } = await supabase
-      .from('dbp6_0006_progressdata_storage')
-      .delete()
-      .eq('dgt_dbp6bd06progressstorageid', recordId)
-
-    if (error) {
-      showError('Failed to delete record: ' + error.message)
-    } else {
-      setData((prev) => prev.filter((item) => item.dgt_dbp6bd06progressstorageid !== recordId))
-      showSuccess('Record deleted successfully')
-    }
-    setDeleting(false)
-    setDeleteConfirm(null)
-  }
-
-  const handleExport = () => {
-    const headers = ['dgt_activityid', 'dgt_actualstart', 'dgt_actualfinish', 'dgt_complete', 'dgt_projectid']
-    const rows = data.map(r => [r.dgt_activityid, r.dgt_actualstart, r.dgt_actualfinish, r.dgt_complete, r.dgt_projectid])
-    exportToCsv('dynamic-actual-data', headers, rows)
-  }
-
-  const handleImport = async (rows: Record<string, string>[]) => {
-    if (rows.length === 0) { showError('No data found in CSV'); return }
-    const inserts = rows
-      .filter(r => r.dgt_activityid)
-      .map(({ dgt_activityid, dgt_actualstart, dgt_actualfinish, dgt_complete, dgt_projectid }) => ({
-        dgt_dbp6bd00projectdataid: projectId,
-        dgt_activityid: dgt_activityid || null,
-        dgt_actualstart: dgt_actualstart || null,
-        dgt_actualfinish: dgt_actualfinish || null,
-        dgt_complete: Number(dgt_complete) || null,
-        dgt_projectid: dgt_projectid || null,
-      }))
-    if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_0006_progressdata_storage').insert(inserts as never)
-    if (error) { showError('Import failed: ' + error.message) }
-    else { showSuccess(`${inserts.length} records imported`); fetchData() }
-  }
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString()
-  }
-
-
-  const formatPercentage = (value: number | null) => {
-    if (value === null || value === undefined) return '-'
-    return `${(value * 100).toFixed(1)}%`
-  }
-
-  const getProgressColor = (value: number | null) => {
-    if (value === null || value === undefined) return 'bg-gray-200'
-    const percentage = value * 100
-    if (percentage >= 100) return 'bg-green-500'
-    if (percentage >= 75) return 'bg-blue-500'
-    if (percentage >= 50) return 'bg-yellow-400'
-    if (percentage >= 25) return 'bg-orange-400'
+  const getProgressColor = (v: number | null) => {
+    if (v === null || v === undefined) return 'bg-gray-200'
+    const p = v * 100
+    if (p >= 100) return 'bg-green-500'
+    if (p >= 75) return 'bg-blue-500'
+    if (p >= 50) return 'bg-yellow-400'
+    if (p >= 25) return 'bg-orange-400'
     return 'bg-red-400'
   }
+
+  const rangeStart = totalCount === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, totalCount)
 
   return (
     <div className="space-y-4">
@@ -397,252 +190,177 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
         />
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-full sm:w-64">
-            <SearchFilter
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Search records..."
+      {/* Filter bar */}
+      <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Activity ID */}
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Activity ID</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={activityInput}
+                onChange={e => setActivityInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Search..."
+                className="w-full pl-8 pr-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <svg className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Week # */}
+          <div className="w-28">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Week #</label>
+            <input
+              type="number"
+              value={weekNumInput}
+              onChange={e => setWeekNumInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g. 42"
+              min="1"
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          {(Object.values(filters).some(v => v !== '') || sortField !== null) && (
+
+          {/* Rpt Week # */}
+          <div className="w-28">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Rpt Week #</label>
+            <input
+              type="number"
+              value={rptWeekNumInput}
+              onChange={e => setRptWeekNumInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g. 42"
+              min="1"
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 pb-0.5">
             <button
-              onClick={() => {
-                setFilters({
-                  dgt_activityid: '',
-                  dgt_actualstart: '',
-                  dgt_actualfinish: '',
-                })
-                setSortField(null)
-                setSortDirection('asc')
-              }}
-              className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap shadow-sm"
-              title="Clear all filters and sorting"
+              onClick={applyFilters}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
             >
-              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Clear All
-              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-red-800 rounded">
-                {Object.values(filters).filter(v => v !== '').length + (sortField !== null ? 1 : 0)}
-              </span>
+              Apply
             </button>
-          )}
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <CsvControls onExport={handleExport} onImport={handleImport} />
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            New Record
-          </button>
-        </div>
+
+        {/* Active filter chips */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100">
+            {applied.activityId && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
+                Activity ID: <span className="font-medium">{applied.activityId}</span>
+              </span>
+            )}
+            {applied.weekNum && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
+                Week #: <span className="font-medium">{applied.weekNum}</span>
+              </span>
+            )}
+            {applied.rptWeekNum && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
+                Rpt Week #: <span className="font-medium">{applied.rptWeekNum}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {loading ? (
         <LoadingSpinner />
       ) : (
         <div className="bg-white shadow rounded-lg border border-gray-200 overflow-hidden">
-          {/* Results count */}
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+          {/* Results info */}
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <span className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
-              {(Object.values(filters).some(v => v !== '') || searchTerm) && (
-                <span className="ml-1 text-gray-500">
-                  (filtered from {data.length} total)
-                </span>
-              )}
+              <span className="font-semibold text-gray-900">{totalCount.toLocaleString()}</span>{' '}
+              record{totalCount !== 1 ? 's' : ''}
+              {hasActiveFilters && <span className="ml-1 text-gray-400">(filtered)</span>}
+            </span>
+            <span className="text-sm text-gray-500">
+              Sorted by{' '}
+              <span className="font-medium text-gray-700">{sortField.replace('dgt_', '').replace('rpt_', 'rpt ')}</span>{' '}
+              <span className="text-gray-400">({sortDir})</span>
             </span>
           </div>
+
+          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_activityid')}
-                    >
-                      Activity ID
-                      <SortIcon field="dgt_activityid" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_activityid" value={filters.dgt_activityid} onChange={(v) => updateFilter('dgt_activityid', v)} label="Activity ID" />
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-28">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_actualstart')}
-                    >
-                      Actual Start
-                      <SortIcon field="dgt_actualstart" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={filters.dgt_actualstart}
-                        onChange={(e) => updateFilter('dgt_actualstart', e.target.value)}
-                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                      >
-                        <option value="">All</option>
-                        {dateFilterOptions.actualStart.map(({ key, label }) => (
-                          <option key={key} value={key}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-28">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_actualfinish')}
-                    >
-                      Actual Finish
-                      <SortIcon field="dgt_actualfinish" />
-                    </div>
-                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={filters.dgt_actualfinish}
-                        onChange={(e) => updateFilter('dgt_actualfinish', e.target.value)}
-                        className="w-full px-2 py-1 text-xs font-normal text-gray-700 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                      >
-                        <option value="">All</option>
-                        {dateFilterOptions.actualFinish.map(({ key, label }) => (
-                          <option key={key} value={key}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top w-24">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_complete')}
-                    >
-                      % Complete
-                      <SortIcon field="dgt_complete" />
-                    </div>
-                  </th>
-                  <th className="px-2 py-1.5 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-16">
-                    Actions
-                  </th>
+                  <SortableHeader field="dgt_activityid" label="Activity ID" className="text-left" />
+                  <SortableHeader field="dgt_projectid" label="Project ID" className="text-left" />
+                  <SortableHeader field="dgt_weeknum" label="Week #" className="text-center" />
+                  <SortableHeader field="rpt_weeknum" label="Rpt Week #" className="text-center" />
+                  <SortableHeader field="dgt_datadate" label="Data Date" className="text-left" />
+                  <SortableHeader field="dgt_actualstart" label="Actual Start" className="text-left" />
+                  <SortableHeader field="dgt_actualfinish" label="Actual Finish" className="text-left" />
+                  <SortableHeader field="dgt_pctcomplete" label="% Complete" className="text-left" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {paginatedData.length === 0 ? (
+                {data.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-2 py-6 text-center text-xs text-gray-500">
+                    <td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((record) => (
-                    <tr key={record.dgt_dbp6bd06progressstorageid} className="hover:bg-gray-50">
-                      <td className="px-2 py-1.5 text-xs text-gray-900 whitespace-nowrap font-mono sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
+                  data.map(record => (
+                    <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
+                      <td className="px-3 py-1.5 text-xs text-gray-900 font-mono whitespace-nowrap">
                         {record.dgt_activityid || '-'}
                       </td>
-                      {/* Actual Start - Editable */}
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd06progressstorageid && editingCell?.field === 'dgt_actualstart' ? (
-                          <input
-                            type="date"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06progressstorageid, 'dgt_actualstart')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06progressstorageid, 'dgt_actualstart')}
-                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6bd06progressstorageid, 'dgt_actualstart', record.dgt_actualstart)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
-                            title="Click to edit"
-                          >
-                            {formatDate(record.dgt_actualstart)}
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </span>
-                        )}
+                      <td className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
+                        {record.dgt_projectid || '-'}
                       </td>
-                      {/* Actual Finish - Editable */}
-                      <td className="px-2 py-1.5 text-xs text-gray-900">
-                        {editingCell?.recordId === record.dgt_dbp6bd06progressstorageid && editingCell?.field === 'dgt_actualfinish' ? (
-                          <input
-                            type="date"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06progressstorageid, 'dgt_actualfinish')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06progressstorageid, 'dgt_actualfinish')}
-                            className="w-28 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
-                        ) : (
-                          <span
-                            onClick={() => startEditing(record.dgt_dbp6bd06progressstorageid, 'dgt_actualfinish', record.dgt_actualfinish)}
-                            className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded inline-flex items-center gap-1 group"
-                            title="Click to edit"
-                          >
-                            {formatDate(record.dgt_actualfinish)}
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </span>
-                        )}
+                      <td className="px-3 py-1.5 text-xs text-gray-700 text-center">
+                        {record.dgt_weeknum ?? '-'}
                       </td>
-                      {/* % Complete - Editable */}
-                      <td className="px-2 py-1.5 text-xs">
-                        {editingCell?.recordId === record.dgt_dbp6bd06progressstorageid && editingCell?.field === 'dgt_complete' ? (
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="100"
-                            value={cellValue}
-                            onChange={(e) => setCellValue(e.target.value)}
-                            onBlur={() => saveInlineEdit(record.dgt_dbp6bd06progressstorageid, 'dgt_complete')}
-                            onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd06progressstorageid, 'dgt_complete')}
-                            className="w-16 px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            autoFocus
-                          />
-                        ) : (
-                          <div
-                            onClick={() => startEditing(record.dgt_dbp6bd06progressstorageid, 'dgt_complete', record.dgt_complete)}
-                            className="flex items-center gap-2 cursor-pointer hover:bg-blue-50 px-1 py-1 rounded group"
-                            title="Click to edit"
-                          >
-                            <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                              <div
-                                className={`h-1.5 rounded-full ${getProgressColor(record.dgt_complete)}`}
-                                style={{
-                                  width: `${Math.min((record.dgt_complete || 0) * 100, 100)}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs text-gray-600 font-mono">
-                              {formatPercentage(record.dgt_complete)}
-                            </span>
-                            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 text-center">
+                        {record.rpt_weeknum ?? '-'}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
+                        {formatDate(record.dgt_datadate)}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
+                        {formatDate(record.dgt_actualstart)}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
+                        {formatDate(record.dgt_actualfinish)}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 bg-gray-200 rounded-full h-1.5 shrink-0">
+                            <div
+                              className={`h-1.5 rounded-full ${getProgressColor(record.dgt_pctcomplete)}`}
+                              style={{
+                                width: `${Math.min((record.dgt_pctcomplete || 0) * 100, 100)}%`,
+                              }}
+                            />
                           </div>
-                        )}
-                      </td>
-                      {/* Actions */}
-                      <td className="px-2 py-1.5">
-                        <button
-                          onClick={() => setDeleteConfirm(record.dgt_dbp6bd06progressstorageid)}
-                          className="p-1 text-red-500 rounded"
-                          title="Delete record"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                          <span className="text-xs text-gray-600 font-mono">
+                            {formatPct(record.dgt_pctcomplete)}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -650,123 +368,40 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
               </tbody>
             </table>
           </div>
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-            totalItems={filteredAndSortedData.length}
-            itemsPerPage={ITEMS_PER_PAGE}
-          />
+
+          {/* Pagination */}
+          <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </button>
+            <span className="text-sm text-gray-600">
+              Showing{' '}
+              <span className="font-semibold text-gray-900">{rangeStart.toLocaleString()}</span>
+              {' – '}
+              <span className="font-semibold text-gray-900">{rangeEnd.toLocaleString()}</span>
+              {' of '}
+              <span className="font-semibold text-gray-900">{totalCount.toLocaleString()}</span>
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+              <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
-
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCancelModal}
-        title="Create Dynamic Actual Data Record"
-      >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">
-              Project <span className="text-red-500">*</span>
-            </label>
-            <select
-              {...register('dgt_dbp6bd00projectdataid', { required: 'Project is required' })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">-- Select Project --</option>
-              {projects.map((p) => (
-                <option key={p.dgt_dbp6bd00projectdataid} value={p.dgt_dbp6bd00projectdataid}>
-                  {p.dgt_projectname || p.dgt_dbp6bd00projectdataid}
-                </option>
-              ))}
-            </select>
-            {errors.dgt_dbp6bd00projectdataid && (
-              <p className="text-xs text-red-500">{errors.dgt_dbp6bd00projectdataid.message}</p>
-            )}
-          </div>
-
-          <FormField
-            label="Activity ID"
-            type="text"
-            {...register('dgt_activityid')}
-            error={errors.dgt_activityid?.message}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="Actual Start"
-              type="date"
-              {...register('dgt_actualstart')}
-              error={errors.dgt_actualstart?.message}
-            />
-
-            <FormField
-              label="Actual Finish"
-              type="date"
-              {...register('dgt_actualfinish')}
-              error={errors.dgt_actualfinish?.message}
-            />
-          </div>
-
-          <FormField
-            label="Percent Complete"
-            type="number"
-            step="0.1"
-            min="0"
-            max="100"
-            {...register('dgt_complete', {
-              validate: (value) => {
-                if (!value) return true
-                const num = parseFloat(value)
-                if (isNaN(num)) return 'Must be a valid number'
-                if (num < 0 || num > 100) return 'Must be between 0 and 100'
-                return true
-              },
-            })}
-            error={errors.dgt_complete?.message}
-            helpText="Enter a value between 0 and 100"
-          />
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={handleCancelModal}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      <ConfirmDialog
-        isOpen={!!deleteConfirm}
-        title="Delete Record"
-        message="Are you sure you want to delete this record? This action cannot be undone."
-        confirmLabel="Delete"
-        loading={deleting}
-        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
-        onCancel={() => setDeleteConfirm(null)}
-      />
-
-      <ConfirmDialog
-        isOpen={showDiscardConfirm}
-        title="Discard Changes"
-        message="You have unsaved changes. Are you sure you want to discard them?"
-        confirmLabel="Discard"
-        cancelLabel="Keep Editing"
-        variant="warning"
-        onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }}
-        onCancel={() => setShowDiscardConfirm(false)}
-      />
     </div>
   )
 }

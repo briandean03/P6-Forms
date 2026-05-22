@@ -91,15 +91,18 @@ export interface ActualResources {
 }
 
 export interface DynamicActualData {
-  dgt_dbp6bd06progressstorageid: string
-  dgt_dbp6bd00projectdataid: string | null
+  dgt_dbp6bd06dynamicactualdataid: string
   dgt_activityid: string | null
   dgt_actualstart: string | null
   dgt_actualfinish: string | null
-  dgt_complete: number | null
-  status_code: number | null
-  dgt_weeknum: number | null
+  dgt_pctcomplete: number | null
+  mod_id: number | null
+  version_num: number | null
   dgt_projectid: string | null
+  dgt_dbp6bd00projectdataid: string | null
+  dgt_datadate: string | null
+  dgt_weeknum: number | null
+  rpt_weeknum: number | null
 }
 
 export interface Type {
