@@ -259,7 +259,7 @@ function App() {
       case 'payments':
         return <PaymentsForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'referencedata':
-        return <ReferenceDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
+        return <ReferenceDataForm schemaName={selectedSchemaName} />
       case 'p6activityoutput':
         return <P6ActivityOutputForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'p6activityupdates':
