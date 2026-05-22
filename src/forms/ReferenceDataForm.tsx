@@ -479,7 +479,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
   )
 }
 
-export function ReferenceDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+export function ReferenceDataForm({ schemaName }: { schemaName: string }) {
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const handleNotify = (type: 'success' | 'error', message: string) => {
