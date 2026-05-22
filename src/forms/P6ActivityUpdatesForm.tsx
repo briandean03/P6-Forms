@@ -383,6 +383,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       setData(prev => prev.map(r => r.id === editingId ? { ...r, ...editValuesToRow(editValues) } : r))
       showSuccess('Record updated')
       setEditingId(null)
+      await fetchProjectHeader()
       await upsertProgressData([editValues])
     }
     setSaving(false)
@@ -450,6 +451,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       showSuccess(`Saved ${upsertRows.length} records`)
       await fetchData()
       exitEditAllMode()
+      await fetchProjectHeader()
       await upsertProgressData(Object.values(editAllValues))
     }
     setSaveAllLoading(false)

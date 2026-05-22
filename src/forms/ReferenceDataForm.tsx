@@ -15,6 +15,7 @@ interface RefTableConfig {
   pkField: string
   pkIsAuto: boolean
   codeIsNumber?: boolean
+  abbreviationField?: string
 }
 
 const REF_TABLES: RefTableConfig[] = [
@@ -26,6 +27,7 @@ const REF_TABLES: RefTableConfig[] = [
     pkField: 'id',
     pkIsAuto: true,
     codeIsNumber: true,
+    abbreviationField: 'abbreviation',
   },
   {
     title: 'Types',
@@ -35,6 +37,7 @@ const REF_TABLES: RefTableConfig[] = [
     pkField: 'id',
     pkIsAuto: true,
     codeIsNumber: true,
+    abbreviationField: 'abbreviation',
   },
   {
     title: 'Activity Disciplines',
@@ -71,12 +74,14 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
   const [addingRow, setAddingRow] = useState(false)
   const [newCode, setNewCode] = useState('')
   const [newName, setNewName] = useState('')
+  const [newAbbr, setNewAbbr] = useState('')
   const [saving, setSaving] = useState(false)
 
   // Edit row state
   const [editingPk, setEditingPk] = useState<string | number | null>(null)
   const [editCode, setEditCode] = useState('')
   const [editName, setEditName] = useState('')
+  const [editAbbr, setEditAbbr] = useState('')
 
   // Delete state
   const [deleteConfirm, setDeleteConfirm] = useState<string | number | null>(null)
@@ -143,6 +148,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
       [config.codeField]: config.codeIsNumber ? parseFloat(newCode) : newCode.trim(),
       [config.nameField]: newName.trim(),
     }
+    if (config.abbreviationField) payload[config.abbreviationField] = newAbbr.trim() || null
     const { error } = await supabase.from(config.table).insert(payload as never)
     if (error) {
       onNotify('error', `Failed to add: ${error.message}`)
@@ -151,6 +157,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
       setAddingRow(false)
       setNewCode('')
       setNewName('')
+      setNewAbbr('')
       fetchRows()
     }
     setSaving(false)
@@ -161,6 +168,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
     setEditingPk(row[config.pkField] as string | number)
     setEditCode(String(row[config.codeField] ?? ''))
     setEditName(String(row[config.nameField] ?? ''))
+    if (config.abbreviationField) setEditAbbr(String(row[config.abbreviationField] ?? ''))
   }
 
   const handleSaveEdit = async () => {
@@ -171,6 +179,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
       [config.codeField]: newCodeVal,
       [config.nameField]: editName.trim(),
     }
+    if (config.abbreviationField) payload[config.abbreviationField] = editAbbr.trim() || null
 
     if (config.pkIsAuto) {
       // Auto-increment id — update by id
@@ -253,6 +262,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-28 cursor-pointer hover:text-gray-800 select-none" onClick={() => handleSort('code')}>Code<SortIcon col="code" /></th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-800 select-none" onClick={() => handleSort('name')}>Name<SortIcon col="name" /></th>
+                  {config.abbreviationField && <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide w-24">Abbr.</th>}
                   <th className="px-3 py-2 w-16"></th>
                 </tr>
               </thead>
@@ -284,6 +294,21 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
                         className="w-full px-2 py-1 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </td>
+                    {config.abbreviationField && (
+                      <td className="px-2 py-1.5">
+                        <input
+                          type="text"
+                          value={newAbbr}
+                          onChange={e => setNewAbbr(e.target.value)}
+                          placeholder="Abbr."
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleAdd()
+                            if (e.key === 'Escape') { setAddingRow(false) }
+                          }}
+                          className="w-full px-2 py-1 text-xs border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </td>
+                    )}
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-0.5">
                         <button
@@ -313,7 +338,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
                 {/* Empty state */}
                 {displayRows.length === 0 && !addingRow && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-8 text-center text-xs text-gray-400">
+                    <td colSpan={config.abbreviationField ? 4 : 3} className="px-3 py-8 text-center text-xs text-gray-400">
                       {searchTerm ? 'No matching records' : 'No records'}
                     </td>
                   </tr>
@@ -348,6 +373,20 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
                               className="w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400"
                             />
                           </td>
+                          {config.abbreviationField && (
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                value={editAbbr}
+                                onChange={e => setEditAbbr(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleSaveEdit()
+                                  if (e.key === 'Escape') setEditingPk(null)
+                                }}
+                                className="w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              />
+                            </td>
+                          )}
                           <td className="px-2 py-1.5">
                             <div className="flex items-center gap-0.5">
                               <button
@@ -380,6 +419,11 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
                           <td className="px-3 py-2 text-xs text-gray-900">
                             {String(row[config.nameField] ?? '-')}
                           </td>
+                          {config.abbreviationField && (
+                            <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                              {row[config.abbreviationField] ? String(row[config.abbreviationField]) : '-'}
+                            </td>
+                          )}
                           <td className="px-2 py-2">
                             <div className="flex items-center gap-0.5">
                               <button

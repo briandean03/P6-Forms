@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
-import { schemaClient } from '@/lib/supabase'
+import { supabase, schemaClient } from '@/lib/supabase'
 import type { Trades } from '@/types/database'
 import { Modal } from '@/components/Modal'
 import { Pagination } from '@/components/Pagination'
@@ -25,7 +25,7 @@ type SortDirection = 'asc' | 'desc'
 const inputCls = 'w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
 
 export function TradesForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
-  const supabase = schemaClient(schemaName)
+  const schemaDb = schemaClient(schemaName)
   const [data, setData] = useState<Trades[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,7 +51,7 @@ export function TradesForm({ projectId, schemaName }: { projectId: string; schem
   }
 
   const fetchProjects = async () => {
-    const { data: records } = await supabase.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname').order('dgt_projectname', { ascending: true })
+    const { data: records } = await schemaDb.from('dbp6_0000_projectdata').select('dgt_dbp6bd00projectdataid, dgt_projectname').order('dgt_projectname', { ascending: true })
     setProjects(records || [])
   }
 

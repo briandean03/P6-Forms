@@ -107,6 +107,7 @@ export interface Type {
   created_at: string
   type_name: string | null
   type_code: number | null
+  abbreviation: string | null
   dgt_dbp6bd00projectdataid: string | null
   dgt_projectid: string | null
 }
@@ -190,6 +191,7 @@ export interface Discipline {
   created_at: string
   discipline_name: string | null
   discipline_code: number | null
+  abbreviation: string | null
   dgt_dbp6bd00projectdataid: string | null
   dgt_projectid: string | null
 }
