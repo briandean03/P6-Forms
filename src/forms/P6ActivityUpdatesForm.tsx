@@ -108,12 +108,11 @@ const recordToEditValues = (r: P6ActivityUpdate): EditValues => ({
   update_type: r.update_type || 'progress',
 })
 
-const resolveStatusCode = (vals: EditValues): string | null => {
+const resolveStatusCode = (vals: EditValues): string => {
   const pct = vals.complete_pct !== '' ? parseFloat(vals.complete_pct) : 0
-  if (vals.act_start_date && !vals.act_end_date && pct > 0) return 'In Progress'
-  if (vals.act_start_date && vals.act_end_date && pct === 100) return 'Completed'
-  if (!vals.act_start_date && pct === 0) return 'Not Started'
-  return vals.status_code || null
+  if (pct === 100 || (vals.act_start_date && vals.act_end_date)) return 'Completed'
+  if (pct > 0 || (vals.act_start_date && !vals.act_end_date)) return 'In Progress'
+  return 'Not Started'
 }
 
 const editValuesToRow = (vals: EditValues) => ({
@@ -438,15 +437,12 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   const deriveFields = (vals: EditValues, origCompletePct: number | null): Pick<EditValues, 'status_code' | 'update_type'> => {
     const pct = vals.complete_pct !== '' ? parseFloat(vals.complete_pct) : 0
     const origPct = origCompletePct ?? 0
-    if (!vals.act_start_date && pct === 0)
-      return { status_code: 'Not Started', update_type: 'reset' }
-    if (vals.act_start_date && !vals.act_end_date && pct > 0)
-      return { status_code: 'In Progress', update_type: pct < origPct ? 'deprogress' : 'progress' }
-    if (vals.act_start_date && vals.act_end_date && pct === 100)
-      return { status_code: 'Completed', update_type: 'progress' }
-    if (pct < origPct)
-      return { status_code: vals.status_code, update_type: 'deprogress' }
-    return { status_code: vals.status_code, update_type: vals.update_type }
+    let status_code: string
+    if (pct === 100 || (vals.act_start_date && vals.act_end_date)) status_code = 'Completed'
+    else if (pct > 0 || (vals.act_start_date && !vals.act_end_date)) status_code = 'In Progress'
+    else status_code = 'Not Started'
+    const update_type = pct === 0 ? 'reset' : pct < origPct ? 'deprogress' : 'progress'
+    return { status_code, update_type }
   }
 
   const DERIVED_TRIGGER: (keyof EditValues)[] = ['act_start_date', 'act_end_date', 'complete_pct']
