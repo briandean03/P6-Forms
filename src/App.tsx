@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { ProjectData } from '@/types/database'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Notification } from '@/components/Notification'
+import { useNotification } from '@/hooks/useNotification'
 import { EngineeringForm } from '@/forms/EngineeringForm'
 import { QaqcHseForm } from '@/forms/QaqcHseForm'
 import { ActualResourcesForm } from '@/forms/ActualResourcesForm'
@@ -13,7 +16,6 @@ import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
 import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
 import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
 import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
-import { P6RunTriggerForm } from '@/forms/P6RunTriggerForm'
 import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 
 type TabKey =
@@ -31,7 +33,6 @@ type TabKey =
   | 'p6activityoutput'
   | 'p6activityupdates'
   | 'p6projectmapping'
-  | 'p6runtrigger'
   | 'photos'
 
 interface Tab {
@@ -154,16 +155,6 @@ const tabs: Tab[] = [
     ),
   },
   {
-    key: 'p6runtrigger',
-    label: 'Run Trigger',
-    group: 'P6 Scheduler',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-  {
     key: 'photos',
     label: 'Photos',
     icon: (
@@ -191,6 +182,10 @@ function App() {
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [selectedSchemaName, setSelectedSchemaName] = useState<string>('public')
+  const [runUpdateLoading, setRunUpdateLoading] = useState(false)
+  const [showRunUpdateConfirm, setShowRunUpdateConfirm] = useState(false)
+
+  const { notification, hideNotification, showSuccess, showError } = useNotification()
 
   const fetchProjectInfo = async () => {
     const { data } = await supabase
@@ -237,6 +232,43 @@ function App() {
     setView('home')
   }
 
+  const handleRunUpdate = async () => {
+    setShowRunUpdateConfirm(false)
+    setRunUpdateLoading(true)
+    try {
+      const projectTextId = selectedProject?.textProjectId || ''
+
+      // Look up schema_name for the P6 update webhook
+      const { data: mapping } = await supabase
+        .from('p6_project_mapping')
+        .select('schema_name')
+        .eq('dgt_projectid', projectTextId)
+        .single()
+      const schemaName = (mapping as { schema_name: string } | null)?.schema_name || 'public'
+
+      // Fire all webhooks concurrently:
+      // - 4 sync webhooks (GET) from ProjectDataForm
+      // - P6 run-update webhook (POST) from P6ActivityUpdatesForm
+      await Promise.allSettled([
+        fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec'),
+        fetch('https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8'),
+        fetch('https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8'),
+        fetch('https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba'),
+        fetch('https://pmc2p2c.app.n8n.cloud/webhook/run-p6-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_code: projectTextId, schema_name: schemaName }),
+        }),
+      ])
+
+      showSuccess('Update triggered successfully')
+    } catch (err) {
+      showError('Failed to run update: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setRunUpdateLoading(false)
+    }
+  }
+
   const selectedProject = projectInfo.find(p => p.id === selectedProjectId)
 
   const renderTabContent = () => {
@@ -266,8 +298,6 @@ function App() {
         return <P6ActivityUpdatesForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'p6projectmapping':
         return <P6ProjectMappingForm />
-      case 'p6runtrigger':
-        return <P6RunTriggerForm schemaName={selectedSchemaName} />
       case 'photos':
         return <PhotoUploadForm projectId={selectedProjectId} />
       default:
@@ -358,6 +388,22 @@ function App() {
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
+      {notification && (
+        <Notification
+          type={notification.type}
+          message={notification.message}
+          onClose={hideNotification}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={showRunUpdateConfirm}
+        title="Run Update"
+        message="This will trigger all sync webhooks and the P6 run-update workflow for the current project. Are you sure you want to proceed?"
+        confirmLabel="Run Update"
+        onConfirm={handleRunUpdate}
+        onCancel={() => setShowRunUpdateConfirm(false)}
+      />
       {/* Sidebar */}
       <aside
         className={`flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ${
@@ -459,6 +505,31 @@ function App() {
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-gray-500">Project:</span>
                 <span className="text-sm font-semibold text-gray-900">{selectedProject?.projectname || '—'}</span>
+              </div>
+              <div className="ml-auto">
+                <button
+                  onClick={() => setShowRunUpdateConfirm(true)}
+                  disabled={runUpdateLoading || !selectedProject?.textProjectId}
+                  title={!selectedProject?.textProjectId ? 'No project selected' : undefined}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {runUpdateLoading ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                      Running…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Run Update
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

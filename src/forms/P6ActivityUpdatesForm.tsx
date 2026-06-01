@@ -60,6 +60,13 @@ interface ColumnFilters {
   complete_pct: string
 }
 
+interface QueueEntry {
+  id: number | string
+  requested_at: string | null
+  status: string | null
+  completed_at: string | null
+}
+
 const ITEMS_PER_PAGE = 15
 type SortField = 'project_code' | 'task_code' | 'task_name' | 'status_code' | 'complete_pct' | 'data_date' | 'wbs_id'
 type SortDirection = 'asc' | 'desc'
@@ -169,6 +176,9 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const [runUpdateLoading, setRunUpdateLoading] = useState(false)
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([])
+  const [queueLoading, setQueueLoading] = useState(false)
+  const [queueExpanded, setQueueExpanded] = useState(true)
   // Edit All mode
   const [editAllMode, setEditAllMode] = useState(false)
   const [editAllValues, setEditAllValues] = useState<Record<number, EditValues>>({})
@@ -185,6 +195,19 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
   const schemaDb = schemaClient(schemaName)
+
+  const fetchQueueStatus = async () => {
+    if (!projectTextId) return
+    setQueueLoading(true)
+    const { data: entries } = await schemaDb
+      .from('p6_update_queue')
+      .select('id, requested_at, status, completed_at')
+      .eq('project_code', projectTextId)
+      .order('requested_at', { ascending: false })
+      .limit(5)
+    if (entries) setQueueEntries(entries as QueueEntry[])
+    setQueueLoading(false)
+  }
 
   const handleRunUpdate = async () => {
     setRunUpdateLoading(true)
@@ -204,6 +227,8 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       })
       if (!response.ok) throw new Error(`Server responded with ${response.status}`)
       showSuccess('P6 update triggered successfully')
+      // Immediately refresh queue so the new pending entry appears
+      setTimeout(fetchQueueStatus, 1500)
     } catch (err) {
       showError('Failed to run update: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
@@ -266,6 +291,13 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   useEffect(() => { setCurrentPage(1) }, [columnFilters])
   useEffect(() => {
     setColumnFilters({ task_code: '', task_name: '', status_code: '', wbs_id: '', complete_pct: '' })
+  }, [projectTextId])
+
+  // Queue status: fetch on mount + auto-refresh every 10 s
+  useEffect(() => {
+    fetchQueueStatus()
+    const interval = setInterval(fetchQueueStatus, 10_000)
+    return () => clearInterval(interval)
   }, [projectTextId])
 
   const filteredAndSortedData = useMemo(() => {
@@ -724,6 +756,87 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
           </button>
         </div>
       </div>
+
+      {/* Queue Status */}
+      {projectTextId && (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setQueueExpanded(e => !e)}
+            className="w-full flex items-center justify-between px-4 py-2.5 border-b border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700">Update Queue</span>
+              <span className="text-xs text-gray-400">(last 5 entries)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {queueLoading && (
+                <svg className="w-4 h-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              )}
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${queueExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
+
+          {queueExpanded && (queueEntries.length === 0 ? (
+            <p className="px-4 py-4 text-sm text-gray-400 text-center">
+              {queueLoading ? 'Loading…' : 'No queue entries found for this project.'}
+            </p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Requested At</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-2 text-left font-medium text-gray-500 uppercase tracking-wide">Completed At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {queueEntries.map((entry) => {
+                  const status = (entry.status || '').toLowerCase()
+                  const statusConfig: Record<string, { dot: string; label: string; text: string }> = {
+                    pending:    { dot: 'bg-yellow-400', label: 'Pending',    text: 'text-yellow-700' },
+                    processing: { dot: 'bg-blue-500',   label: 'Processing', text: 'text-blue-700'   },
+                    completed:  { dot: 'bg-green-500',  label: 'Completed',  text: 'text-green-700'  },
+                    error:      { dot: 'bg-red-500',    label: 'Error',      text: 'text-red-700'    },
+                  }
+                  const cfg = statusConfig[status] ?? { dot: 'bg-gray-400', label: entry.status || '-', text: 'text-gray-600' }
+                  return (
+                    <tr key={String(entry.id)} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">
+                        {entry.requested_at
+                          ? new Date(entry.requested_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })
+                          : '-'}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-flex items-center gap-1.5 font-medium ${cfg.text}`}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+                          {cfg.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">
+                        {entry.completed_at
+                          ? new Date(entry.completed_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })
+                          : '-'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          ))}
+        </div>
+      )}
 
       {/* Edit All mode banner */}
       {editAllMode && (

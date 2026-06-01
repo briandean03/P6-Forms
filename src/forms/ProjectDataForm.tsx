@@ -36,9 +36,6 @@ interface ProjectDataFormData {
   owningbusinessunit: string
 }
 
-type SortField = keyof ProjectData
-type SortDirection = 'asc' | 'desc'
-
 type EditingCell = {
   recordId: string
   field: EditableField
@@ -62,31 +59,20 @@ const DATE_FIELDS = new Set([
 const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_weeknum'])
 const NON_EDITABLE_FIELDS = new Set(['dgt_weeknum'])
 
-// All columns except the sticky-first (dgt_projectname) and sticky-last (Actions)
-const SCROLLABLE_COLUMNS: { field: keyof ProjectData }[] = [
-  { field: 'dgt_projectid' },
-  { field: 'project_id' },
-  { field: 'current_p6_project_code' },
-  { field: 'dgt_employersname' },
-  { field: 'dgt_contractorsname' },
-  { field: 'dgt_consultantsname' },
-  { field: 'dgt_pmcsname' },
-  { field: 'dgt_location' },
-  { field: 'dgt_contractvalue' },
-  { field: 'dgt_projectstartdate' },
-  { field: 'dgt_projectenddate' },
-  { field: 'dgt_reportingstartingdate' },
-  { field: 'dgt_datadate' },
-  { field: 'dgt_elapsedduration' },
-  { field: 'dgt_eotawarded' },
-  { field: 'dgt_weeknum' },
-  { field: 'timezoneruleversionnumber' },
-  { field: 'utcconversiontimezonecode' },
-  { field: 'owningbusinessunit' },
-]
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 py-1.5">
+      <span className="text-xs font-medium text-gray-500 w-36 shrink-0 pt-1 leading-tight">{label}</span>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  )
+}
 
-const formatHeader = (field: string) =>
-  field.startsWith('dgt_') ? field.slice(4) : field
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{children}</p>
+  )
+}
 
 export function ProjectDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
@@ -104,8 +90,6 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [cellValue, setCellValue] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortField, setSortField] = useState<SortField | null>(null)
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [searchTerm, setSearchTerm] = useState('')
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -113,8 +97,13 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isDirty },
   } = useForm<ProjectDataFormData>()
+
+  const watchedStartDate = watch('dgt_projectstartdate')
+
+  const ITEMS_PER_PAGE = 15
 
   const handleCancelModal = () => {
     if (isDirty) {
@@ -123,8 +112,6 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
       setIsModalOpen(false)
     }
   }
-
-  const ITEMS_PER_PAGE = 15
 
   const fetchData = async () => {
     setLoading(true)
@@ -203,7 +190,6 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
     try {
       const { error } = await supabase.from('dbp6_0000_projectdata').insert(insertData as never)
       if (error) {
-        console.error('Insert error:', error)
         showError('Failed to create record: ' + error.message)
       } else {
         showSuccess('Project posted successfully')
@@ -303,15 +289,6 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
     }
   }
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('asc')
-    }
-  }
-
   const filteredAndSortedData = useMemo(() => {
     let result = data
 
@@ -327,23 +304,8 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
       )
     }
 
-    if (sortField) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sortField]
-        const bVal = b[sortField]
-        if (aVal === null || aVal === undefined) return sortDirection === 'asc' ? 1 : -1
-        if (bVal === null || bVal === undefined) return sortDirection === 'asc' ? -1 : 1
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
-        }
-        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-        return 0
-      })
-    }
-
     return result
-  }, [data, searchTerm, sortField, sortDirection])
+  }, [data, searchTerm])
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
@@ -352,20 +314,57 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
 
   const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
 
+  // Renders an inline-editable cell for the vertical layout
   const renderCell = (record: ProjectData, field: keyof ProjectData) => {
     const isEditing =
       editingCell?.recordId === record.dgt_dbp6bd00projectdataid &&
       editingCell?.field === field
     const rawValue = record[field]
-    const inputType = getInputType(field)
 
+    // Read-only fields
     if (NON_EDITABLE_FIELDS.has(field)) {
       return (
-        <span className="px-1 py-1 block min-w-[40px] whitespace-nowrap text-gray-700">
+        <span className="text-sm text-gray-800 px-1">
           {formatCellValue(field, rawValue as string | number | null)}
         </span>
       )
     }
+
+    // Data date — calendar restricted to weekly intervals from project start date
+    if (field === 'dgt_datadate') {
+      const startDate = record.dgt_projectstartdate
+        ? new Date(record.dgt_projectstartdate).toISOString().slice(0, 10)
+        : undefined
+
+      return isEditing ? (
+        <input
+          type="date"
+          value={cellValue}
+          onChange={(e) => setCellValue(e.target.value)}
+          onBlur={() => saveInlineEdit(record.dgt_dbp6bd00projectdataid, 'dgt_datadate')}
+          onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd00projectdataid, 'dgt_datadate')}
+          min={startDate}
+          className="px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          autoFocus
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => startEditing(record.dgt_dbp6bd00projectdataid, 'dgt_datadate', rawValue as string | null)}
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-blue-50 group text-left"
+          title="Click to select data date"
+        >
+          <span className="text-sm text-gray-800">
+            {formatCellValue(field, rawValue as string | null)}
+          </span>
+          <svg className="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </button>
+      )
+    }
+
+    const inputType = getInputType(field)
 
     return isEditing ? (
       <input
@@ -373,28 +372,26 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
         value={cellValue}
         onChange={(e) => setCellValue(e.target.value)}
         onBlur={() => saveInlineEdit(record.dgt_dbp6bd00projectdataid, field as EditableField)}
-        onKeyDown={(e) =>
-          handleKeyDown(e, record.dgt_dbp6bd00projectdataid, field as EditableField)
-        }
-        className={`px-1 py-1 text-xs border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-          inputType === 'date' ? 'w-32' : inputType === 'number' ? 'w-20' : 'w-28'
+        onKeyDown={(e) => handleKeyDown(e, record.dgt_dbp6bd00projectdataid, field as EditableField)}
+        className={`px-2 py-1 text-sm border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+          inputType === 'date' ? 'w-36' : inputType === 'number' ? 'w-28' : 'w-full max-w-sm'
         }`}
         autoFocus
       />
     ) : (
-      <span
-        onClick={() =>
-          startEditing(
-            record.dgt_dbp6bd00projectdataid,
-            field as EditableField,
-            rawValue as string | number | null
-          )
-        }
-        className="cursor-pointer hover:bg-blue-50 px-1 py-1 rounded block min-w-[40px] whitespace-nowrap"
+      <button
+        type="button"
+        onClick={() => startEditing(record.dgt_dbp6bd00projectdataid, field as EditableField, rawValue as string | number | null)}
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-blue-50 group text-left"
         title="Click to edit"
       >
-        {formatCellValue(field, rawValue as string | number | null)}
-      </span>
+        <span className="text-sm text-gray-800">
+          {formatCellValue(field, rawValue as string | number | null)}
+        </span>
+        <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      </button>
     )
   }
 
@@ -438,12 +435,17 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
       {notification && (
         <Notification type={notification.type} message={notification.message} onClose={hideNotification} />
       )}
+
+      {/* Toolbar */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Project Data</h2>
         <div className="flex gap-2 items-center">
           <button
-            onClick={() => { setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle' }); setWebhookModal(true) }}
-            className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 flex items-center gap-2"
+            onClick={() => {
+              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle' })
+              setWebhookModal(true)
+            }}
+            className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -453,113 +455,142 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
           <CsvControls onExport={handleExport} onImport={handleImport} />
           <button
             onClick={openCreateModal}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700"
           >
             Post Project
           </button>
         </div>
       </div>
 
-      <div className="space-y-3 bg-white p-4 rounded-lg shadow-sm">
-        <SearchFilter
-          placeholder="Search by project name, ID, employer or location..."
-          value={searchTerm}
-          onChange={setSearchTerm}
-        />
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setSearchTerm('')
-              setCurrentPage(1)
-            }}
-            className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded"
-          >
-            Clear Filter
-          </button>
-          <span className="text-sm text-gray-600">
-            {filteredAndSortedData.length} of {data.length} records
-          </span>
+      {/* Search / filter bar */}
+      <div className="flex items-center gap-3 bg-white p-3 rounded-lg shadow-sm border border-gray-200">
+        <div className="flex-1">
+          <SearchFilter
+            placeholder="Search by project name, ID, employer or location..."
+            value={searchTerm}
+            onChange={setSearchTerm}
+          />
         </div>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-        <table className="min-w-max border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-300">
-              {/* Sticky first column */}
-              <th className="sticky left-0 z-20 bg-gray-50 px-3 py-2 text-left border-r border-gray-300 shadow-[2px_0_4px_rgba(0,0,0,0.06)]">
-                <button
-                  onClick={() => handleSort('dgt_projectname')}
-                  className="font-semibold text-gray-700 hover:text-gray-900 cursor-pointer flex items-center gap-1 whitespace-nowrap"
-                >
-                  {formatHeader('dgt_projectname')}
-                  {sortField === 'dgt_projectname' && (
-                    <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                  )}
-                </button>
-              </th>
-
-              {/* Scrollable columns */}
-              {SCROLLABLE_COLUMNS.map(({ field }) => (
-                <th key={field} className="px-3 py-2 text-left">
-                  <button
-                    onClick={() => handleSort(field)}
-                    className="font-semibold text-gray-700 hover:text-gray-900 cursor-pointer flex items-center gap-1 whitespace-nowrap"
-                  >
-                    {formatHeader(field)}
-                    {sortField === field && (
-                      <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </button>
-                </th>
-              ))}
-
-              {/* Sticky last column */}
-              <th className="sticky right-0 z-20 bg-gray-50 px-3 py-2 text-left border-l border-gray-300 shadow-[-2px_0_4px_rgba(0,0,0,0.06)] whitespace-nowrap font-semibold text-gray-700">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedData.map((record) => (
-              <tr
-                key={record.dgt_dbp6bd00projectdataid}
-                className="group border-b border-gray-200 hover:bg-gray-50"
-              >
-                {/* Sticky first column */}
-                <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50 px-3 py-2 text-xs border-r border-gray-200 shadow-[2px_0_4px_rgba(0,0,0,0.06)] font-medium text-gray-900">
-                  {renderCell(record, 'dgt_projectname')}
-                </td>
-
-                {/* Scrollable columns */}
-                {SCROLLABLE_COLUMNS.map(({ field }) => (
-                  <td key={field} className="px-3 py-2 text-xs text-gray-700">
-                    {renderCell(record, field)}
-                  </td>
-                ))}
-
-                {/* Sticky last column */}
-                <td className="sticky right-0 z-10 bg-white group-hover:bg-gray-50 px-3 py-2 text-xs border-l border-gray-200 shadow-[-2px_0_4px_rgba(0,0,0,0.06)] whitespace-nowrap">
-                  <button
-                    onClick={() => setDeleteConfirm(record.dgt_dbp6bd00projectdataid)}
-                    className="text-red-600 hover:text-red-800 font-medium"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {paginatedData.length === 0 && (
-          <div className="px-4 py-8 text-center text-gray-500">
-            {data.length === 0
-              ? 'No projects found. Create one by clicking "Post Project".'
-              : 'No matching records.'}
-          </div>
+        {searchTerm && (
+          <button
+            onClick={() => { setSearchTerm(''); setCurrentPage(1) }}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded"
+          >
+            Clear
+          </button>
         )}
+        <span className="text-sm text-gray-500 whitespace-nowrap">
+          {filteredAndSortedData.length} of {data.length} record{data.length !== 1 ? 's' : ''}
+        </span>
       </div>
+
+      {/* Vertical project cards */}
+      {paginatedData.length === 0 ? (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 px-6 py-12 text-center text-gray-500">
+          {data.length === 0
+            ? 'No projects found. Create one by clicking "Post Project".'
+            : 'No matching records.'}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {paginatedData.map((record) => (
+            <div
+              key={record.dgt_dbp6bd00projectdataid}
+              className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden"
+            >
+              {/* Card header */}
+              <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-semibold text-gray-900">
+                    {record.dgt_projectname || 'Unnamed Project'}
+                  </h3>
+                  {record.dgt_projectid && (
+                    <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                      {record.dgt_projectid}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setDeleteConfirm(record.dgt_dbp6bd00projectdataid)}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-800"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              </div>
+
+              {/* Card body — two-column sections */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+
+                {/* Left column */}
+                <div className="divide-y divide-gray-100">
+                  {/* Project Info */}
+                  <div className="px-5 py-4">
+                    <SectionHeading>Project Info</SectionHeading>
+                    <div className="space-y-0.5">
+                      <FieldRow label="Project Name">{renderCell(record, 'dgt_projectname')}</FieldRow>
+                      <FieldRow label="Project ID">{renderCell(record, 'dgt_projectid')}</FieldRow>
+                      <FieldRow label="Internal ID">
+                        <span className="text-sm text-gray-800 px-1">{record.project_id || '-'}</span>
+                      </FieldRow>
+                      <FieldRow label="P6 Code">{renderCell(record, 'current_p6_project_code')}</FieldRow>
+                      <FieldRow label="Location">{renderCell(record, 'dgt_location')}</FieldRow>
+                    </div>
+                  </div>
+
+                  {/* Parties */}
+                  <div className="px-5 py-4">
+                    <SectionHeading>Parties</SectionHeading>
+                    <div className="space-y-0.5">
+                      <FieldRow label="Employer">{renderCell(record, 'dgt_employersname')}</FieldRow>
+                      <FieldRow label="Contractor">{renderCell(record, 'dgt_contractorsname')}</FieldRow>
+                      <FieldRow label="Consultant">{renderCell(record, 'dgt_consultantsname')}</FieldRow>
+                      <FieldRow label="PMCS">{renderCell(record, 'dgt_pmcsname')}</FieldRow>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right column */}
+                <div className="divide-y divide-gray-100">
+                  {/* Dates */}
+                  <div className="px-5 py-4">
+                    <SectionHeading>Dates</SectionHeading>
+                    <div className="space-y-0.5">
+                      <FieldRow label="Start Date">{renderCell(record, 'dgt_projectstartdate')}</FieldRow>
+                      <FieldRow label="End Date">{renderCell(record, 'dgt_projectenddate')}</FieldRow>
+                      <FieldRow label="Reporting Start">{renderCell(record, 'dgt_reportingstartingdate')}</FieldRow>
+                      <FieldRow label="Data Date">{renderCell(record, 'dgt_datadate')}</FieldRow>
+                      <FieldRow label="Week #">{renderCell(record, 'dgt_weeknum')}</FieldRow>
+                    </div>
+                  </div>
+
+                  {/* Contract */}
+                  <div className="px-5 py-4">
+                    <SectionHeading>Contract</SectionHeading>
+                    <div className="space-y-0.5">
+                      <FieldRow label="Contract Value">{renderCell(record, 'dgt_contractvalue')}</FieldRow>
+                      <FieldRow label="Elapsed Duration">{renderCell(record, 'dgt_elapsedduration')}</FieldRow>
+                      <FieldRow label="EOT Awarded">{renderCell(record, 'dgt_eotawarded')}</FieldRow>
+                    </div>
+                  </div>
+
+                  {/* System */}
+                  <div className="px-5 py-4">
+                    <SectionHeading>System</SectionHeading>
+                    <div className="space-y-0.5">
+                      <FieldRow label="Owning Unit">{renderCell(record, 'owningbusinessunit')}</FieldRow>
+                      <FieldRow label="Timezone Rule">{renderCell(record, 'timezoneruleversionnumber')}</FieldRow>
+                      <FieldRow label="UTC Conversion">{renderCell(record, 'utcconversiontimezonecode')}</FieldRow>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Pagination
         currentPage={currentPage}
@@ -580,107 +611,74 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
       />
 
       {/* Create Project Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCancelModal}
-        title="Create New Project"
-      >
+      <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create New Project">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <FormField
-              label="projectname"
+              label="Project Name"
               type="text"
               {...register('dgt_projectname', { required: 'Required' })}
               error={errors.dgt_projectname?.message}
             />
             <FormField
-              label="projectid"
+              label="Project ID"
               type="text"
               {...register('dgt_projectid', { required: 'Required' })}
               error={errors.dgt_projectid?.message}
             />
           </div>
 
+          <FormField label="Employer's Name" type="text" {...register('dgt_employersname')} />
+
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="employersname" type="text" {...register('dgt_employersname')} />
+            <FormField label="Contractor's Name" type="text" {...register('dgt_contractorsname')} />
+            <FormField label="Consultant's Name" type="text" {...register('dgt_consultantsname')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="contractorsname"
-              type="text"
-              {...register('dgt_contractorsname')}
-            />
-            <FormField
-              label="consultantsname"
-              type="text"
-              {...register('dgt_consultantsname')}
-            />
+            <FormField label="PMCS Name" type="text" {...register('dgt_pmcsname')} />
+            <FormField label="Location" type="text" {...register('dgt_location')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="pmcsname" type="text" {...register('dgt_pmcsname')} />
-            <FormField label="location" type="text" {...register('dgt_location')} />
+            <FormField label="Contract Value" type="number" {...register('dgt_contractvalue')} />
+            <FormField label="Week Number" type="number" {...register('dgt_weeknum')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="contractvalue"
-              type="number"
-              {...register('dgt_contractvalue')}
-            />
-            <FormField label="weeknum" type="number" {...register('dgt_weeknum')} />
+            <FormField label="Project Start Date" type="date" {...register('dgt_projectstartdate')} />
+            <FormField label="Project End Date" type="date" {...register('dgt_projectenddate')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="projectstartdate"
-              type="date"
-              {...register('dgt_projectstartdate')}
-            />
-            <FormField
-              label="projectenddate"
-              type="date"
-              {...register('dgt_projectenddate')}
-            />
+            <FormField label="Reporting Start Date" type="date" {...register('dgt_reportingstartingdate')} />
+
+            {/* Data Date — calendar starting from project start date */}
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Data Date</label>
+              <input
+                type="date"
+                min={watchedStartDate || undefined}
+                {...register('dgt_datadate')}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              {errors.dgt_datadate && (
+                <p className="text-xs text-red-500">{errors.dgt_datadate.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="reportingstartingdate"
-              type="date"
-              {...register('dgt_reportingstartingdate')}
-            />
-            <FormField label="datadate" type="date" {...register('dgt_datadate')} />
+            <FormField label="Elapsed Duration" type="text" {...register('dgt_elapsedduration')} />
+            <FormField label="EOT Awarded" type="text" {...register('dgt_eotawarded')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="elapsedduration"
-              type="text"
-              {...register('dgt_elapsedduration')}
-            />
-            <FormField label="eotawarded" type="text" {...register('dgt_eotawarded')} />
+            <FormField label="Timezone Rule Version" type="text" {...register('timezoneruleversionnumber')} />
+            <FormField label="UTC Conversion Timezone" type="text" {...register('utcconversiontimezonecode')} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FormField
-              label="timezoneruleversionnumber"
-              type="text"
-              {...register('timezoneruleversionnumber')}
-            />
-            <FormField
-              label="utcconversiontimezonecode"
-              type="text"
-              {...register('utcconversiontimezonecode')}
-            />
-          </div>
-
-          <FormField
-            label="owningbusinessunit"
-            type="text"
-            {...register('owningbusinessunit')}
-          />
+          <FormField label="Owning Business Unit" type="text" {...register('owningbusinessunit')} />
 
           <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
             <button
@@ -728,7 +726,7 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
                   )}
                   {status === 'success' && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                   {status === 'error'   && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>}
-                  {status === 'idle'    ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed — Retry'}
+                  {status === 'idle' ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed — Retry'}
                 </button>
               </div>
             )
