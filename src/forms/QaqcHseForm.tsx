@@ -36,7 +36,7 @@ type EditingCell = {
   field: EditableField
 } | null
 
-type SortField = 'dgt_docid' | 'dgt_docref' | 'dgt_documentsubject' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_status'
+type SortField = 'dgt_docid' | 'dgt_docref' | 'dgt_documentsubject' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_date_issued_to_contractor' | 'dgt_status' | 'week_num'
 type SortDirection = 'asc' | 'desc'
 
 export function QaqcHseForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
@@ -66,7 +66,9 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     dgt_documenttype: '',
     dgt_submissiondate: '',
     dgt_responsedate: '',
+    dgt_date_issued_to_contractor: '',
     dgt_status: '',
+    week_num: '',
     mod_id: '',
   })
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
@@ -105,10 +107,10 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const fetchData = async () => {
     setLoading(true)
     const { data: records, error } = await supabase
-      .from('dbp6_000402_qaqc_hse_history')
+      .from('dbp6_000402_qaqc_hse_current')
       .select('*')
       .eq('dgt_dbp6bd00projectdataid', projectId)
-      .order('created_at', { ascending: false })
+      .order('dgt_docref', { ascending: true })
 
     if (error) {
       showError('Failed to fetch data: ' + error.message)
@@ -189,8 +191,23 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
         })
       }
     }
+    if (filters.dgt_date_issued_to_contractor) {
+      if (filters.dgt_date_issued_to_contractor === 'BLANK') {
+        result = result.filter((item) => !item.dgt_date_issued_to_contractor)
+      } else {
+        result = result.filter((item) => {
+          if (!item.dgt_date_issued_to_contractor) return false
+          const date = new Date(item.dgt_date_issued_to_contractor)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_date_issued_to_contractor
+        })
+      }
+    }
     if (filters.dgt_status) {
       result = result.filter((item) => item.dgt_status === filters.dgt_status)
+    }
+    if (filters.week_num) {
+      result = result.filter((item) => item.week_num?.toString() === filters.week_num)
     }
     if (filters.mod_id) {
       result = result.filter((item) => item.mod_id?.toString() === filters.mod_id)
@@ -299,7 +316,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse_history').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_current').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -334,7 +351,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     const updatePayload: Record<string, string | number | null> = { [field]: updateValue }
 
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse_history')
+      .from('dbp6_000402_qaqc_hse_current')
       .update(updatePayload as never)
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -365,7 +382,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000402_qaqc_hse_history')
+      .from('dbp6_000402_qaqc_hse_current')
       .delete()
       .eq('dgt_dbp6bd0402qaqchseid', recordId)
 
@@ -380,8 +397,8 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   }
 
   const handleExport = () => {
-    const headers = ['dgt_docid', 'dgt_docref', 'dgt_documentsubject', 'dgt_discipline', 'dgt_documenttype', 'dgt_submissiondate', 'dgt_responsedate', 'dgt_revision', 'dgt_status']
-    const rows = data.map(r => [r.dgt_docid, r.dgt_docref, r.dgt_documentsubject, r.dgt_discipline, r.dgt_documenttype, r.dgt_submissiondate, r.dgt_responsedate, r.dgt_revision, r.dgt_status])
+    const headers = ['dgt_docid', 'dgt_docref', 'dgt_documentsubject', 'dgt_discipline', 'dgt_documenttype', 'dgt_submissiondate', 'dgt_responsedate', 'dgt_date_issued_to_contractor', 'dgt_revision', 'dgt_status', 'week_num']
+    const rows = data.map(r => [r.dgt_docid, r.dgt_docref, r.dgt_documentsubject, r.dgt_discipline, r.dgt_documenttype, r.dgt_submissiondate, r.dgt_responsedate, r.dgt_date_issued_to_contractor, r.dgt_revision, r.dgt_status, r.week_num])
     exportToCsv('qaqc-hse', headers, rows)
   }
 
@@ -402,7 +419,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
         dgt_status: dgt_status || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse_history').upsert(inserts as never[], { onConflict: 'dgt_docref' })
+    const { error } = await supabase.from('dbp6_000402_qaqc_hse_current').upsert(inserts as never[], { onConflict: 'dgt_docref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
@@ -441,7 +458,9 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                   dgt_documenttype: '',
                   dgt_submissiondate: '',
                   dgt_responsedate: '',
+                  dgt_date_issued_to_contractor: '',
                   dgt_status: '',
+                  week_num: '',
                   mod_id: '',
                 })
                 setSortField(null)
@@ -671,6 +690,18 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <DateColumnFilter data={data} field="dgt_responsedate" value={filters.dgt_responsedate} onChange={(v) => updateFilter('dgt_responsedate', v)} label="Response" />
                     </div>
                   </th>
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_date_issued_to_contractor')}
+                    >
+                      Issued to Contr.
+                      <SortIcon field="dgt_date_issued_to_contractor" />
+                    </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <DateColumnFilter data={data} field="dgt_date_issued_to_contractor" value={filters.dgt_date_issued_to_contractor} onChange={(v) => updateFilter('dgt_date_issued_to_contractor', v)} label="Issued to Contr." />
+                    </div>
+                  </th>
                   <th className="px-3 py-2 text-left align-top w-28">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -681,6 +712,18 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
                       <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
+                    </div>
+                  </th>
+                  <th className="px-3 py-2 text-left align-top w-20">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('week_num')}
+                    >
+                      Week
+                      <SortIcon field="week_num" />
+                    </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <ColumnFilter data={data} field="week_num" value={filters.week_num} onChange={(v) => updateFilter('week_num', v)} label="Week" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-16">
@@ -697,7 +740,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={12} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -724,6 +767,9 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(record.dgt_responsedate)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
+                        {formatDate(record.dgt_date_issued_to_contractor)}
                       </td>
                       {/* Status - Editable */}
                       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -757,6 +803,10 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                             {record.dgt_status || '-'}
                           </span>
                         )}
+                      </td>
+                      {/* Week Num */}
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-500">
+                        {record.week_num ?? '-'}
                       </td>
                       {/* Mod ID */}
                       <td className="px-3 py-2.5 whitespace-nowrap">

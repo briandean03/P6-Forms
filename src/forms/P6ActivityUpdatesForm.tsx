@@ -50,6 +50,7 @@ interface ProjectHeader {
   project_uuid: string | null
   week_num: number | null
   rpt_week_offset: number | null
+  current_p6_project_code: string | null
 }
 
 interface ColumnFilters {
@@ -185,6 +186,10 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   // CSV
   const [importLoading, setImportLoading] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  // XER Upload
+  const [xerFile, setXerFile] = useState<File | null>(null)
+  const [xerUploading, setXerUploading] = useState(false)
+  const xerInputRef = useRef<HTMLInputElement>(null)
   // Project header
   const [projectHeader, setProjectHeader] = useState<ProjectHeader | null>(null)
   // Column filters
@@ -206,6 +211,52 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       .limit(5)
     if (entries) setQueueEntries(entries as QueueEntry[])
     setQueueLoading(false)
+  }
+
+  const handleUploadXer = async () => {
+    if (!xerFile) return
+    setXerUploading(true)
+    try {
+      const dataDate = projectHeader?.data_date
+        ? new Date(projectHeader.data_date).toISOString().slice(0, 10)
+        : ''
+      const p6Code = projectHeader?.current_p6_project_code ?? ''
+      const weekNum = projectHeader?.week_num ?? ''
+      const storagePath = `${projectTextId}/${p6Code}_Week${weekNum}_${dataDate}.xer`
+
+      console.log('[XER Upload] Storage path:', storagePath)
+      console.log('[XER Upload] File:', xerFile.name, xerFile.size, xerFile.type)
+      console.log('[XER Upload] Using supabase client:', supabase)
+      const { error: uploadError } = await supabase.storage
+        .from('xer-uploads')
+        .upload(storagePath, xerFile, { upsert: true })
+      console.log('[XER Upload] Storage upload error (full):', uploadError)
+      if (uploadError) throw new Error(uploadError.message)
+      const insertPayload = {
+        project_code: projectTextId,
+        schema_name: schemaName,
+        file_path: storagePath,
+        week_num: projectHeader?.week_num ?? null,
+        p6_project_code: p6Code || null,
+        data_date: dataDate || null,
+        onedrive_status: 'pending',
+      }
+      console.log('[XER Upload] Inserting into xer_uploads:', insertPayload)
+      const { data: insertData, error: insertError } = await supabase
+        .from('xer_uploads')
+        .insert(insertPayload as never)
+        .select()
+      console.log('[XER Upload] Insert result — data:', insertData, 'error:', insertError)
+      if (insertError) throw new Error(insertError.message)
+
+      showSuccess('XER uploaded successfully')
+      setXerFile(null)
+      if (xerInputRef.current) xerInputRef.current.value = ''
+    } catch (err) {
+      showError('Upload failed: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setXerUploading(false)
+    }
   }
 
   const handleRunUpdate = async () => {
@@ -245,11 +296,11 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     if (!projectTextId) { setProjectHeader(null); return }
     const { data: row } = await schemaClient(schemaName)
       .from('dbp6_0000_projectdata')
-      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_weeknum, rpt_week_offset')
+      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_weeknum, rpt_week_offset, current_p6_project_code')
       .eq('dgt_projectid', projectTextId)
       .single()
     if (row) {
-      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_weeknum'> & { rpt_week_offset: number | null }
+      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_weeknum'> & { rpt_week_offset: number | null; current_p6_project_code: string | null }
       setProjectHeader({
         project_code: d.dgt_projectid,
         project_name: d.dgt_projectname,
@@ -257,6 +308,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
         project_uuid: d.dgt_dbp6bd00projectdataid,
         week_num: d.dgt_weeknum,
         rpt_week_offset: d.rpt_week_offset,
+        current_p6_project_code: d.current_p6_project_code ?? null,
       })
     } else {
       setProjectHeader(null)
@@ -831,6 +883,68 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
               </tbody>
             </table>
           ))}
+        </div>
+      )}
+
+      {/* Upload XER */}
+      {projectTextId && (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50">
+            <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">Upload XER</span>
+          </div>
+          <div className="px-4 py-3 flex flex-wrap items-center gap-3">
+            <input
+              ref={xerInputRef}
+              type="file"
+              accept=".xer"
+              className="hidden"
+              onChange={e => setXerFile(e.target.files?.[0] ?? null)}
+            />
+            <button
+              type="button"
+              onClick={() => xerInputRef.current?.click()}
+              disabled={xerUploading}
+              className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              <svg className="w-4 h-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              Upload XER to OneDrive
+            </button>
+            {xerFile && (
+              <span className="text-sm text-gray-600 truncate max-w-xs" title={xerFile.name}>
+                {xerFile.name}
+              </span>
+            )}
+            {xerFile && (
+              <button
+                type="button"
+                onClick={handleUploadXer}
+                disabled={xerUploading}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {xerUploading ? (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+                    </svg>
+                    Upload
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

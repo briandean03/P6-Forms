@@ -35,7 +35,7 @@ interface EngineeringFormData {
 
 const ITEMS_PER_PAGE = 15
 
-type SortField = 'dgt_dtfid' | 'dgt_transmittalref' | 'dgt_transmittalsubject' | 'dgt_discipline' | 'dgt_transmittaltype' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
+type SortField = 'dgt_transmittalref' | 'dgt_transmittalsubject' | 'dgt_discipline' | 'dgt_transmittaltype' | 'dgt_plannedsubmissiondate' | 'dgt_plannedapprovaldate' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status'
 type SortDirection = 'asc' | 'desc'
 
 
@@ -52,7 +52,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ dtfid: '', transmittalref: '', transmittalsubject: '', discipline: '', transmittaltype: '', actualsubmissiondate: '', actualreturndate: '', revision: '', status: '', mod_id: '' })
+  const [editValues, setEditValues] = useState({ transmittalref: '', transmittalsubject: '', discipline: '', transmittaltype: '', plannedsubmissiondate: '', plannedapprovaldate: '', actualsubmissiondate: '', actualreturndate: '', revision: '', status: '', mod_id: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const [sortField, setSortField] = useState<SortField | null>(null)
@@ -65,10 +65,11 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   // Column filters
   const [filters, setFilters] = useState({
-    dgt_dtfid: '',
     dgt_transmittalref: '',
     dgt_discipline: '',
     dgt_transmittaltype: '',
+    dgt_plannedsubmissiondate: '',
+    dgt_plannedapprovaldate: '',
     dgt_actualsubmissiondate: '',
     dgt_actualreturndate: '',
     dgt_revision: '',
@@ -128,10 +129,10 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     const all: typeof data = []
     while (true) {
       const { data: records, error } = await supabase
-        .from('dbp6_000401_engineering_history')
+        .from('dbp6_000401_engineering_current')
         .select('*')
         .eq('dgt_dbp6bd00projectdataid', projectId)
-        .order('created_at', { ascending: false })
+        .order('dgt_transmittalref', { ascending: true })
         .range(page * pageSize, (page + 1) * pageSize - 1)
       if (error) { showError('Failed to fetch data: ' + error.message); break }
       all.push(...(records || []))
@@ -162,7 +163,6 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       const term = searchTerm.toLowerCase()
       result = result.filter(
         (item) =>
-          item.dgt_dtfid?.toLowerCase().includes(term) ||
           item.dgt_transmittalref?.toLowerCase().includes(term) ||
           item.dgt_transmittalsubject?.toLowerCase().includes(term) ||
           item.dgt_discipline?.toString().includes(term)
@@ -170,9 +170,6 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     }
 
     // Column filters
-    if (filters.dgt_dtfid) {
-      result = result.filter((item) => item.dgt_dtfid === filters.dgt_dtfid)
-    }
     if (filters.dgt_transmittalref) {
       result = result.filter((item) => item.dgt_transmittalref === filters.dgt_transmittalref)
     }
@@ -190,11 +187,34 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
         result = result.filter((item) => item.dgt_transmittaltype?.toString() === filters.dgt_transmittaltype)
       }
     }
+    if (filters.dgt_plannedsubmissiondate) {
+      if (filters.dgt_plannedsubmissiondate === 'BLANK') {
+        result = result.filter((item) => !item.dgt_plannedsubmissiondate)
+      } else {
+        result = result.filter((item) => {
+          if (!item.dgt_plannedsubmissiondate) return false
+          const date = new Date(item.dgt_plannedsubmissiondate)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_plannedsubmissiondate
+        })
+      }
+    }
+    if (filters.dgt_plannedapprovaldate) {
+      if (filters.dgt_plannedapprovaldate === 'BLANK') {
+        result = result.filter((item) => !item.dgt_plannedapprovaldate)
+      } else {
+        result = result.filter((item) => {
+          if (!item.dgt_plannedapprovaldate) return false
+          const date = new Date(item.dgt_plannedapprovaldate)
+          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          return monthYear === filters.dgt_plannedapprovaldate
+        })
+      }
+    }
     if (filters.dgt_actualsubmissiondate) {
       if (filters.dgt_actualsubmissiondate === 'BLANK') {
         result = result.filter((item) => !item.dgt_actualsubmissiondate)
       } else {
-        // Filter by month/year (format: YYYY-MM)
         result = result.filter((item) => {
           if (!item.dgt_actualsubmissiondate) return false
           const date = new Date(item.dgt_actualsubmissiondate)
@@ -207,7 +227,6 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       if (filters.dgt_actualreturndate === 'BLANK') {
         result = result.filter((item) => !item.dgt_actualreturndate)
       } else {
-        // Filter by month/year (format: YYYY-MM)
         result = result.filter((item) => {
           if (!item.dgt_actualreturndate) return false
           const date = new Date(item.dgt_actualreturndate)
@@ -326,7 +345,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       dgt_status: formData.dgt_status || null,
     }
 
-    const { error } = await supabase.from('dbp6_000401_engineering_history').insert(insertData as never)
+    const { error } = await supabase.from('dbp6_000401_engineering_current').insert(insertData as never)
 
     if (error) {
       showError('Failed to create record: ' + error.message)
@@ -363,11 +382,12 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const startEdit = (record: Engineering) => {
     setEditingId(record.dgt_dbp6bd041engineeringid)
     setEditValues({
-      dtfid: record.dgt_dtfid || '',
       transmittalref: record.dgt_transmittalref || '',
       transmittalsubject: record.dgt_transmittalsubject || '',
       discipline: record.dgt_discipline != null ? String(record.dgt_discipline) : '',
       transmittaltype: record.dgt_transmittaltype != null ? String(record.dgt_transmittaltype) : '',
+      plannedsubmissiondate: record.dgt_plannedsubmissiondate ? record.dgt_plannedsubmissiondate.split('T')[0] : '',
+      plannedapprovaldate: record.dgt_plannedapprovaldate ? record.dgt_plannedapprovaldate.split('T')[0] : '',
       actualsubmissiondate: record.dgt_actualsubmissiondate ? record.dgt_actualsubmissiondate.split('T')[0] : '',
       actualreturndate: record.dgt_actualreturndate ? record.dgt_actualreturndate.split('T')[0] : '',
       revision: record.dgt_revision != null ? String(record.dgt_revision) : '',
@@ -378,12 +398,13 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
   const handleSaveEdit = async () => {
     if (!editingId) return
-    const { error } = await supabase.from('dbp6_000401_engineering_history').update({
-      dgt_dtfid: editValues.dtfid || null,
+    const { error } = await supabase.from('dbp6_000401_engineering_current').update({
       dgt_transmittalref: editValues.transmittalref || null,
       dgt_transmittalsubject: editValues.transmittalsubject || null,
       dgt_discipline: editValues.discipline || null,
       dgt_transmittaltype: editValues.transmittaltype || null,
+      dgt_plannedsubmissiondate: editValues.plannedsubmissiondate || null,
+      dgt_plannedapprovaldate: editValues.plannedapprovaldate || null,
       dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
       dgt_actualreturndate: editValues.actualreturndate || null,
       dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -394,11 +415,12 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     else {
       setData(prev => prev.map(r => r.dgt_dbp6bd041engineeringid === editingId ? {
         ...r,
-        dgt_dtfid: editValues.dtfid || null,
         dgt_transmittalref: editValues.transmittalref || null,
         dgt_transmittalsubject: editValues.transmittalsubject || null,
         dgt_discipline: editValues.discipline || null,
         dgt_transmittaltype: editValues.transmittaltype || null,
+        dgt_plannedsubmissiondate: editValues.plannedsubmissiondate || null,
+        dgt_plannedapprovaldate: editValues.plannedapprovaldate || null,
         dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
         dgt_actualreturndate: editValues.actualreturndate || null,
         dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
@@ -412,7 +434,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const handleDelete = async (recordId: string) => {
     setDeleting(true)
     const { error } = await supabase
-      .from('dbp6_000401_engineering_history')
+      .from('dbp6_000401_engineering_current')
       .delete()
       .eq('dgt_dbp6bd041engineeringid', recordId)
 
@@ -428,31 +450,31 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
   const handleExport = () => {
   const headers = [
-    'dgt_dtfid', 
-    'dgt_transmittalref', 
-    'dgt_transmittalsubject', 
-    'dgt_discipline', 
-    'dgt_transmittaltype', 
-    'dgt_actualsubmissiondate', 
-    'dgt_actualreturndate', 
-    'dgt_revision', 
-    'dgt_status', 
-    'is_long_lead', 
-    'importsequencenumber'
+    'dgt_transmittalref',
+    'dgt_transmittalsubject',
+    'dgt_discipline',
+    'dgt_transmittaltype',
+    'dgt_plannedsubmissiondate',
+    'dgt_plannedapprovaldate',
+    'dgt_actualsubmissiondate',
+    'dgt_actualreturndate',
+    'dgt_revision',
+    'dgt_status',
+    'is_long_lead',
   ]
 
   const rows = data.map(r => [
-    r.dgt_dtfid, 
-    r.dgt_transmittalref, 
-    r.dgt_transmittalsubject, 
-    r.dgt_discipline, 
-    r.dgt_transmittaltype, 
-    r.dgt_actualsubmissiondate, 
-    r.dgt_actualreturndate, 
-    r.dgt_revision, 
-    r.dgt_status, 
-    String(r.is_long_lead), // Convert boolean to string here
-    r.importsequencenumber
+    r.dgt_transmittalref,
+    r.dgt_transmittalsubject,
+    r.dgt_discipline,
+    r.dgt_transmittaltype,
+    r.dgt_plannedsubmissiondate,
+    r.dgt_plannedapprovaldate,
+    r.dgt_actualsubmissiondate,
+    r.dgt_actualreturndate,
+    r.dgt_revision,
+    r.dgt_status,
+    String(r.is_long_lead),
   ])
 
   exportToCsv('engineering-transmittals', headers, rows)
@@ -536,17 +558,18 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
             <SearchFilter
               value={searchTerm}
               onChange={setSearchTerm}
-              placeholder="Search by DTF ID, Ref, Subject..."
+              placeholder="Search by Ref, Subject, Discipline..."
             />
           </div>
           {(Object.values(filters).some(v => v !== '') || sortField !== null) && (
             <button
               onClick={() => {
                 setFilters({
-                  dgt_dtfid: '',
                   dgt_transmittalref: '',
                   dgt_discipline: '',
                   dgt_transmittaltype: '',
+                  dgt_plannedsubmissiondate: '',
+                  dgt_plannedapprovaldate: '',
                   dgt_actualsubmissiondate: '',
                   dgt_actualreturndate: '',
                   dgt_revision: '',
@@ -683,18 +706,6 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
             <table className="min-w-max divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2 text-left align-top w-28">
-                    <div
-                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
-                      onClick={() => handleSort('dgt_dtfid')}
-                    >
-                      DTF ID
-                      <SortIcon field="dgt_dtfid" />
-                    </div>
-                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_dtfid" value={filters.dgt_dtfid} onChange={(v) => updateFilter('dgt_dtfid', v)} label="DTF ID" />
-                    </div>
-                  </th>
                   <th className="px-3 py-2 text-left align-top w-36">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
@@ -743,13 +754,37 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                   <th className="px-3 py-2 text-left align-top w-32">
                     <div
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_plannedsubmissiondate')}
+                    >
+                      Plan. Sub
+                      <SortIcon field="dgt_plannedsubmissiondate" />
+                    </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <DateColumnFilter data={data} field="dgt_plannedsubmissiondate" value={filters.dgt_plannedsubmissiondate} onChange={(v) => updateFilter('dgt_plannedsubmissiondate', v)} label="Planned Sub" />
+                    </div>
+                  </th>
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
+                      onClick={() => handleSort('dgt_plannedapprovaldate')}
+                    >
+                      Plan. Appr
+                      <SortIcon field="dgt_plannedapprovaldate" />
+                    </div>
+                    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+                      <DateColumnFilter data={data} field="dgt_plannedapprovaldate" value={filters.dgt_plannedapprovaldate} onChange={(v) => updateFilter('dgt_plannedapprovaldate', v)} label="Planned Appr" />
+                    </div>
+                  </th>
+                  <th className="px-3 py-2 text-left align-top w-32">
+                    <div
+                      className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_actualsubmissiondate')}
                     >
-                      Submission
+                      Act. Sub
                       <SortIcon field="dgt_actualsubmissiondate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Submission" />
+                      <DateColumnFilter data={data} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Act. Sub" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -757,11 +792,11 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap"
                       onClick={() => handleSort('dgt_actualreturndate')}
                     >
-                      Return
+                      Act. Return
                       <SortIcon field="dgt_actualreturndate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Return" />
+                      <DateColumnFilter data={data} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Act. Return" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-20">
@@ -788,6 +823,9 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
                     </div>
                   </th>
+                  <th className="px-3 py-2 text-left align-top w-16 text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
+                    Long Lead
+                  </th>
                   <th className="px-3 py-2 text-left align-top w-16">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Mod ID</div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
@@ -802,7 +840,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={13} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -813,7 +851,6 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : record.mod_id === 1 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
                         {isEditing ? (
                           <>
-                            <td className="px-2 py-1.5"><input type="text" value={editValues.dtfid} onChange={e => setEditValues(p => ({ ...p, dtfid: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="text" value={editValues.transmittalref} onChange={e => setEditValues(p => ({ ...p, transmittalref: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="text" value={editValues.transmittalsubject} onChange={e => setEditValues(p => ({ ...p, transmittalsubject: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="number" value={editValues.discipline} onChange={e => setEditValues(p => ({ ...p, discipline: e.target.value }))} className={inputCls} /></td>
@@ -825,6 +862,8 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                                 ))}
                               </select>
                             </td>
+                            <td className="px-2 py-1.5"><input type="date" value={editValues.plannedsubmissiondate} onChange={e => setEditValues(p => ({ ...p, plannedsubmissiondate: e.target.value }))} className={inputCls} /></td>
+                            <td className="px-2 py-1.5"><input type="date" value={editValues.plannedapprovaldate} onChange={e => setEditValues(p => ({ ...p, plannedapprovaldate: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="date" value={editValues.actualsubmissiondate} onChange={e => setEditValues(p => ({ ...p, actualsubmissiondate: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="date" value={editValues.actualreturndate} onChange={e => setEditValues(p => ({ ...p, actualreturndate: e.target.value }))} className={inputCls} /></td>
                             <td className="px-2 py-1.5"><input type="number" value={editValues.revision} onChange={e => setEditValues(p => ({ ...p, revision: e.target.value }))} className={inputCls} /></td>
@@ -839,6 +878,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                                 <option value="UR">UR</option>
                               </select>
                             </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{record.is_long_lead ? 'Yes' : '-'}</td>
                             <td className="px-2 py-1.5"><input type="number" value={editValues.mod_id} onChange={e => setEditValues(p => ({ ...p, mod_id: e.target.value }))} className={inputCls} /></td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <div className="flex items-center gap-1">
@@ -850,9 +890,6 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                         ) : (
                           <>
                             <td className="px-3 py-2.5 text-sm text-gray-900">
-                              <div className="whitespace-nowrap" title={record.dgt_dtfid || '-'}>{record.dgt_dtfid || '-'}</div>
-                            </td>
-                            <td className="px-3 py-2.5 text-sm text-gray-900">
                               <div className="whitespace-nowrap" title={record.dgt_transmittalref || '-'}>{record.dgt_transmittalref || '-'}</div>
                             </td>
                             <td className="px-3 py-2.5 text-sm text-gray-900">
@@ -860,6 +897,8 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                             </td>
                             <td className="px-3 py-2.5 text-sm text-gray-900">{getDisciplineName(record.dgt_discipline)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900">{getTypeName(record.dgt_transmittaltype)}</td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_plannedsubmissiondate)}</td>
+                            <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_plannedapprovaldate)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualsubmissiondate)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_actualreturndate)}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_revision ?? '-'}</td>
@@ -874,6 +913,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                                 : 'bg-gray-100 text-gray-800'
                               }`}>{record.dgt_status || '-'}</span>
                             </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{record.is_long_lead ? 'Yes' : '-'}</td>
                             <td className="px-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{record.mod_id ?? '-'}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <div className="flex items-center gap-1">
