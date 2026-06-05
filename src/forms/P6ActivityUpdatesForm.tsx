@@ -634,6 +634,30 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       else {
         showSuccess(`Imported ${deduped.length} records`)
         fetchData()
+        // Upsert rows where mrk_uptd = 1 into progressdata
+        if (projectHeader?.project_uuid) {
+          const rptWeekNum = (projectHeader.week_num ?? 0) + (projectHeader.rpt_week_offset ?? 0)
+          type ImportedRow = { task_code: string; complete_pct: number | null; act_start_date: string | null; act_end_date: string | null; mrk_uptd: number }
+          const progressRows = (deduped as ImportedRow[])
+            .filter(r => r.mrk_uptd === 1)
+            .map(r => ({
+              dgt_activityid: r.task_code,
+              dgt_pctcomplete: r.complete_pct != null ? r.complete_pct / 100 : null,
+              dgt_actualstart: r.act_start_date || null,
+              dgt_actualfinish: r.act_end_date || null,
+              dgt_projectid: projectHeader.project_code,
+              dgt_dbp6bd00projectdataid: projectHeader.project_uuid,
+              dgt_datadate: projectHeader.data_date,
+              dgt_weeknum: projectHeader.week_num,
+              rpt_weeknum: rptWeekNum,
+            }))
+          if (progressRows.length > 0) {
+            const { error: progError } = await schemaDb
+              .from('dbp6_0006_progressdata')
+              .upsert(progressRows as never[], { onConflict: 'dgt_activityid,dgt_weeknum' })
+            if (progError) showError('Import succeeded but failed to sync progress data: ' + progError.message)
+          }
+        }
       }
     } catch (err) {
       showError('Failed to parse CSV: ' + (err instanceof Error ? err.message : String(err)))
@@ -1001,7 +1025,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
                     <input type="text" value={columnFilters.task_name} onChange={e => setFilter('task_name', e.target.value)} placeholder="Filter..." className={filterCls} />
                   </td>
                   <td className="px-3 py-1.5">
-                    <select value={columnFilters.status_code} onChange={e => setFilter('status_code', e.target.value)} className={filterCls}>
+                    <select value={columnFilters.status_code} onChange={e => setFilter( 'status_code', e.target.value)} className={filterCls}>
                       <option value="">All</option>
                       <option value="Not Started">Not Started</option>
                       <option value="In Progress">In Progress</option>
