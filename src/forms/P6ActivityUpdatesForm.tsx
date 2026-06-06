@@ -270,7 +270,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
 
       const schemaName = mapping?.schema_name || 'public'
 
-      const response = await fetch('https://pmc2p2c.app.n8n.cloud/webhook/run-p6-update', {
+      const response = await fetch('https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_code: projectTextId, schema_name: schemaName }),
