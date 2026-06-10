@@ -262,22 +262,17 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   const handleRunUpdate = async () => {
     setRunUpdateLoading(true)
     try {
-      const { data: mapping } = await supabase
-        .from('p6_project_mapping')
-        .select('schema_name')
-        .eq('dgt_projectid', projectTextId)
-        .single() as { data: { schema_name: string } | null, error: unknown }
-
-      const schemaName = mapping?.schema_name || 'public'
-
-      const response = await fetch('https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_code: projectTextId, schema_name: schemaName }),
-      })
-      if (!response.ok) throw new Error(`Server responded with ${response.status}`)
+      const { data, error } = await schemaDb
+        .from('p6_update_queue')
+        .insert({
+          project_code: projectTextId,
+          status: 'pending',
+        } as never)
+        .select('execution_id, id')
+        .single()
+      if (error) throw new Error(error.message)
+      console.log('Queue row created:', (data as { execution_id: string; id: number } | null)?.execution_id)
       showSuccess('P6 update triggered successfully')
-      // Immediately refresh queue so the new pending entry appears
       setTimeout(fetchQueueStatus, 1500)
     } catch (err) {
       showError('Failed to run update: ' + (err instanceof Error ? err.message : String(err)))
@@ -440,7 +435,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       dgt_activityid: vals.task_code,
       dgt_actualstart: vals.act_start_date || null,
       dgt_actualfinish: vals.act_end_date || null,
-      dgt_pctcomplete: vals.complete_pct !== '' ? parseFloat(vals.complete_pct) / 100 : null,
+      dgt_pctcomplete: vals.complete_pct !== '' ? parseFloat(vals.complete_pct) : null,
       dgt_projectid: projectHeader.project_code,
       dgt_dbp6bd00projectdataid: projectHeader.project_uuid,
       dgt_datadate: projectHeader.data_date,
@@ -642,7 +637,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
             .filter(r => r.mrk_uptd === 1)
             .map(r => ({
               dgt_activityid: r.task_code,
-              dgt_pctcomplete: r.complete_pct != null ? r.complete_pct / 100 : null,
+              dgt_pctcomplete: r.complete_pct != null ? r.complete_pct : null,
               dgt_actualstart: r.act_start_date || null,
               dgt_actualfinish: r.act_end_date || null,
               dgt_projectid: projectHeader.project_code,

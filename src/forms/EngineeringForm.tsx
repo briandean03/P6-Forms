@@ -448,37 +448,53 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     setDeleteConfirm(null)
   }
 
-  const handleExport = () => {
-  const headers = [
-    'dgt_transmittalref',
-    'dgt_transmittalsubject',
-    'dgt_discipline',
-    'dgt_transmittaltype',
-    'dgt_plannedsubmissiondate',
-    'dgt_plannedapprovaldate',
-    'dgt_actualsubmissiondate',
-    'dgt_actualreturndate',
-    'dgt_revision',
-    'dgt_status',
-    'is_long_lead',
-  ]
-
-  const rows = data.map(r => [
-    r.dgt_transmittalref,
-    r.dgt_transmittalsubject,
-    r.dgt_discipline,
-    r.dgt_transmittaltype,
-    r.dgt_plannedsubmissiondate,
-    r.dgt_plannedapprovaldate,
-    r.dgt_actualsubmissiondate,
-    r.dgt_actualreturndate,
-    r.dgt_revision,
-    r.dgt_status,
-    String(r.is_long_lead),
-  ])
-
-  exportToCsv('engineering-transmittals', headers, rows)
-}
+  const handleExport = async () => {
+    const db = schemaClient(schemaName)
+    const pageSize = 1000
+    let page = 0
+    const all: Engineering[] = []
+    while (true) {
+      const { data: records, error } = await db
+        .from('dbp6_000401_engineering_current')
+        .select('*')
+        .eq('dgt_dbp6bd00projectdataid', projectId)
+        .order('dgt_transmittalref', { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      if (error) { showError('Export failed: ' + error.message); return }
+      all.push(...(records || []))
+      if (!records || records.length < pageSize) break
+      page++
+    }
+    const headers = [
+      'dgt_transmittalref',
+      'dgt_transmittalsubject',
+      'dgt_discipline',
+      'dgt_transmittaltype',
+      'dgt_revision',
+      'dgt_status',
+      'dgt_plannedsubmissiondate',
+      'dgt_plannedapprovaldate',
+      'dgt_actualsubmissiondate',
+      'dgt_actualreturndate',
+      'is_long_lead',
+      'dgt_projectid',
+    ]
+    const rows = all.map(r => [
+      r.dgt_transmittalref,
+      r.dgt_transmittalsubject,
+      r.dgt_discipline,
+      r.dgt_transmittaltype,
+      r.dgt_revision,
+      r.dgt_status,
+      r.dgt_plannedsubmissiondate,
+      r.dgt_plannedapprovaldate,
+      r.dgt_actualsubmissiondate,
+      r.dgt_actualreturndate,
+      r.is_long_lead != null ? String(r.is_long_lead) : null,
+      r.dgt_dbp6bd00projectdataid,
+    ])
+    exportToCsv('engineering-transmittals', headers, rows)
+  }
 
   const triggerWebhook51 = async () => {
     setWebhookStatus('loading')
@@ -492,54 +508,72 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
-    const mapped = rows
-      .filter(r => r.dgt_transmittalref)
-      .map(({ dgt_dtfid, dgt_transmittalref, dgt_transmittalsubject, dgt_discipline, dgt_transmittaltype, dgt_actualsubmissiondate, dgt_actualreturndate, dgt_revision, dgt_status, is_long_lead, importsequencenumber }) => ({
-        dgt_dbp6bd00projectdataid: projectId,
-        dgt_dtfid,
-        dgt_transmittalref,
-        dgt_transmittalsubject,
-        dgt_discipline: dgt_discipline || null,
-        dgt_transmittaltype: dgt_transmittaltype || null,
-        dgt_actualsubmissiondate: dgt_actualsubmissiondate || null,
-        dgt_actualreturndate: dgt_actualreturndate || null,
-        dgt_revision: Number(dgt_revision) || null,
-        dgt_status,
-        is_long_lead: is_long_lead === 'true',
-        importsequencenumber: importsequencenumber || null,
-      }))
-    if (mapped.length === 0) { showError('No valid rows to import'); return }
 
-    // Fetch existing ref+revision pairs for this project
-    const { data: existing, error: fetchErr } = await supabase
+    const parseDate = (v: string | undefined): string | null => {
+      if (!v || v.trim() === '') return null
+      const d = new Date(v.trim())
+      return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]
+    }
+    const nullIfEmpty = (v: string | undefined): string | null => (!v || v.trim() === '' ? null : v.trim())
+
+    // Parse and filter rows with a transmittalref
+    const parsed = rows
+      .filter(r => r.dgt_transmittalref && r.dgt_transmittalref.trim() !== '')
+      .map(r => ({
+        dgt_dbp6bd00projectdataid: projectId,
+        dgt_transmittalref: r.dgt_transmittalref.trim(),
+        dgt_transmittalsubject: nullIfEmpty(r.dgt_transmittalsubject),
+        dgt_discipline: nullIfEmpty(r.dgt_discipline),
+        dgt_transmittaltype: nullIfEmpty(r.dgt_transmittaltype),
+        dgt_revision: r.dgt_revision && r.dgt_revision.trim() !== '' ? parseInt(r.dgt_revision.trim()) : null,
+        dgt_status: nullIfEmpty(r.dgt_status),
+        dgt_plannedsubmissiondate: parseDate(r.dgt_plannedsubmissiondate),
+        dgt_plannedapprovaldate: parseDate(r.dgt_plannedapprovaldate),
+        dgt_actualsubmissiondate: parseDate(r.dgt_actualsubmissiondate),
+        dgt_actualreturndate: parseDate(r.dgt_actualreturndate),
+        is_long_lead: r.is_long_lead ? r.is_long_lead.trim().toLowerCase() === 'true' : false,
+        mod_id: 1,
+      }))
+
+    if (parsed.length === 0) { showError('No valid rows to import'); return }
+
+    // Deduplicate: keep highest dgt_revision per dgt_transmittalref
+    const dedupMap = new Map<string, typeof parsed[number]>()
+    for (const row of parsed) {
+      const existing = dedupMap.get(row.dgt_transmittalref)
+      if (!existing || (row.dgt_revision ?? -Infinity) > (existing.dgt_revision ?? -Infinity)) {
+        dedupMap.set(row.dgt_transmittalref, row)
+      }
+    }
+    const deduped = Array.from(dedupMap.values())
+
+    // Fetch existing refs to distinguish updates vs inserts
+    const db = schemaClient(schemaName)
+    const { data: existing, error: fetchErr } = await db
       .from('dbp6_000401_engineering_current')
-      .select('dgt_transmittalref, dgt_revision')
+      .select('dgt_transmittalref')
       .eq('dgt_dbp6bd00projectdataid', projectId)
     if (fetchErr) { showError('Import failed: ' + fetchErr.message); return }
 
-    const existingSet = new Set(
-      (existing as { dgt_transmittalref: string | null; dgt_revision: number | null }[] || [])
-        .map(r => `${r.dgt_transmittalref}|${r.dgt_revision}`)
-    )
+    const existingRefs = new Set((existing || []).map((r: { dgt_transmittalref: string | null }) => r.dgt_transmittalref))
+    const toUpdate = deduped.filter(r => existingRefs.has(r.dgt_transmittalref))
+    const toInsert = deduped.filter(r => !existingRefs.has(r.dgt_transmittalref))
 
-    const toUpsert = mapped.filter(r => existingSet.has(`${r.dgt_transmittalref}|${r.dgt_revision}`))
-    const toInsert = mapped.filter(r => !existingSet.has(`${r.dgt_transmittalref}|${r.dgt_revision}`))
+    // Upsert into _current on conflict dgt_transmittalref
+    const { error: upsertErr } = await db
+      .from('dbp6_000401_engineering_current')
+      .upsert(deduped as never[], { onConflict: 'dgt_transmittalref' })
+    if (upsertErr) { showError('Import failed: ' + upsertErr.message); return }
 
-    let errMsg = ''
-    if (toUpsert.length) {
-      const { error } = await supabase
-        .from('dbp6_000401_engineering_current')
-        .upsert(toUpsert as never[], { onConflict: 'dgt_transmittalref,dgt_revision' })
-      if (error) errMsg += `Update error: ${error.message}. `
-    }
-    if (toInsert.length) {
-      const { error } = await supabase
-        .from('dbp6_000401_engineering_current')
-        .insert(toInsert as never[])
-      if (error) errMsg += `Insert error: ${error.message}.`
-    }
-    if (errMsg) { showError(errMsg) }
-    else { showSuccess(`${toUpsert.length} updated, ${toInsert.length} inserted`); fetchData() }
+    // Sync to _history on conflict (dgt_transmittalref, dgt_revision)
+    const historyRows = deduped.map(r => ({ ...r }))
+    const { error: histErr } = await db
+      .from('dbp6_000401_engineering_history')
+      .upsert(historyRows as never[], { onConflict: 'dgt_transmittalref,dgt_revision' })
+    if (histErr) { showError(`Current updated but history sync failed: ${histErr.message}`); fetchData(); return }
+
+    showSuccess(`${toUpdate.length} updated, ${toInsert.length} inserted`)
+    fetchData()
   }
 
   return (

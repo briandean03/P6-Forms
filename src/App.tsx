@@ -236,29 +236,9 @@ function App() {
     setShowRunUpdateConfirm(false)
     setRunUpdateLoading(true)
     try {
-      const projectTextId = selectedProject?.textProjectId || ''
-
-      // Look up schema_name for the P6 update webhook
-      const { data: mapping } = await supabase
-        .from('p6_project_mapping')
-        .select('schema_name')
-        .eq('dgt_projectid', projectTextId)
-        .single()
-      const schemaName = (mapping as { schema_name: string } | null)?.schema_name || 'public'
-
-      // Fire all webhooks concurrently:
-      // - 4 sync webhooks (GET) from ProjectDataForm
-      // - P6 run-update webhook (POST) from P6ActivityUpdatesForm
       await Promise.allSettled([
+        fetch('https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9'),
         fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec'),
-        fetch('https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8'),
-        fetch('https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8'),
-        fetch('https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba'),
-        fetch('https://pmc2p2c.app.n8n.cloud/webhook/run-p6-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project_code: projectTextId, schema_name: schemaName }),
-        }),
       ])
 
       showSuccess('Update triggered successfully')

@@ -396,32 +396,119 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     setDeleteConfirm(null)
   }
 
-  const handleExport = () => {
-    const headers = ['dgt_docid', 'dgt_docref', 'dgt_documentsubject', 'dgt_discipline', 'dgt_documenttype', 'dgt_submissiondate', 'dgt_responsedate', 'dgt_date_issued_to_contractor', 'dgt_revision', 'dgt_status', 'week_num']
-    const rows = data.map(r => [r.dgt_docid, r.dgt_docref, r.dgt_documentsubject, r.dgt_discipline, r.dgt_documenttype, r.dgt_submissiondate, r.dgt_responsedate, r.dgt_date_issued_to_contractor, r.dgt_revision, r.dgt_status, r.week_num])
+  const handleExport = async () => {
+    const db = schemaClient(schemaName)
+    const pageSize = 1000
+    let page = 0
+    const all: QaqcHse[] = []
+    while (true) {
+      const { data: records, error } = await db
+        .from('dbp6_000402_qaqc_hse_current')
+        .select('*')
+        .eq('dgt_dbp6bd00projectdataid', projectId)
+        .order('dgt_docref', { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      if (error) { showError('Export failed: ' + error.message); return }
+      all.push(...(records || []))
+      if (!records || records.length < pageSize) break
+      page++
+    }
+    const headers = [
+      'dgt_discipline',
+      'dgt_docref',
+      'dgt_documentsubject',
+      'dgt_documenttype',
+      'dgt_revision',
+      'dgt_status',
+      'dgt_submissiondate',
+      'dgt_responsedate',
+      'dgt_date_issued_to_contractor',
+      'week_num',
+      'dgt_projectid',
+    ]
+    const rows = all.map(r => [
+      r.dgt_discipline,
+      r.dgt_docref,
+      r.dgt_documentsubject,
+      r.dgt_documenttype,
+      r.dgt_revision,
+      r.dgt_status,
+      r.dgt_submissiondate,
+      r.dgt_responsedate,
+      r.dgt_date_issued_to_contractor,
+      r.week_num,
+      r.dgt_dbp6bd00projectdataid,
+    ])
     exportToCsv('qaqc-hse', headers, rows)
   }
 
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
-    const inserts = rows
-      .filter(r => r.dgt_docid || r.dgt_docref)
-      .map(({ dgt_docid, dgt_docref, dgt_documentsubject, dgt_discipline, dgt_documenttype, dgt_submissiondate, dgt_responsedate, dgt_revision, dgt_status }) => ({
+
+    const parseDate = (v: string | undefined): string | null => {
+      if (!v || v.trim() === '') return null
+      const d = new Date(v.trim())
+      return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]
+    }
+    const nullIfEmpty = (v: string | undefined): string | null => (!v || v.trim() === '' ? null : v.trim())
+
+    // Parse and filter rows with a docref
+    const parsed = rows
+      .filter(r => r.dgt_docref && r.dgt_docref.trim() !== '')
+      .map(r => ({
         dgt_dbp6bd00projectdataid: projectId,
-        dgt_docid: dgt_docid || null,
-        dgt_docref: dgt_docref || null,
-        dgt_documentsubject: dgt_documentsubject || null,
-        dgt_discipline: dgt_discipline || null,
-        dgt_documenttype: dgt_documenttype || null,
-        dgt_submissiondate: dgt_submissiondate || null,
-        dgt_responsedate: dgt_responsedate || null,
-        dgt_revision: Number(dgt_revision) || null,
-        dgt_status: dgt_status || null,
+        dgt_discipline: nullIfEmpty(r.dgt_discipline),
+        dgt_docref: r.dgt_docref.trim(),
+        dgt_documentsubject: nullIfEmpty(r.dgt_documentsubject),
+        dgt_documenttype: nullIfEmpty(r.dgt_documenttype),
+        dgt_revision: r.dgt_revision && r.dgt_revision.trim() !== '' ? parseInt(r.dgt_revision.trim()) : null,
+        dgt_status: nullIfEmpty(r.dgt_status),
+        dgt_submissiondate: parseDate(r.dgt_submissiondate),
+        dgt_responsedate: parseDate(r.dgt_responsedate),
+        dgt_date_issued_to_contractor: parseDate(r.dgt_date_issued_to_contractor),
+        week_num: r.week_num && r.week_num.trim() !== '' ? parseInt(r.week_num.trim()) : null,
+        mod_id: 1,
       }))
-    if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_000402_qaqc_hse_current').upsert(inserts as never[], { onConflict: 'dgt_docref' })
-    if (error) { showError('Import failed: ' + error.message) }
-    else { showSuccess(`${inserts.length} records imported`); fetchData() }
+
+    if (parsed.length === 0) { showError('No valid rows to import'); return }
+
+    // Deduplicate: keep highest dgt_revision per dgt_docref
+    const dedupMap = new Map<string, typeof parsed[number]>()
+    for (const row of parsed) {
+      const existing = dedupMap.get(row.dgt_docref)
+      if (!existing || (row.dgt_revision ?? -Infinity) > (existing.dgt_revision ?? -Infinity)) {
+        dedupMap.set(row.dgt_docref, row)
+      }
+    }
+    const deduped = Array.from(dedupMap.values())
+
+    // Fetch existing docrefs to distinguish updates vs inserts
+    const db = schemaClient(schemaName)
+    const { data: existing, error: fetchErr } = await db
+      .from('dbp6_000402_qaqc_hse_current')
+      .select('dgt_docref')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
+    if (fetchErr) { showError('Import failed: ' + fetchErr.message); return }
+
+    const existingRefs = new Set((existing || []).map((r: { dgt_docref: string | null }) => r.dgt_docref))
+    const toUpdate = deduped.filter(r => existingRefs.has(r.dgt_docref))
+    const toInsert = deduped.filter(r => !existingRefs.has(r.dgt_docref))
+
+    // Upsert into _current on conflict dgt_docref
+    const { error: upsertErr } = await db
+      .from('dbp6_000402_qaqc_hse_current')
+      .upsert(deduped as never[], { onConflict: 'dgt_docref' })
+    if (upsertErr) { showError('Import failed: ' + upsertErr.message); return }
+
+    // Sync to _history on conflict (dgt_docref, dgt_revision)
+    const historyRows = deduped.map(r => ({ ...r }))
+    const { error: histErr } = await db
+      .from('dbp6_000402_qaqc_hse_history')
+      .upsert(historyRows as never[], { onConflict: 'dgt_docref,dgt_revision' })
+    if (histErr) { showError(`Current updated but history sync failed: ${histErr.message}`); fetchData(); return }
+
+    showSuccess(`${toUpdate.length} updated, ${toInsert.length} inserted`)
+    fetchData()
   }
 
   const formatDate = (dateString: string | null) => {
