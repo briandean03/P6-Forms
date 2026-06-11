@@ -11,7 +11,6 @@ type SortField =
   | 'dgt_activityid'
   | 'dgt_projectid'
   | 'dgt_weeknum'
-  | 'rpt_weeknum'
   | 'dgt_datadate'
   | 'dgt_actualstart'
   | 'dgt_actualfinish'
@@ -20,7 +19,6 @@ type SortField =
 interface AppliedFilters {
   activityId: string
   weekNum: string
-  rptWeekNum: string
 }
 
 export function DynamicActualDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
@@ -32,10 +30,9 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
   // Pending filter inputs (not yet applied)
   const [activityInput, setActivityInput] = useState('')
   const [weekNumInput, setWeekNumInput] = useState('')
-  const [rptWeekNumInput, setRptWeekNumInput] = useState('')
 
   // Applied filters (sent to Supabase)
-  const [applied, setApplied] = useState<AppliedFilters>({ activityId: '', weekNum: '', rptWeekNum: '' })
+  const [applied, setApplied] = useState<AppliedFilters>({ activityId: '', weekNum: '' })
 
   // Sort (applied immediately on header click)
   const [sortField, setSortField] = useState<SortField>('dgt_activityid')
@@ -44,7 +41,7 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
   const { notification, hideNotification, showError } = useNotification()
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-  const hasActiveFilters = applied.activityId || applied.weekNum || applied.rptWeekNum
+  const hasActiveFilters = applied.activityId || applied.weekNum
 
   useEffect(() => {
     let cancelled = false
@@ -58,7 +55,7 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query: any = supabase
-        .from('dbp6_0006_progressdata')
+        .from('progress_latest_week')
         .select('*', { count: 'exact' })
         .eq('dgt_dbp6bd00projectdataid', projectId)
         .order(sortField, { ascending: sortDir === 'asc' })
@@ -69,9 +66,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
       }
       if (applied.weekNum.trim()) {
         query = query.eq('dgt_weeknum', parseInt(applied.weekNum))
-      }
-      if (applied.rptWeekNum.trim()) {
-        query = query.eq('rpt_weeknum', parseInt(applied.rptWeekNum))
       }
 
       const { data: records, count, error } = await query
@@ -92,15 +86,14 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
   }, [projectId, schemaName, currentPage, applied, sortField, sortDir])
 
   const applyFilters = () => {
-    setApplied({ activityId: activityInput, weekNum: weekNumInput, rptWeekNum: rptWeekNumInput })
+    setApplied({ activityId: activityInput, weekNum: weekNumInput })
     setCurrentPage(1)
   }
 
   const clearFilters = () => {
     setActivityInput('')
     setWeekNumInput('')
-    setRptWeekNumInput('')
-    setApplied({ activityId: '', weekNum: '', rptWeekNum: '' })
+    setApplied({ activityId: '', weekNum: '' })
     setCurrentPage(1)
   }
 
@@ -164,16 +157,15 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
 
   const formatPct = (v: number | null) => {
     if (v === null || v === undefined) return '-'
-    return `${(v * 100).toFixed(1)}%`
+    return `${v.toFixed(1)}%`
   }
 
   const getProgressColor = (v: number | null) => {
     if (v === null || v === undefined) return 'bg-gray-200'
-    const p = v * 100
-    if (p >= 100) return 'bg-green-500'
-    if (p >= 75) return 'bg-blue-500'
-    if (p >= 50) return 'bg-yellow-400'
-    if (p >= 25) return 'bg-orange-400'
+    if (v >= 100) return 'bg-green-500'
+    if (v >= 75) return 'bg-blue-500'
+    if (v >= 50) return 'bg-yellow-400'
+    if (v >= 25) return 'bg-orange-400'
     return 'bg-red-400'
   }
 
@@ -225,20 +217,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
             />
           </div>
 
-          {/* Rpt Week # */}
-          <div className="w-28">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Rpt Week #</label>
-            <input
-              type="number"
-              value={rptWeekNumInput}
-              onChange={e => setRptWeekNumInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. 42"
-              min="1"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
           {/* Actions */}
           <div className="flex items-center gap-2 pb-0.5">
             <button
@@ -274,11 +252,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                 Week #: <span className="font-medium">{applied.weekNum}</span>
               </span>
             )}
-            {applied.rptWeekNum && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
-                Rpt Week #: <span className="font-medium">{applied.rptWeekNum}</span>
-              </span>
-            )}
           </div>
         )}
       </div>
@@ -296,7 +269,7 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
             </span>
             <span className="text-sm text-gray-500">
               Sorted by{' '}
-              <span className="font-medium text-gray-700">{sortField.replace('dgt_', '').replace('rpt_', 'rpt ')}</span>{' '}
+              <span className="font-medium text-gray-700">{sortField.replace('dgt_', '')}</span>{' '}
               <span className="text-gray-400">({sortDir})</span>
             </span>
           </div>
@@ -309,7 +282,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                   <SortableHeader field="dgt_activityid" label="Activity ID" className="text-left" />
                   <SortableHeader field="dgt_projectid" label="Project ID" className="text-left" />
                   <SortableHeader field="dgt_weeknum" label="Week #" className="text-center" />
-                  <SortableHeader field="rpt_weeknum" label="Rpt Week #" className="text-center" />
                   <SortableHeader field="dgt_datadate" label="Data Date" className="text-left" />
                   <SortableHeader field="dgt_actualstart" label="Actual Start" className="text-left" />
                   <SortableHeader field="dgt_actualfinish" label="Actual Finish" className="text-left" />
@@ -319,7 +291,7 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
               <tbody className="divide-y divide-gray-200">
                 {data.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -334,9 +306,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-700 text-center">
                         {record.dgt_weeknum ?? '-'}
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-gray-700 text-center">
-                        {record.rpt_weeknum ?? '-'}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
                         {formatDate(record.dgt_datadate)}
@@ -353,7 +322,7 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                             <div
                               className={`h-1.5 rounded-full ${getProgressColor(record.dgt_pctcomplete)}`}
                               style={{
-                                width: `${Math.min((record.dgt_pctcomplete || 0) * 100, 100)}%`,
+                                width: `${Math.min(record.dgt_pctcomplete || 0, 100)}%`,
                               }}
                             />
                           </div>
