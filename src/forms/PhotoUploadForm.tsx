@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ContainerClient } from '@azure/storage-blob'
-import { supabase } from '@/lib/supabase'
+import { schemaClient } from '@/lib/supabase'
+
+const atgcDb = schemaClient('atgc')
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -59,7 +61,7 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
   const fetchPhotos = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      const { data, error } = await atgcDb
         .from('p6forms_photoupload')
         .select('*')
         .like('imageurl', `%/${projectId}/%`)
@@ -137,7 +139,7 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
 
         // 2. Save metadata to Supabase
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: insertError } = await (supabase as any)
+        const { error: insertError } = await (atgcDb as any)
           .from('p6forms_photoupload')
           .insert({
             filename: displayName,
@@ -179,7 +181,7 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
     setDeleting(true)
     try {
       await getContainerClient().deleteBlob(deleteTarget.blobName)
-      const { error } = await supabase
+      const { error } = await atgcDb
         .from('p6forms_photoupload')
         .delete()
         .eq('id', deleteTarget.supabaseId)
