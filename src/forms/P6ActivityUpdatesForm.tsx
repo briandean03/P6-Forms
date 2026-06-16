@@ -622,12 +622,20 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
           {}
         )
       )
+      const { data: existing } = await schemaDb
+        .from('p6_activity_updates')
+        .select('task_code')
+        .eq('project_code', projectTextId) as { data: { task_code: string }[] | null }
+      const existingCodes = new Set(existing?.map(r => r.task_code))
+      const updates = deduped.filter(r => existingCodes.has((r as { task_code: string }).task_code)).length
+      const inserts = deduped.filter(r => !existingCodes.has((r as { task_code: string }).task_code)).length
+
       const { error } = await schemaDb
         .from('p6_activity_updates')
         .upsert(deduped as never[], { onConflict: 'project_code,task_code' })
       if (error) { showError(error.message) }
       else {
-        showSuccess(`Imported ${deduped.length} records`)
+        showSuccess(`${deduped.length} imported: ${updates} updated, ${inserts} inserted`)
         fetchData()
         // Upsert rows where mrk_uptd = 1 into progressdata
         if (projectHeader?.project_uuid) {
