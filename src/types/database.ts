@@ -128,28 +128,16 @@ export interface AreaOfConcern {
 }
 
 export interface Payments {
-  dbp6bd0003paymentsid: string
-  dgt_dateapproved: string | null
-  dgt_datesubmitted: string | null
-  exchangerate: number | null
-  importsequencenumber: string | null
-  dgt_ipaamount: number | null
-  dgt_ipaamount_base: number | null
-  dgt_iparef: string | null
-  dgt_ipcamount: number | null
-  dgt_ipcamount_base: number | null
-  dgt_paymentreceivedamount: number | null
-  dgt_paymentreceivedamount_base: number | null
-  dgt_paymentreceiveddate: string | null
-  statuscode: number | null
-  statecode: string | null
-  timezoneruleversionnumber: string | null
-  utcconversiontimezonecode: string | null
-  versionnumber: number | null
-  transactioncurrencyid: string | null
-  owningbusinessunit: string | null
-  dgt_dbp6bd00projectdataid: string | null
+  id: string
+  payment_date: string | null
+  month_no: number | null
+  ref: string | null
+  ipa_amount: number | null
+  ipc_amount: number | null
+  status: string | null
   dgt_projectid: string | null
+  dgt_dbp6bd00projectdataid: string | null
+  created_at: string | null
 }
 
 export interface Variations {

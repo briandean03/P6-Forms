@@ -14,36 +14,30 @@ import { CsvControls } from '@/components/CsvControls'
 import { exportToCsv } from '@/utils/csv'
 
 interface PaymentsFormData {
-  dbp6bd0003paymentsid: string
-  dgt_iparef: string
-  dgt_ipaamount: string
-  dgt_ipaamount_base: string
-  dgt_ipcamount: string
-  dgt_ipcamount_base: string
-  dgt_paymentreceivedamount: string
-  dgt_paymentreceivedamount_base: string
-  dgt_paymentreceiveddate: string
-  dgt_datesubmitted: string
-  dgt_dateapproved: string
-  statuscode: string
-  statecode: string
-  exchangerate: string
-  transactioncurrencyid: string
+  ref: string
+  payment_date: string
+  month_no: string
+  ipa_amount: string
+  ipc_amount: string
+  status: string
 }
 
 const ITEMS_PER_PAGE = 15
-type SortField = 'dgt_iparef' | 'dgt_datesubmitted' | 'dgt_dateapproved' | 'statuscode'
+type SortField = 'ref' | 'payment_date' | 'month_no' | 'status'
 type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-1.5 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-400'
-
 
 const formatDate = (v: string | null) => v ? new Date(v).toLocaleDateString() : '-'
 const fmtAmt = (v: number | null) => v != null ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
 
 type EditValues = {
-  iparef: string; ipaamount: string; ipcamount: string
-  receivedamount: string; receiveddate: string; datesubmitted: string; dateapproved: string; statuscode: string
+  ref: string
+  payment_date: string
+  month_no: string
+  ipa_amount: string
+  ipc_amount: string
+  status: string
 }
 
 export function PaymentsForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
@@ -60,7 +54,7 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
   const [sortField, setSortField] = useState<SortField | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<EditValues>({ iparef: '', ipaamount: '', ipcamount: '', receivedamount: '', receiveddate: '', datesubmitted: '', dateapproved: '', statuscode: '' })
+  const [editValues, setEditValues] = useState<EditValues>({ ref: '', payment_date: '', month_no: '', ipa_amount: '', ipc_amount: '', status: '' })
   const [showSaveConfirm, setShowSaveConfirm] = useState(false)
   const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false)
   const { notification, hideNotification, showSuccess, showError } = useNotification()
@@ -73,7 +67,11 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
 
   const fetchData = async () => {
     setLoading(true)
-    const { data: records, error } = await supabase.from('dbp6_0009_payments').select('*').eq('dgt_dbp6bd00projectdataid', projectId).order('dgt_datesubmitted', { ascending: false })
+    const { data: records, error } = await supabase
+      .from('dbp6_0009_payments')
+      .select('*')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
+      .order('payment_date', { ascending: false })
     if (error) { showError('Failed to fetch data: ' + error.message) } else { setData(records || []) }
     setLoading(false)
   }
@@ -86,10 +84,9 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter(item =>
-        item.dgt_iparef?.toLowerCase().includes(term) ||
-        item.dbp6bd0003paymentsid?.toLowerCase().includes(term) ||
-        item.dgt_projectid?.toLowerCase().includes(term) ||
-        item.statuscode?.toString().includes(term)
+        item.ref?.toLowerCase().includes(term) ||
+        item.status?.toLowerCase().includes(term) ||
+        item.month_no?.toString().includes(term)
       )
     }
     if (sortField) {
@@ -123,16 +120,14 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
   const set = (k: keyof EditValues) => (e: React.ChangeEvent<HTMLInputElement>) => setEditValues(p => ({ ...p, [k]: e.target.value }))
 
   const startEdit = (record: Payments) => {
-    setEditingId(record.dbp6bd0003paymentsid)
+    setEditingId(record.id)
     setEditValues({
-      iparef: record.dgt_iparef || '',
-      ipaamount: record.dgt_ipaamount != null ? String(record.dgt_ipaamount) : '',
-      ipcamount: record.dgt_ipcamount != null ? String(record.dgt_ipcamount) : '',
-      receivedamount: record.dgt_paymentreceivedamount != null ? String(record.dgt_paymentreceivedamount) : '',
-      receiveddate: record.dgt_paymentreceiveddate ? record.dgt_paymentreceiveddate.split('T')[0] : '',
-      datesubmitted: record.dgt_datesubmitted ? record.dgt_datesubmitted.split('T')[0] : '',
-      dateapproved: record.dgt_dateapproved ? record.dgt_dateapproved.split('T')[0] : '',
-      statuscode: record.statuscode != null ? String(record.statuscode) : '',
+      ref: record.ref || '',
+      payment_date: record.payment_date ? record.payment_date.split('T')[0] : '',
+      month_no: record.month_no != null ? String(record.month_no) : '',
+      ipa_amount: record.ipa_amount != null ? String(record.ipa_amount) : '',
+      ipc_amount: record.ipc_amount != null ? String(record.ipc_amount) : '',
+      status: record.status || '',
     })
   }
 
@@ -140,27 +135,23 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
     if (!editingId) return
     setSaving(true)
     const { error } = await supabase.from('dbp6_0009_payments').update({
-      dgt_iparef: editValues.iparef || null,
-      dgt_ipaamount: editValues.ipaamount ? parseFloat(editValues.ipaamount) : null,
-      dgt_ipcamount: editValues.ipcamount ? parseFloat(editValues.ipcamount) : null,
-      dgt_paymentreceivedamount: editValues.receivedamount ? parseFloat(editValues.receivedamount) : null,
-      dgt_paymentreceiveddate: editValues.receiveddate || null,
-      dgt_datesubmitted: editValues.datesubmitted || null,
-      dgt_dateapproved: editValues.dateapproved || null,
-      statuscode: editValues.statuscode ? parseInt(editValues.statuscode) : null,
-    } as never).eq('dbp6bd0003paymentsid', editingId)
+      ref: editValues.ref || null,
+      payment_date: editValues.payment_date || null,
+      month_no: editValues.month_no ? parseInt(editValues.month_no) : null,
+      ipa_amount: editValues.ipa_amount ? parseFloat(editValues.ipa_amount) : null,
+      ipc_amount: editValues.ipc_amount ? parseFloat(editValues.ipc_amount) : null,
+      status: editValues.status || null,
+    } as never).eq('id', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
     else {
-      setData(prev => prev.map(r => r.dbp6bd0003paymentsid === editingId ? {
+      setData(prev => prev.map(r => r.id === editingId ? {
         ...r,
-        dgt_iparef: editValues.iparef || null,
-        dgt_ipaamount: editValues.ipaamount ? parseFloat(editValues.ipaamount) : null,
-        dgt_ipcamount: editValues.ipcamount ? parseFloat(editValues.ipcamount) : null,
-        dgt_paymentreceivedamount: editValues.receivedamount ? parseFloat(editValues.receivedamount) : null,
-        dgt_paymentreceiveddate: editValues.receiveddate || null,
-        dgt_datesubmitted: editValues.datesubmitted || null,
-        dgt_dateapproved: editValues.dateapproved || null,
-        statuscode: editValues.statuscode ? parseInt(editValues.statuscode) : null,
+        ref: editValues.ref || null,
+        payment_date: editValues.payment_date || null,
+        month_no: editValues.month_no ? parseInt(editValues.month_no) : null,
+        ipa_amount: editValues.ipa_amount ? parseFloat(editValues.ipa_amount) : null,
+        ipc_amount: editValues.ipc_amount ? parseFloat(editValues.ipc_amount) : null,
+        status: editValues.status || null,
       } : r))
       showSuccess('Record updated'); setEditingId(null)
     }
@@ -170,22 +161,13 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
   const onSubmit = async (formData: PaymentsFormData) => {
     setSaving(true)
     const { error } = await supabase.from('dbp6_0009_payments').insert({
-      dbp6bd0003paymentsid: formData.dbp6bd0003paymentsid,
       dgt_dbp6bd00projectdataid: projectId || null,
-      dgt_iparef: formData.dgt_iparef || null,
-      dgt_ipaamount: formData.dgt_ipaamount ? parseFloat(formData.dgt_ipaamount) : null,
-      dgt_ipaamount_base: formData.dgt_ipaamount_base ? parseFloat(formData.dgt_ipaamount_base) : null,
-      dgt_ipcamount: formData.dgt_ipcamount ? parseFloat(formData.dgt_ipcamount) : null,
-      dgt_ipcamount_base: formData.dgt_ipcamount_base ? parseFloat(formData.dgt_ipcamount_base) : null,
-      dgt_paymentreceivedamount: formData.dgt_paymentreceivedamount ? parseFloat(formData.dgt_paymentreceivedamount) : null,
-      dgt_paymentreceivedamount_base: formData.dgt_paymentreceivedamount_base ? parseFloat(formData.dgt_paymentreceivedamount_base) : null,
-      dgt_paymentreceiveddate: formData.dgt_paymentreceiveddate || null,
-      dgt_datesubmitted: formData.dgt_datesubmitted || null,
-      dgt_dateapproved: formData.dgt_dateapproved || null,
-      statuscode: formData.statuscode ? parseInt(formData.statuscode) : null,
-      statecode: formData.statecode || null,
-      exchangerate: formData.exchangerate ? parseInt(formData.exchangerate) : null,
-      transactioncurrencyid: formData.transactioncurrencyid || null,
+      ref: formData.ref || null,
+      payment_date: formData.payment_date || null,
+      month_no: formData.month_no ? parseInt(formData.month_no) : null,
+      ipa_amount: formData.ipa_amount ? parseFloat(formData.ipa_amount) : null,
+      ipc_amount: formData.ipc_amount ? parseFloat(formData.ipc_amount) : null,
+      status: formData.status || null,
     } as never)
     if (error) { showError('Failed to create record: ' + error.message) }
     else { showSuccess('Record created successfully'); setIsModalOpen(false); fetchData() }
@@ -194,35 +176,33 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
 
   const handleDelete = async (id: string) => {
     setDeleting(true)
-    const { error } = await supabase.from('dbp6_0009_payments').delete().eq('dbp6bd0003paymentsid', id)
+    const { error } = await supabase.from('dbp6_0009_payments').delete().eq('id', id)
     if (error) { showError('Failed to delete: ' + error.message) }
-    else { setData(prev => prev.filter(item => item.dbp6bd0003paymentsid !== id)); showSuccess('Record deleted') }
+    else { setData(prev => prev.filter(item => item.id !== id)); showSuccess('Record deleted') }
     setDeleting(false); setDeleteConfirm(null)
   }
 
   const handleExport = () => {
-    const headers = ['dgt_iparef', 'dgt_ipaamount', 'dgt_ipcamount', 'dgt_paymentreceivedamount', 'dgt_paymentreceiveddate', 'dgt_datesubmitted', 'dgt_dateapproved', 'statuscode']
-    const rows = data.map(r => [r.dgt_iparef, r.dgt_ipaamount, r.dgt_ipcamount, r.dgt_paymentreceivedamount, r.dgt_paymentreceiveddate, r.dgt_datesubmitted, r.dgt_dateapproved, r.statuscode])
+    const headers = ['ref', 'payment_date', 'month_no', 'ipa_amount', 'ipc_amount', 'status']
+    const rows = data.map(r => [r.ref, r.payment_date, r.month_no, r.ipa_amount, r.ipc_amount, r.status])
     exportToCsv('payments', headers, rows)
   }
 
   const handleImport = async (rows: Record<string, string>[]) => {
     if (rows.length === 0) { showError('No data found in CSV'); return }
     const inserts = rows
-      .filter(r => r.dgt_iparef)
-      .map(({ dgt_iparef, dgt_ipaamount, dgt_ipcamount, dgt_paymentreceivedamount, dgt_paymentreceiveddate, dgt_datesubmitted, dgt_dateapproved, statuscode }) => ({
+      .filter(r => r.ref)
+      .map(({ ref, payment_date, month_no, ipa_amount, ipc_amount, status }) => ({
         dgt_dbp6bd00projectdataid: projectId,
-        dgt_iparef: dgt_iparef || null,
-        dgt_ipaamount: Number(dgt_ipaamount) || null,
-        dgt_ipcamount: Number(dgt_ipcamount) || null,
-        dgt_paymentreceivedamount: Number(dgt_paymentreceivedamount) || null,
-        dgt_paymentreceiveddate: dgt_paymentreceiveddate || null,
-        dgt_datesubmitted: dgt_datesubmitted || null,
-        dgt_dateapproved: dgt_dateapproved || null,
-        statuscode: Number(statuscode) || null,
+        ref: ref || null,
+        payment_date: payment_date || null,
+        month_no: month_no ? parseInt(month_no) : null,
+        ipa_amount: ipa_amount ? parseFloat(ipa_amount) : null,
+        ipc_amount: ipc_amount ? parseFloat(ipc_amount) : null,
+        status: status || null,
       }))
     if (inserts.length === 0) { showError('No valid rows to import'); return }
-    const { error } = await supabase.from('dbp6_0009_payments').upsert(inserts as never[], { onConflict: 'dgt_iparef' })
+    const { error } = await supabase.from('dbp6_0009_payments').upsert(inserts as never[], { onConflict: 'ref' })
     if (error) { showError('Import failed: ' + error.message) }
     else { showSuccess(`${inserts.length} records imported`); fetchData() }
   }
@@ -232,7 +212,7 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
       {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div className="w-full sm:w-72">
-          <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by IPA ref, payment ID..." />
+          <SearchFilter value={searchTerm} onChange={setSearchTerm} placeholder="Search by ref, status, month..." />
         </div>
         <div className="flex items-center gap-2">
           <CsvControls onExport={handleExport} onImport={handleImport} />
@@ -253,41 +233,37 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('dgt_iparef')}>IPA Ref<SortIcon field="dgt_iparef" /></div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('ref')}>Ref<SortIcon field="ref" /></div>
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('payment_date')}>Payment Date<SortIcon field="payment_date" /></div>
+                  </th>
+                  <th className="px-3 py-3 text-left">
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('month_no')}>Month<SortIcon field="month_no" /></div>
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">IPA Amt</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">IPC Amt</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Received Amt</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Received Date</th>
                   <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('dgt_datesubmitted')}>Submitted<SortIcon field="dgt_datesubmitted" /></div>
-                  </th>
-                  <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('dgt_dateapproved')}>Approved<SortIcon field="dgt_dateapproved" /></div>
-                  </th>
-                  <th className="px-3 py-3 text-left">
-                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('statuscode')}>Status<SortIcon field="statuscode" /></div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-600 uppercase tracking-wide cursor-pointer hover:text-gray-800 whitespace-nowrap" onClick={() => handleSort('status')}>Status<SortIcon field="status" /></div>
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wide w-20">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedData.length === 0 ? (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : paginatedData.map(record => {
-                  const isEditing = editingId === record.dbp6bd0003paymentsid
+                  const isEditing = editingId === record.id
                   return (
-                    <tr key={record.dbp6bd0003paymentsid} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
+                    <tr key={record.id} className={isEditing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
                       {isEditing ? (
                         <>
-                          <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.iparef} onChange={set('iparef')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.ipaamount} onChange={set('ipaamount')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.ipcamount} onChange={set('ipcamount')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.receivedamount} onChange={set('receivedamount')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[110px]"><input type="date" value={editValues.receiveddate} onChange={set('receiveddate')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[110px]"><input type="date" value={editValues.datesubmitted} onChange={set('datesubmitted')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[110px]"><input type="date" value={editValues.dateapproved} onChange={set('dateapproved')} className={inputCls} /></td>
-                          <td className="px-2 py-1.5 min-w-[70px]"><input type="number" value={editValues.statuscode} onChange={set('statuscode')} onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} className={inputCls} /></td>
+                          <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.ref} onChange={set('ref')} className={inputCls} /></td>
+                          <td className="px-2 py-1.5 min-w-[120px]"><input type="date" value={editValues.payment_date} onChange={set('payment_date')} className={inputCls} /></td>
+                          <td className="px-2 py-1.5 min-w-[70px]"><input type="number" value={editValues.month_no} onChange={set('month_no')} className={inputCls} /></td>
+                          <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.ipa_amount} onChange={set('ipa_amount')} className={inputCls} /></td>
+                          <td className="px-2 py-1.5 min-w-[100px]"><input type="number" value={editValues.ipc_amount} onChange={set('ipc_amount')} className={inputCls} /></td>
+                          <td className="px-2 py-1.5 min-w-[100px]"><input value={editValues.status} onChange={set('status')} onKeyDown={e => { if (e.key === 'Enter') setShowSaveConfirm(true); if (e.key === 'Escape') setShowEditCancelConfirm(true) }} className={inputCls} /></td>
                           <td className="px-2 py-1.5 whitespace-nowrap">
                             <div className="flex items-center gap-1">
                               <button onClick={() => setShowSaveConfirm(true)} disabled={saving} title="Save" className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-40"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></button>
@@ -297,18 +273,16 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
                         </>
                       ) : (
                         <>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.dgt_iparef || '-'}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_ipaamount)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_ipcamount)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.dgt_paymentreceivedamount)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_paymentreceiveddate)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_datesubmitted)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.dgt_dateapproved)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.statuscode ?? '-'}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.ref || '-'}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{formatDate(record.payment_date)}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-center">{record.month_no ?? '-'}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.ipa_amount)}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap text-right">{fmtAmt(record.ipc_amount)}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-900 whitespace-nowrap">{record.status || '-'}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <div className="flex items-center gap-1">
                               <button onClick={() => startEdit(record)} title="Edit" className="p-1 text-blue-500 rounded"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
-                              <button onClick={() => setDeleteConfirm(record.dbp6bd0003paymentsid)} title="Delete" className="p-1 text-red-500 rounded"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                              <button onClick={() => setDeleteConfirm(record.id)} title="Delete" className="p-1 text-red-500 rounded"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                             </div>
                           </td>
                         </>
@@ -325,33 +299,14 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
 
       <Modal isOpen={isModalOpen} onClose={handleCancelModal} title="Create Payment">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <FormField label="Payment ID" type="text" {...register('dbp6bd0003paymentsid', { required: 'Payment ID is required' })} error={errors.dbp6bd0003paymentsid?.message} />
-          <FormField label="IPA Reference" type="text" {...register('dgt_iparef')} error={errors.dgt_iparef?.message} />
+          <FormField label="Ref" type="text" {...register('ref')} error={errors.ref?.message} />
+          <FormField label="Payment Date" type="date" {...register('payment_date')} error={errors.payment_date?.message} />
+          <FormField label="Month No" type="number" {...register('month_no')} error={errors.month_no?.message} />
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="IPA Amount" type="number" {...register('dgt_ipaamount')} error={errors.dgt_ipaamount?.message} />
-            <FormField label="IPA Amount (Base)" type="number" {...register('dgt_ipaamount_base')} error={errors.dgt_ipaamount_base?.message} />
+            <FormField label="IPA Amount" type="number" {...register('ipa_amount')} error={errors.ipa_amount?.message} />
+            <FormField label="IPC Amount" type="number" {...register('ipc_amount')} error={errors.ipc_amount?.message} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="IPC Amount" type="number" {...register('dgt_ipcamount')} error={errors.dgt_ipcamount?.message} />
-            <FormField label="IPC Amount (Base)" type="number" {...register('dgt_ipcamount_base')} error={errors.dgt_ipcamount_base?.message} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Payment Received Amt" type="number" {...register('dgt_paymentreceivedamount')} error={errors.dgt_paymentreceivedamount?.message} />
-            <FormField label="Payment Received (Base)" type="number" {...register('dgt_paymentreceivedamount_base')} error={errors.dgt_paymentreceivedamount_base?.message} />
-          </div>
-          <FormField label="Payment Received Date" type="date" {...register('dgt_paymentreceiveddate')} error={errors.dgt_paymentreceiveddate?.message} />
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Date Submitted" type="date" {...register('dgt_datesubmitted')} error={errors.dgt_datesubmitted?.message} />
-            <FormField label="Date Approved" type="date" {...register('dgt_dateapproved')} error={errors.dgt_dateapproved?.message} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Status Code" type="number" {...register('statuscode')} error={errors.statuscode?.message} />
-            <FormField label="State Code" type="text" {...register('statecode')} error={errors.statecode?.message} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Exchange Rate" type="number" {...register('exchangerate')} error={errors.exchangerate?.message} />
-            <FormField label="Currency ID" type="text" {...register('transactioncurrencyid')} error={errors.transactioncurrencyid?.message} />
-          </div>
+          <FormField label="Status" type="text" {...register('status')} error={errors.status?.message} />
           <div className="flex justify-end gap-3 pt-4">
             <button type="button" onClick={handleCancelModal} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={saving} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>

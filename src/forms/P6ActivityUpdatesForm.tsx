@@ -616,32 +616,37 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       }
       // Deduplicate by project_code+task_code — keep last occurrence to avoid
       // "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+      type DedupedRow = { project_code: string; task_code: string; [key: string]: unknown }
       const deduped = Object.values(
-        (toInsert as { project_code: string; task_code: string }[]).reduce<Record<string, object>>(
+        (toInsert as DedupedRow[]).reduce<Record<string, DedupedRow>>(
           (acc, row) => { acc[`${row.project_code}|${row.task_code}`] = row; return acc },
           {}
         )
       )
+      const withProjectCode = deduped
+        .map(r => ({ ...r, project_code: projectTextId }))
+        .filter(r => !!r.task_code)
+
       const { data: existing } = await schemaDb
         .from('p6_activity_updates')
         .select('task_code')
         .eq('project_code', projectTextId) as { data: { task_code: string }[] | null }
       const existingCodes = new Set(existing?.map(r => r.task_code))
-      const updates = deduped.filter(r => existingCodes.has((r as { task_code: string }).task_code)).length
-      const inserts = deduped.filter(r => !existingCodes.has((r as { task_code: string }).task_code)).length
+      const updates = withProjectCode.filter(r => existingCodes.has((r as { task_code: string }).task_code)).length
+      const inserts = withProjectCode.filter(r => !existingCodes.has((r as { task_code: string }).task_code)).length
 
       const { error } = await schemaDb
         .from('p6_activity_updates')
-        .upsert(deduped as never[], { onConflict: 'project_code,task_code' })
+        .upsert(withProjectCode as never[], { onConflict: 'project_code,task_code' })
       if (error) { showError(error.message) }
       else {
-        showSuccess(`${deduped.length} imported: ${updates} updated, ${inserts} inserted`)
+        showSuccess(`${withProjectCode.length} imported: ${updates} updated, ${inserts} inserted`)
         fetchData()
         // Upsert rows where mrk_uptd = 1 into progressdata
         if (projectHeader?.project_uuid) {
           const rptWeekNum = (projectHeader.week_num ?? 0) + (projectHeader.rpt_week_offset ?? 0)
           type ImportedRow = { task_code: string; complete_pct: number | null; act_start_date: string | null; act_end_date: string | null; mrk_uptd: number }
-          const progressRows = (deduped as ImportedRow[])
+          const progressRows = (withProjectCode as unknown as ImportedRow[])
             .filter(r => r.mrk_uptd === 1)
             .map(r => ({
               dgt_activityid: r.task_code,
