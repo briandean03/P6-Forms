@@ -17,6 +17,7 @@ import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
 import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
 import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
 import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
+import { PdfUploadForm } from '@/forms/PdfUploadForm'
 
 type TabKey =
   | 'engineering'
@@ -34,6 +35,7 @@ type TabKey =
   | 'p6activityupdates'
   | 'p6projectmapping'
   | 'photos'
+  | 'pdfupload'
 
 interface Tab {
   key: TabKey
@@ -163,6 +165,15 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
+  {
+    key: 'pdfupload',
+    label: 'PDF Upload',
+    icon: (
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
 ]
 
 interface ProjectInfo {
@@ -280,6 +291,8 @@ function App() {
         return <P6ProjectMappingForm />
       case 'photos':
         return <PhotoUploadForm projectId={selectedProjectId} />
+      case 'pdfupload':
+        return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} />
       default:
         return null
     }
