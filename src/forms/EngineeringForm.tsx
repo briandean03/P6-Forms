@@ -737,7 +737,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-max divide-y divide-gray-200">
+            <table className="min-w-max w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-2 text-left align-top w-36">

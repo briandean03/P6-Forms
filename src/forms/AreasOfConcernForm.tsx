@@ -351,7 +351,7 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-max divide-y divide-gray-200">
+            <table className="min-w-max w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-3 text-left w-28">

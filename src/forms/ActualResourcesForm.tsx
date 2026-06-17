@@ -629,7 +629,7 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-max">
+            <table className="min-w-max w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
