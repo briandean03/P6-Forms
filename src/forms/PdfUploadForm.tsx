@@ -7,13 +7,12 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 
 const atgcDb = schemaClient('atgc')
 
-const PDF_ACCOUNT = import.meta.env.VITE_PDF_AZURE_STORAGE_ACCOUNT as string
-const PDF_SAS_TOKEN = import.meta.env.VITE_PDF_AZURE_SAS_TOKEN as string
-const PDF_CONTAINER = import.meta.env.VITE_PDF_AZURE_CONTAINER as string
-const PDF_BLOB_BASE = `https://${PDF_ACCOUNT}.blob.core.windows.net/${PDF_CONTAINER}`
-
 function getPdfContainerClient() {
-  return new ContainerClient(`${PDF_BLOB_BASE}?${PDF_SAS_TOKEN}`)
+  const account = import.meta.env.VITE_PDF_AZURE_STORAGE_ACCOUNT as string
+  const sasToken = import.meta.env.VITE_PDF_AZURE_SAS_TOKEN as string
+  const container = import.meta.env.VITE_PDF_AZURE_CONTAINER as string
+  const base = `https://${account}.blob.core.windows.net/${container}`
+  return { client: new ContainerClient(`${base}?${sasToken}`), base }
 }
 
 type ActivityType = 'LA' | 'DA'
@@ -85,30 +84,34 @@ export function PdfUploadForm({
     setUploading(true)
     try {
       const blobName = `${projectTextId || projectId}/${activityType}_${meta.weekNum}.pdf`
-      const pdfUrl = `${PDF_BLOB_BASE}/${blobName}`
+      const { client: pdfClient, base: pdfBase } = getPdfContainerClient()
+      const pdfUrl = `${pdfBase}/${blobName}`
 
       // 1. Upload to Azure
-      const blockBlob = getPdfContainerClient().getBlockBlobClient(blobName)
+      const blockBlob = pdfClient.getBlockBlobClient(blobName)
       await blockBlob.uploadData(file, {
         blobHTTPHeaders: { blobContentType: 'application/pdf' },
       })
 
       // 2. Insert record into Supabase
+      const insertPayload = {
+        filename: `${activityType}_${meta.weekNum}.pdf`,
+        activity_type: activityType,
+        pdf_url: pdfUrl,
+        dgt_projectid: meta.projectId ?? projectTextId ?? null,
+        dgt_dbp6bd00projectdataid: projectId,
+        data_date: meta.dataDate ?? null,
+      }
+      console.log('[PdfUpload] inserting:', insertPayload)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError } = await (atgcDb as any)
+      const { error: insertError, status, statusText } = await (atgcDb as any)
         .from('pdf_form_uploads')
-        .insert({
-          filename: `${activityType}_${meta.weekNum}.pdf`,
-          activity_type: activityType,
-          pdf_url: pdfUrl,
-          dgt_projectid: meta.projectId ?? projectTextId ?? null,
-          dgt_dbp6bd00projectdataid: projectId,
-          data_date: meta.dataDate ?? null,
-        })
+        .insert(insertPayload)
+      console.log('[PdfUpload] insert result:', { status, statusText, insertError })
 
       if (insertError) {
         // Attempt to clean up the blob on DB failure
-        try { await getPdfContainerClient().deleteBlob(blobName) } catch { /* ignore */ }
+        try { await getPdfContainerClient().client.deleteBlob(blobName) } catch { /* ignore */ }
         throw insertError
       }
 
@@ -116,7 +119,12 @@ export function PdfUploadForm({
       setFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err: unknown) {
-      showError(err instanceof Error ? err.message : 'Upload failed')
+      const msg = err instanceof Error
+        ? err.message
+        : (typeof err === 'object' && err !== null && 'message' in err)
+          ? String((err as { message: unknown }).message)
+          : JSON.stringify(err)
+      showError(msg || 'Upload failed')
     }
     setUploading(false)
   }
