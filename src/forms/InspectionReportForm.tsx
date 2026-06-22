@@ -65,7 +65,6 @@ const BLOCK_PATTERN = /^Zone-\d+$/
 export function InspectionReportForm({
   projectId,
   projectTextId,
-  schemaName,
 }: {
   projectId: string
   projectTextId: string
@@ -80,7 +79,6 @@ export function InspectionReportForm({
   const [loadingReports, setLoadingReports] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [pdfFile, setPdfFile] = useState<File | null>(null)
-  const [uploadingPdf, setUploadingPdf] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
 
@@ -146,6 +144,17 @@ export function InspectionReportForm({
     }
   }
 
+  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      showError('Only PDF files are accepted')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+    setPdfFile(file)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -155,7 +164,20 @@ export function InspectionReportForm({
     }
 
     setSubmitting(true)
+    let filePath: string | null = null
+
     try {
+      // 1. Upload PDF to Supabase Storage if one was selected
+      if (pdfFile) {
+        const projectCode = projectTextId || projectId
+        filePath = `${projectCode}/${pdfFile.name}`
+        const { error: uploadError } = await supabase.storage
+          .from('inspection-reports')
+          .upload(filePath, pdfFile, { contentType: 'application/pdf', upsert: true })
+        if (uploadError) throw uploadError
+      }
+
+      // 2. Insert DB record with file_path included
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (ricDb as any)
         .from('p6_inspection_reports')
@@ -171,13 +193,24 @@ export function InspectionReportForm({
           ir_inspection_date: form.ir_inspection_date || null,
           ir_status: form.ir_status || null,
           additional_comments: form.additional_comments || null,
+          file_path: filePath,
           dgt_projectid: projectMeta?.dgt_projectid ?? projectTextId ?? null,
           dgt_dbp6bd00projectdataid: projectId,
         })
-      if (error) throw error
+
+      if (error) {
+        // Roll back storage upload if DB insert fails
+        if (filePath) {
+          try { await supabase.storage.from('inspection-reports').remove([filePath]) } catch { /* ignore */ }
+        }
+        throw error
+      }
+
       showSuccess('Inspection report submitted successfully')
       setForm({ ...emptyForm })
       setBlockError('')
+      setPdfFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
       fetchReports()
     } catch (err: unknown) {
       const msg = err instanceof Error
@@ -188,41 +221,6 @@ export function InspectionReportForm({
       showError(msg || 'Submission failed')
     }
     setSubmitting(false)
-  }
-
-  const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.type !== 'application/pdf') {
-      showError('Only PDF files are accepted')
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      return
-    }
-    setPdfFile(file)
-  }
-
-  const handlePdfUpload = async () => {
-    if (!pdfFile) return
-    setUploadingPdf(true)
-    try {
-      const projectCode = projectTextId || projectId
-      const filePath = `${projectCode}/${pdfFile.name}`
-      const { error: uploadError } = await supabase.storage
-        .from('inspection-reports')
-        .upload(filePath, pdfFile, { contentType: 'application/pdf', upsert: true })
-      if (uploadError) throw uploadError
-      showSuccess(`${pdfFile.name} uploaded successfully`)
-      setPdfFile(null)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    } catch (err: unknown) {
-      const msg = err instanceof Error
-        ? err.message
-        : (typeof err === 'object' && err !== null && 'message' in err)
-          ? String((err as { message: unknown }).message)
-          : JSON.stringify(err)
-      showError(msg || 'Upload failed')
-    }
-    setUploadingPdf(false)
   }
 
   const formatDate = (d: string | null) => {
@@ -409,12 +407,12 @@ export function InspectionReportForm({
                 accept="application/pdf"
                 className="hidden"
                 onChange={handlePdfChange}
-                disabled={uploadingPdf}
+                disabled={submitting}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingPdf}
+                disabled={submitting}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-gray-700"
               >
                 <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -425,29 +423,6 @@ export function InspectionReportForm({
               {pdfFile && (
                 <>
                   <span className="text-sm text-gray-600 truncate max-w-xs">{pdfFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={handlePdfUpload}
-                    disabled={uploadingPdf}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {uploadingPdf ? (
-                      <>
-                        <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Uploading…
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                        Upload
-                      </>
-                    )}
-                  </button>
                   <button
                     type="button"
                     onClick={() => { setPdfFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
