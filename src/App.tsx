@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase, schemaClient } from '@/lib/supabase'
 import type { ProjectData } from '@/types/database'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Notification } from '@/components/Notification'
@@ -19,8 +19,10 @@ import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
 import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 import { PdfUploadForm } from '@/forms/PdfUploadForm'
 import { InspectionReportForm } from '@/forms/InspectionReportForm'
+import { ProjectDashboard } from '@/forms/ProjectDashboard'
 
 type TabKey =
+  | 'dashboard'
   | 'engineering'
   | 'qaqc'
   | 'resources'
@@ -39,153 +41,185 @@ type TabKey =
   | 'pdfupload'
   | 'inspectionreports'
 
-interface Tab {
+interface NavItem {
   key: TabKey
   label: string
   icon: JSX.Element
-  group?: string
+  badgeKey?: 'stale' | 'updates'
 }
 
-const tabs: Tab[] = [
+interface NavSection {
+  id: string
+  label: string
+  items: NavItem[]
+}
+
+const navSections: NavSection[] = [
   {
-    key: 'engineering',
-    label: 'Engineering',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
+    id: 'workflow',
+    label: 'WEEKLY WORKFLOW',
+    items: [
+      {
+        key: 'projectdata',
+        label: 'Project Data',
+        badgeKey: 'stale',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'p6activityupdates',
+        label: 'Activity Updates',
+        badgeKey: 'updates',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        ),
+      },
+      {
+        key: 'p6activityoutput',
+        label: 'Activity Output',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        ),
+      },
+    ],
   },
   {
-    key: 'qaqc',
-    label: 'QAQC / HSE',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
+    id: 'documents',
+    label: 'DOCUMENTS',
+    items: [
+      {
+        key: 'engineering',
+        label: 'Engineering',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'qaqc',
+        label: 'QAQC / HSE',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'inspectionreports',
+        label: 'Inspection Reports',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        ),
+      },
+      {
+        key: 'pdfupload',
+        label: 'PDF Upload',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+        ),
+      },
+    ],
   },
   {
-    key: 'resources',
-    label: 'Actual Resources',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-      </svg>
-    ),
+    id: 'site',
+    label: 'SITE',
+    items: [
+      {
+        key: 'resources',
+        label: 'Actual Resources',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'photos',
+        label: 'Photos',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        ),
+      },
+    ],
   },
   {
-    key: 'dynamic',
-    label: 'Progress Data',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'projectdata',
-    label: 'Project Data',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'aoc',
-    label: 'Areas of Concern',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-2.194-.833-2.964 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'variations',
-    label: 'Variations',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 8v-4m0 4l-4-4m4 4l4-4M3 12h18" />
-      </svg>
-    ),
-  },
-  {
-    key: 'payments',
-    label: 'Payments',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'referencedata',
-    label: 'Reference Data',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'p6activityupdates',
-    label: 'Activity Updates',
-    group: 'P6 Scheduler',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-      </svg>
-    ),
-  },
-  {
-    key: 'p6activityoutput',
-    label: 'Activity Output',
-    group: 'P6 Scheduler',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'p6projectmapping',
-    label: 'Project Mapping',
-    group: 'P6 Scheduler',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-      </svg>
-    ),
-  },
-  {
-    key: 'photos',
-    label: 'Photos',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'pdfupload',
-    label: 'PDF Upload',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    key: 'inspectionreports',
-    label: 'Inspection Reports',
-    icon: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-      </svg>
-    ),
+    id: 'reference',
+    label: 'REFERENCE',
+    items: [
+      {
+        key: 'dynamic',
+        label: 'Progress Data',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'p6projectmapping',
+        label: 'Project Mapping',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+        ),
+      },
+      {
+        key: 'aoc',
+        label: 'Areas of Concern',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-2.194-.833-2.964 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'variations',
+        label: 'Variations',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 8v-4m0 4l-4-4m4 4l4-4M3 12h18" />
+          </svg>
+        ),
+      },
+      {
+        key: 'payments',
+        label: 'Payments',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        ),
+      },
+      {
+        key: 'referencedata',
+        label: 'Reference Data',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+          </svg>
+        ),
+      },
+    ],
   },
 ]
+
+// Flat list for label lookup
+const allNavItems: NavItem[] = navSections.flatMap(s => s.items)
 
 interface ProjectInfo {
   id: string
@@ -201,13 +235,50 @@ function App() {
   const [view, setView] = useState<'home' | 'app'>('home')
   const [activeTab, setActiveTab] = useState<TabKey>('engineering')
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [selectedSchemaName, setSelectedSchemaName] = useState<string>('public')
   const [runUpdateLoading, setRunUpdateLoading] = useState(false)
   const [showRunUpdateConfirm, setShowRunUpdateConfirm] = useState(false)
+  const [isDataStale, setIsDataStale] = useState(false)
+  const [updatesCount, setUpdatesCount] = useState(0)
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
+
+  const fetchSidebarBadges = useCallback(async (projectId: string, schemaName: string) => {
+    if (!projectId || !schemaName || schemaName === 'public') return
+    const db = schemaClient(schemaName)
+    try {
+      // Check if data date is stale (> 8 days old)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: pdData } = await (schemaClient('atgc') as any)
+        .from('dbp6_0000_projectdata')
+        .select('dgt_datadate')
+        .eq('dgt_dbp6bd00projectdataid', projectId)
+        .maybeSingle()
+      if (pdData?.dgt_datadate) {
+        const daysDiff = (Date.now() - new Date(pdData.dgt_datadate).getTime()) / 86400000
+        setIsDataStale(daysDiff > 8)
+      } else {
+        setIsDataStale(false)
+      }
+    } catch { setIsDataStale(false) }
+
+    try {
+      // Count activity updates pending (mrk_uptd = 1)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { count } = await (db as any)
+        .from('p6_activity_updates')
+        .select('*', { count: 'exact', head: true })
+        .eq('mrk_uptd', 1)
+      setUpdatesCount(count ?? 0)
+    } catch { setUpdatesCount(0) }
+  }, [])
+
+  const toggleSection = (sectionId: string) => {
+    setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }))
+  }
 
   const fetchProjectInfo = async () => {
     const { data } = await supabase
@@ -245,9 +316,16 @@ function App() {
       schemaName = (data as { schema_name?: string } | null)?.schema_name || 'public'
     }
     setSelectedSchemaName(schemaName)
-    setActiveTab('engineering')
+    setActiveTab('dashboard')
     setView('app')
+    fetchSidebarBadges(projectId, schemaName)
   }
+
+  useEffect(() => {
+    if (selectedProjectId && selectedSchemaName && selectedSchemaName !== 'public') {
+      fetchSidebarBadges(selectedProjectId, selectedSchemaName)
+    }
+  }, [selectedProjectId, selectedSchemaName, fetchSidebarBadges])
 
   const handleBackToHome = () => {
     fetchProjectInfo()
@@ -276,6 +354,17 @@ function App() {
   const renderTabContent = () => {
     const projectTextId = selectedProject?.textProjectId || ''
     switch (activeTab) {
+      case 'dashboard':
+        return (
+          <ProjectDashboard
+            projectId={selectedProjectId}
+            projectTextId={projectTextId}
+            schemaName={selectedSchemaName}
+            onNavigate={(tab) => setActiveTab(tab as TabKey)}
+            onRunUpdate={() => setShowRunUpdateConfirm(true)}
+            runUpdateLoading={runUpdateLoading}
+          />
+        )
       case 'engineering':
         return <EngineeringForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'qaqc':
@@ -311,7 +400,7 @@ function App() {
     }
   }
 
-  const activeLabel = tabs.find(t => t.key === activeTab)?.label ?? ''
+  const activeLabel = activeTab === 'dashboard' ? 'Dashboard' : (allNavItems.find(t => t.key === activeTab)?.label ?? '')
 
   const formatDate = (d: string | null) => {
     if (!d) return null
@@ -412,51 +501,125 @@ function App() {
       />
       {/* Sidebar */}
       <aside
-        className={`flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ${
-          sidebarExpanded ? 'w-56' : 'w-16'
+        className={`flex flex-col bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0 ${
+          sidebarExpanded ? 'w-56' : 'w-14'
         }`}
       >
         {/* Logo / Brand */}
-        <div className={`flex items-center gap-3 px-3 py-4 border-b border-gray-200 ${sidebarExpanded ? '' : 'justify-center'}`}>
+        <div className={`flex items-center gap-2.5 px-3 py-3.5 border-b border-gray-200 ${sidebarExpanded ? '' : 'justify-center'}`}>
           <div className="bg-blue-600 p-1.5 rounded-lg flex-shrink-0">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
             </svg>
           </div>
           {sidebarExpanded && (
             <div className="overflow-hidden">
               <p className="text-sm font-bold text-gray-900 leading-tight">P6 Controls</p>
-              <p className="text-xs text-gray-500 leading-tight">Data Management</p>
+              <p className="text-xs text-gray-400 leading-tight">Data Management</p>
             </div>
           )}
         </div>
 
-        {/* Nav items */}
+        {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {tabs.map((tab, idx) => {
-            const prevGroup = idx > 0 ? tabs[idx - 1].group : undefined
-            const isNewGroup = tab.group && tab.group !== prevGroup
+
+          {/* Dashboard / Home */}
+          <div className={`px-2 mb-1`}>
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              title={!sidebarExpanded ? 'Dashboard' : undefined}
+              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                sidebarExpanded ? '' : 'justify-center'
+              } ${
+                activeTab === 'dashboard'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              {sidebarExpanded && <span>Dashboard</span>}
+            </button>
+          </div>
+
+          {sidebarExpanded && <div className="mx-3 my-1 border-t border-gray-100" />}
+
+          {/* Grouped sections */}
+          {navSections.map(section => {
+            const isCollapsed = !!collapsedSections[section.id]
+            const hasActiveBadge = section.items.some(item =>
+              (item.badgeKey === 'stale' && isDataStale) ||
+              (item.badgeKey === 'updates' && updatesCount > 0)
+            )
             return (
-              <div key={tab.key}>
-                {isNewGroup && (
-                  sidebarExpanded
-                    ? <div className="px-3 pt-3 pb-1"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{tab.group}</span></div>
-                    : <div className="mx-3 my-2 border-t border-gray-200" />
+              <div key={section.id} className="mb-1">
+                {sidebarExpanded ? (
+                  /* Section header — clickable to collapse */
+                  <button
+                    onClick={() => toggleSection(section.id)}
+                    className="w-full flex items-center justify-between px-3 pt-3 pb-1 group"
+                  >
+                    <span className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">
+                      {section.label}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {hasActiveBadge && isCollapsed && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                      )}
+                      <svg
+                        className={`w-3 h-3 text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+                ) : (
+                  /* Collapsed sidebar — just a divider */
+                  <div className="mx-2 my-2 border-t border-gray-100" />
                 )}
-                <button
-                  onClick={() => setActiveTab(tab.key)}
-                  title={!sidebarExpanded ? tab.label : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors ${
-                    sidebarExpanded ? '' : 'justify-center'
-                  } ${
-                    activeTab === tab.key
-                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
-                >
-                  {tab.icon}
-                  {sidebarExpanded && <span className="truncate">{tab.label}</span>}
-                </button>
+
+                {/* Section items */}
+                {(!isCollapsed || !sidebarExpanded) && (
+                  <div className="px-2 space-y-0.5">
+                    {section.items.map(item => {
+                      const isActive = activeTab === item.key
+                      const showStaleBadge = item.badgeKey === 'stale' && isDataStale
+                      const showCountBadge = item.badgeKey === 'updates' && updatesCount > 0
+                      return (
+                        <button
+                          key={item.key}
+                          onClick={() => setActiveTab(item.key)}
+                          title={!sidebarExpanded ? `${item.label}${showStaleBadge ? ' ⚠ Data may be stale' : ''}${showCountBadge ? ` (${updatesCount} pending)` : ''}` : undefined}
+                          className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-sm transition-colors ${
+                            sidebarExpanded ? '' : 'justify-center'
+                          } ${
+                            isActive
+                              ? 'bg-blue-50 text-blue-700 font-medium'
+                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          }`}
+                        >
+                          {item.icon}
+                          {sidebarExpanded && (
+                            <>
+                              <span className="flex-1 truncate text-left">{item.label}</span>
+                              {showStaleBadge && (
+                                <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title="Data may be stale" />
+                              )}
+                              {showCountBadge && (
+                                <span className="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                  {updatesCount > 99 ? '99+' : updatesCount}
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {/* collapsed sidebar stale dot rendered via title tooltip instead */}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -467,19 +630,19 @@ function App() {
           <button
             onClick={() => setSidebarExpanded(prev => !prev)}
             title={sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-            className={`w-full flex items-center gap-2 px-2 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors ${
+            className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors ${
               sidebarExpanded ? '' : 'justify-center'
             }`}
           >
             {sidebarExpanded ? (
               <>
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
                 </svg>
-                <span className="text-xs">Collapse</span>
+                <span>Collapse</span>
               </>
             ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
               </svg>
             )}
@@ -516,6 +679,7 @@ function App() {
                 <button
                   onClick={() => setShowRunUpdateConfirm(true)}
                   disabled={runUpdateLoading || !selectedProject?.textProjectId}
+                  style={{ display: activeTab === 'dashboard' ? 'none' : undefined }}
                   title={!selectedProject?.textProjectId ? 'No project selected' : undefined}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
