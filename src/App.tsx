@@ -18,7 +18,6 @@ import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
 import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
 import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 import { PdfUploadForm } from '@/forms/PdfUploadForm'
-import { InspectionReportForm } from '@/forms/InspectionReportForm'
 import { ProjectDashboard } from '@/forms/ProjectDashboard'
 
 type TabKey =
@@ -39,7 +38,6 @@ type TabKey =
   | 'p6projectmapping'
   | 'photos'
   | 'pdfupload'
-  | 'inspectionreports'
 
 interface NavItem {
   key: TabKey
@@ -109,15 +107,6 @@ const navSections: NavSection[] = [
         icon: (
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        ),
-      },
-      {
-        key: 'inspectionreports',
-        label: 'Inspection Reports',
-        icon: (
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
           </svg>
         ),
       },
@@ -393,8 +382,6 @@ function App() {
         return <PhotoUploadForm projectId={selectedProjectId} />
       case 'pdfupload':
         return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} />
-      case 'inspectionreports':
-        return <InspectionReportForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       default:
         return null
     }
