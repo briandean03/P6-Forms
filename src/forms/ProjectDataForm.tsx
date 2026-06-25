@@ -57,7 +57,7 @@ const DATE_FIELDS = new Set([
   'dgt_datadate',
 ])
 const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_weeknum'])
-const NON_EDITABLE_FIELDS = new Set(['dgt_weeknum'])
+const NON_EDITABLE_FIELDS = new Set<string>([])
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -369,6 +369,7 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
     return isEditing ? (
       <input
         type={inputType}
+        step={inputType === 'number' ? 1 : undefined}
         value={cellValue}
         onChange={(e) => setCellValue(e.target.value)}
         onBlur={() => saveInlineEdit(record.dgt_dbp6bd00projectdataid, field as EditableField)}
