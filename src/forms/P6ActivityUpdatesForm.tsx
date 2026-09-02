@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, schemaClient } from '@/lib/supabase'
 import type { P6ActivityUpdate, ProjectData } from '@/types/database'
@@ -161,9 +161,11 @@ const CSV_HEADERS = ['id', 'project_code', 'task_code', 'task_name', 'status_cod
 
 export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTextId: string; schemaName: string }) {
   const [data, setData] = useState<P6ActivityUpdate[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
@@ -311,33 +313,43 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   }
 
   const fetchData = async () => {
+    if (!projectTextId) return
     setLoading(true)
-    const PAGE_SIZE = 1000
-    let allRecords: P6ActivityUpdate[] = []
-    let from = 0
-    while (true) {
-      let query = schemaDb
-        .from('p6_activity_updates')
-        .select('*')
-        .order('task_code', { ascending: true })
-        .range(from, from + PAGE_SIZE - 1)
-      if (projectTextId) query = query.eq('project_code', projectTextId)
-      const { data: records, error } = await query
-      if (error) { showError('Failed to fetch data: ' + error.message); break }
-      allRecords = allRecords.concat((records as P6ActivityUpdate[] | null) || [])
-      if (!records || records.length < PAGE_SIZE) break
-      from += PAGE_SIZE
+    const from = (currentPage - 1) * ITEMS_PER_PAGE
+    const to = from + ITEMS_PER_PAGE - 1
+    let query = schemaDb
+      .from('p6_activity_updates')
+      .select('id,project_code,task_code,task_name,status_code,wbs_id,complete_pct,act_start_date,act_end_date,remain_drtn_hr_cnt,mrk_uptd,delete_record_flag,data_date,update_type', { count: 'exact' })
+      .eq('project_code', projectTextId)
+      .order(sortField ?? 'task_code', { ascending: sortDirection === 'asc' })
+      .range(from, to)
+    if (debouncedSearch) {
+      query = query.or(`task_code.ilike.%${debouncedSearch}%,task_name.ilike.%${debouncedSearch}%,status_code.ilike.%${debouncedSearch}%,wbs_id.ilike.%${debouncedSearch}%`)
     }
-    setData(allRecords)
+    if (columnFilters.task_code) query = query.ilike('task_code', `%${columnFilters.task_code}%`)
+    if (columnFilters.task_name) query = query.ilike('task_name', `%${columnFilters.task_name}%`)
+    if (columnFilters.status_code) query = query.eq('status_code', columnFilters.status_code)
+    if (columnFilters.wbs_id) query = query.ilike('wbs_id', `%${columnFilters.wbs_id}%`)
+    if (columnFilters.complete_pct) query = query.ilike('complete_pct', `%${columnFilters.complete_pct}%`)
+    const { data: records, count, error } = await query
+    if (error) { showError('Failed to fetch data: ' + error.message) }
+    else { setData((records as P6ActivityUpdate[] | null) ?? []); setTotalCount(count ?? 0) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData(); fetchProjectHeader() }, [projectTextId])
-  useEffect(() => { setCurrentPage(1) }, [searchTerm])
+  useEffect(() => { fetchProjectHeader() }, [projectTextId])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
   useEffect(() => { setCurrentPage(1) }, [columnFilters])
   useEffect(() => {
     setColumnFilters({ task_code: '', task_name: '', status_code: '', wbs_id: '', complete_pct: '' })
+    setDebouncedSearch('')
+    setSearchTerm('')
   }, [projectTextId])
+  useEffect(() => { fetchData() }, [projectTextId, currentPage, debouncedSearch, columnFilters, sortField, sortDirection])
 
   // Queue status: fetch on mount + auto-refresh every 10 s
   useEffect(() => {
@@ -345,51 +357,6 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     const interval = setInterval(fetchQueueStatus, 10_000)
     return () => clearInterval(interval)
   }, [projectTextId])
-
-  const filteredAndSortedData = useMemo(() => {
-    let result = data
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(item =>
-        item.task_code?.toLowerCase().includes(term) ||
-        item.task_name?.toLowerCase().includes(term) ||
-        item.status_code?.toLowerCase().includes(term) ||
-        item.wbs_id?.toLowerCase().includes(term)
-      )
-    }
-    if (columnFilters.task_code) {
-      const f = columnFilters.task_code.toLowerCase()
-      result = result.filter(item => item.task_code?.toLowerCase().includes(f))
-    }
-    if (columnFilters.task_name) {
-      const f = columnFilters.task_name.toLowerCase()
-      result = result.filter(item => item.task_name?.toLowerCase().includes(f))
-    }
-    if (columnFilters.status_code) {
-      result = result.filter(item => item.status_code === columnFilters.status_code)
-    }
-    if (columnFilters.wbs_id) {
-      const f = columnFilters.wbs_id.toLowerCase()
-      result = result.filter(item => item.wbs_id?.toLowerCase().includes(f))
-    }
-    if (columnFilters.complete_pct) {
-      result = result.filter(item => String(item.complete_pct ?? '').includes(columnFilters.complete_pct))
-    }
-    if (sortField) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sortField]; const bVal = b[sortField]
-        if (aVal == null) return sortDirection === 'asc' ? 1 : -1
-        if (bVal == null) return sortDirection === 'asc' ? -1 : 1
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return sortDirection === 'asc' ? aVal - bVal : bVal - aVal
-        }
-        return sortDirection === 'asc'
-          ? String(aVal).localeCompare(String(bVal))
-          : String(bVal).localeCompare(String(aVal))
-      })
-    }
-    return result
-  }, [data, searchTerm, columnFilters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) { setSortDirection(d => d === 'asc' ? 'desc' : 'asc') }
@@ -403,11 +370,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       : <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
   }
 
-  const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
-  const paginatedData = filteredAndSortedData.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
 
   // Single-row editing
   const startEdit = (record: P6ActivityUpdate) => {
@@ -458,9 +421,9 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
       .eq('id', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
     else {
-      setData(prev => prev.map(r => r.id === editingId ? { ...r, ...editValuesToRow(editValues) } : r))
       showSuccess('Record updated')
       setEditingId(null)
+      await fetchData()
       await fetchProjectHeader()
       await upsertProgressData([editValues])
     }
@@ -547,7 +510,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     setDeleting(true)
     const { error } = await schemaDb.from('p6_activity_updates').delete().eq('id', id)
     if (error) { showError('Failed to delete: ' + error.message) }
-    else { setData(prev => prev.filter(item => item.id !== id)); showSuccess('Record deleted') }
+    else { showSuccess('Record deleted'); await fetchData() }
     setDeleting(false); setDeleteConfirm(null)
   }
 
@@ -568,7 +531,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
   // CSV Export
   const handleExportCSV = () => {
     const headerRow = CSV_HEADERS.join(',')
-    const rows = filteredAndSortedData.map(r =>
+    const rows = data.map(r =>
       CSV_HEADERS.map(h => csvEscape(r[h as keyof P6ActivityUpdate])).join(',')
     )
     const csv = [headerRow, ...rows].join('\r\n')
@@ -992,7 +955,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <span className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
+              Showing <span className="font-semibold text-gray-900">{totalCount}</span> record{totalCount !== 1 ? 's' : ''}
             </span>
             {hasActiveFilters && (
               <button
@@ -1004,9 +967,9 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
               </button>
             )}
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[600px]">
             <table className="w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 {/* Column headers */}
                 <tr>
                   {colHeaders.map(({ key, label }) => (
@@ -1051,9 +1014,9 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedData.length === 0 ? (
+                {data.length === 0 ? (
                   <tr><td colSpan={11} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
-                ) : paginatedData.map(record => {
+                ) : data.map(record => {
                   const isEditAll = editAllMode
                   const isSingleEdit = !editAllMode && editingId === record.id
                   const rowVals = isEditAll ? editAllValues[record.id] : editValues
@@ -1140,7 +1103,7 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
               </tbody>
             </table>
           </div>
-          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} totalItems={filteredAndSortedData.length} itemsPerPage={ITEMS_PER_PAGE} />
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} totalItems={totalCount} itemsPerPage={ITEMS_PER_PAGE} />
         </div>
       )}
 

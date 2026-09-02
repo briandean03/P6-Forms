@@ -359,7 +359,7 @@ function App() {
       case 'qaqc':
         return <QaqcHseForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'resources':
-        return <ActualResourcesForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
+        return <ActualResourcesForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'dynamic':
         return <DynamicActualDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'projectdata':

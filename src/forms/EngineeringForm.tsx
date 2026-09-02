@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { schemaClient } from '@/lib/supabase'
 import type { Engineering, Type, Discipline } from '@/types/database'
@@ -43,12 +43,15 @@ type SortDirection = 'asc' | 'desc'
 export function EngineeringForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
   const [data, setData] = useState<Engineering[]>([])
+  const [filterData, setFilterData] = useState<Pick<Engineering, 'dgt_transmittalref' | 'dgt_discipline' | 'dgt_transmittaltype' | 'dgt_plannedsubmissiondate' | 'dgt_plannedapprovaldate' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status' | 'mod_id'>[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [types, setTypes] = useState<Type[]>([])
   const [projects, setProjects] = useState<{ dgt_dbp6bd00projectdataid: string; dgt_projectname: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -122,24 +125,83 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     setProjects(projectRecords || [])
   }
 
+  const fetchFilterOptions = async () => {
+    if (!projectId) return
+    const { data: rows } = await supabase
+      .from('dbp6_000401_engineering_current')
+      .select('dgt_transmittalref,dgt_discipline,dgt_transmittaltype,dgt_plannedsubmissiondate,dgt_plannedapprovaldate,dgt_actualsubmissiondate,dgt_actualreturndate,dgt_revision,dgt_status,mod_id')
+      .eq('dgt_dbp6bd00projectdataid', projectId)
+    setFilterData((rows as typeof filterData | null) ?? [])
+  }
+
   const fetchData = async () => {
+    if (!projectId) return
     setLoading(true)
-    const pageSize = 1000
-    let page = 0
-    const all: typeof data = []
-    while (true) {
-      const { data: records, error } = await supabase
-        .from('dbp6_000401_engineering_current')
-        .select('*')
-        .eq('dgt_dbp6bd00projectdataid', projectId)
-        .order('dgt_transmittalref', { ascending: true })
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-      if (error) { showError('Failed to fetch data: ' + error.message); break }
-      all.push(...(records || []))
-      if (!records || records.length < pageSize) break
-      page++
+    const from = (currentPage - 1) * ITEMS_PER_PAGE
+    const to = from + ITEMS_PER_PAGE - 1
+    let query = supabase
+      .from('dbp6_000401_engineering_current')
+      .select('*', { count: 'exact' })
+      .eq('dgt_dbp6bd00projectdataid', projectId)
+      .order(sortField ?? 'dgt_transmittalref', { ascending: sortDirection === 'asc' })
+      .range(from, to)
+    if (debouncedSearch) {
+      query = query.or(`dgt_transmittalref.ilike.%${debouncedSearch}%,dgt_transmittalsubject.ilike.%${debouncedSearch}%`)
     }
-    setData(all)
+    if (filters.dgt_transmittalref) {
+      if (filters.dgt_transmittalref === 'BLANK') { query = query.is('dgt_transmittalref', null) }
+      else { query = query.eq('dgt_transmittalref', filters.dgt_transmittalref) }
+    }
+    if (filters.dgt_discipline) {
+      if (filters.dgt_discipline === 'BLANK') { query = query.is('dgt_discipline', null) }
+      else { query = query.eq('dgt_discipline', filters.dgt_discipline) }
+    }
+    if (filters.dgt_transmittaltype) {
+      if (filters.dgt_transmittaltype === 'BLANK') { query = query.is('dgt_transmittaltype', null) }
+      else { query = query.eq('dgt_transmittaltype', filters.dgt_transmittaltype) }
+    }
+    if (filters.dgt_plannedsubmissiondate) {
+      if (filters.dgt_plannedsubmissiondate === 'BLANK') { query = query.is('dgt_plannedsubmissiondate', null) }
+      else {
+        const [y, m] = filters.dgt_plannedsubmissiondate.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_plannedsubmissiondate', start).lt('dgt_plannedsubmissiondate', nextMonth)
+      }
+    }
+    if (filters.dgt_plannedapprovaldate) {
+      if (filters.dgt_plannedapprovaldate === 'BLANK') { query = query.is('dgt_plannedapprovaldate', null) }
+      else {
+        const [y, m] = filters.dgt_plannedapprovaldate.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_plannedapprovaldate', start).lt('dgt_plannedapprovaldate', nextMonth)
+      }
+    }
+    if (filters.dgt_actualsubmissiondate) {
+      if (filters.dgt_actualsubmissiondate === 'BLANK') { query = query.is('dgt_actualsubmissiondate', null) }
+      else {
+        const [y, m] = filters.dgt_actualsubmissiondate.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_actualsubmissiondate', start).lt('dgt_actualsubmissiondate', nextMonth)
+      }
+    }
+    if (filters.dgt_actualreturndate) {
+      if (filters.dgt_actualreturndate === 'BLANK') { query = query.is('dgt_actualreturndate', null) }
+      else {
+        const [y, m] = filters.dgt_actualreturndate.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_actualreturndate', start).lt('dgt_actualreturndate', nextMonth)
+      }
+    }
+    if (filters.dgt_revision) query = query.eq('dgt_revision', filters.dgt_revision)
+    if (filters.dgt_status) query = query.eq('dgt_status', filters.dgt_status)
+    if (filters.mod_id) query = query.eq('mod_id', filters.mod_id)
+    const { data: records, count, error } = await query
+    if (error) { showError('Failed to fetch data: ' + error.message) }
+    else { setData((records as Engineering[] | null) ?? []); setTotalCount(count ?? 0) }
     setLoading(false)
   }
 
@@ -150,124 +212,16 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
 
   useEffect(() => {
     fetchTypes()
-    fetchData()
+    fetchFilterOptions()
     fetchProjects()
     fetchDisciplines()
   }, [projectId])
-
-  const filteredAndSortedData = useMemo(() => {
-    let result = data
-
-    // Text search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(
-        (item) =>
-          item.dgt_transmittalref?.toLowerCase().includes(term) ||
-          item.dgt_transmittalsubject?.toLowerCase().includes(term) ||
-          item.dgt_discipline?.toString().includes(term)
-      )
-    }
-
-    // Column filters
-    if (filters.dgt_transmittalref) {
-      result = result.filter((item) => item.dgt_transmittalref === filters.dgt_transmittalref)
-    }
-    if (filters.dgt_discipline) {
-      if (filters.dgt_discipline === 'BLANK') {
-        result = result.filter((item) => item.dgt_discipline === null || item.dgt_discipline === undefined)
-      } else {
-        result = result.filter((item) => item.dgt_discipline?.toString() === filters.dgt_discipline)
-      }
-    }
-    if (filters.dgt_transmittaltype) {
-      if (filters.dgt_transmittaltype === 'BLANK') {
-        result = result.filter((item) => item.dgt_transmittaltype === null || item.dgt_transmittaltype === undefined)
-      } else {
-        result = result.filter((item) => item.dgt_transmittaltype?.toString() === filters.dgt_transmittaltype)
-      }
-    }
-    if (filters.dgt_plannedsubmissiondate) {
-      if (filters.dgt_plannedsubmissiondate === 'BLANK') {
-        result = result.filter((item) => !item.dgt_plannedsubmissiondate)
-      } else {
-        result = result.filter((item) => {
-          if (!item.dgt_plannedsubmissiondate) return false
-          const date = new Date(item.dgt_plannedsubmissiondate)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_plannedsubmissiondate
-        })
-      }
-    }
-    if (filters.dgt_plannedapprovaldate) {
-      if (filters.dgt_plannedapprovaldate === 'BLANK') {
-        result = result.filter((item) => !item.dgt_plannedapprovaldate)
-      } else {
-        result = result.filter((item) => {
-          if (!item.dgt_plannedapprovaldate) return false
-          const date = new Date(item.dgt_plannedapprovaldate)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_plannedapprovaldate
-        })
-      }
-    }
-    if (filters.dgt_actualsubmissiondate) {
-      if (filters.dgt_actualsubmissiondate === 'BLANK') {
-        result = result.filter((item) => !item.dgt_actualsubmissiondate)
-      } else {
-        result = result.filter((item) => {
-          if (!item.dgt_actualsubmissiondate) return false
-          const date = new Date(item.dgt_actualsubmissiondate)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_actualsubmissiondate
-        })
-      }
-    }
-    if (filters.dgt_actualreturndate) {
-      if (filters.dgt_actualreturndate === 'BLANK') {
-        result = result.filter((item) => !item.dgt_actualreturndate)
-      } else {
-        result = result.filter((item) => {
-          if (!item.dgt_actualreturndate) return false
-          const date = new Date(item.dgt_actualreturndate)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_actualreturndate
-        })
-      }
-    }
-    if (filters.dgt_revision) {
-      result = result.filter((item) => item.dgt_revision?.toString() === filters.dgt_revision)
-    }
-    if (filters.dgt_status) {
-      result = result.filter((item) => item.dgt_status === filters.dgt_status)
-    }
-    if (filters.mod_id) {
-      result = result.filter((item) => item.mod_id?.toString() === filters.mod_id)
-    }
-
-    // Sort
-    if (sortField) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sortField]
-        const bVal = b[sortField]
-
-        if (aVal === null || aVal === undefined) return sortDirection === 'asc' ? 1 : -1
-        if (bVal === null || bVal === undefined) return sortDirection === 'asc' ? -1 : 1
-
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return sortDirection === 'asc'
-            ? aVal.localeCompare(bVal)
-            : bVal.localeCompare(aVal)
-        }
-
-        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-        return 0
-      })
-    }
-
-    return result
-  }, [data, searchTerm, filters, sortField, sortDirection])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
+  useEffect(() => { fetchData() }, [projectId, currentPage, debouncedSearch, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -297,15 +251,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     )
   }
 
-  const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
-  const paginatedData = filteredAndSortedData.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm])
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
 
   const openCreateModal = () => {
     reset({
@@ -412,23 +358,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
       mod_id: editValues.mod_id !== '' ? parseInt(editValues.mod_id) : null,
     } as never).eq('dgt_dbp6bd041engineeringid', editingId)
     if (error) { showError('Failed to update: ' + error.message) }
-    else {
-      setData(prev => prev.map(r => r.dgt_dbp6bd041engineeringid === editingId ? {
-        ...r,
-        dgt_transmittalref: editValues.transmittalref || null,
-        dgt_transmittalsubject: editValues.transmittalsubject || null,
-        dgt_discipline: editValues.discipline || null,
-        dgt_transmittaltype: editValues.transmittaltype || null,
-        dgt_plannedsubmissiondate: editValues.plannedsubmissiondate || null,
-        dgt_plannedapprovaldate: editValues.plannedapprovaldate || null,
-        dgt_actualsubmissiondate: editValues.actualsubmissiondate || null,
-        dgt_actualreturndate: editValues.actualreturndate || null,
-        dgt_revision: editValues.revision ? parseInt(editValues.revision) : null,
-        dgt_status: editValues.status || null,
-        mod_id: editValues.mod_id !== '' ? parseInt(editValues.mod_id) : null,
-      } : r))
-      showSuccess('Record updated'); setEditingId(null)
-    }
+    else { showSuccess('Record updated'); setEditingId(null); fetchData(); fetchFilterOptions() }
   }
 
   const handleDelete = async (recordId: string) => {
@@ -441,8 +371,8 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
     if (error) {
       showError('Failed to delete record: ' + error.message)
     } else {
-      setData((prev) => prev.filter((item) => item.dgt_dbp6bd041engineeringid !== recordId))
       showSuccess('Record deleted successfully')
+      fetchData(); fetchFilterOptions()
     }
     setDeleting(false)
     setDeleteConfirm(null)
@@ -728,17 +658,12 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
           {/* Results count */}
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
             <span className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
-              {(Object.values(filters).some(v => v !== '') || searchTerm) && (
-                <span className="ml-1 text-gray-500">
-                  (filtered from {data.length} total)
-                </span>
-              )}
+              Showing <span className="font-semibold text-gray-900">{totalCount}</span> record{totalCount !== 1 ? 's' : ''}
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[600px]">
             <table className="min-w-max w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-2 text-left align-top w-36">
                     <div
@@ -749,7 +674,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_transmittalref" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_transmittalref" value={filters.dgt_transmittalref} onChange={(v) => updateFilter('dgt_transmittalref', v)} label="Trans. Ref" />
+                      <ColumnFilter data={filterData} field="dgt_transmittalref" value={filters.dgt_transmittalref} onChange={(v) => updateFilter('dgt_transmittalref', v)} label="Trans. Ref" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top">
@@ -770,7 +695,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_discipline" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(v as string)} />
+                      <ColumnFilter data={filterData} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(v as string)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-24">
@@ -782,7 +707,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_transmittaltype" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" formatValue={(v) => getTypeName(v as string)} />
+                      <ColumnFilter data={filterData} field="dgt_transmittaltype" value={filters.dgt_transmittaltype} onChange={(v) => updateFilter('dgt_transmittaltype', v)} label="Type" formatValue={(v) => getTypeName(v as string)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -794,7 +719,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_plannedsubmissiondate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_plannedsubmissiondate" value={filters.dgt_plannedsubmissiondate} onChange={(v) => updateFilter('dgt_plannedsubmissiondate', v)} label="Planned Sub" />
+                      <DateColumnFilter data={filterData} field="dgt_plannedsubmissiondate" value={filters.dgt_plannedsubmissiondate} onChange={(v) => updateFilter('dgt_plannedsubmissiondate', v)} label="Planned Sub" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -806,7 +731,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_plannedapprovaldate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_plannedapprovaldate" value={filters.dgt_plannedapprovaldate} onChange={(v) => updateFilter('dgt_plannedapprovaldate', v)} label="Planned Appr" />
+                      <DateColumnFilter data={filterData} field="dgt_plannedapprovaldate" value={filters.dgt_plannedapprovaldate} onChange={(v) => updateFilter('dgt_plannedapprovaldate', v)} label="Planned Appr" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -818,7 +743,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_actualsubmissiondate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Act. Sub" />
+                      <DateColumnFilter data={filterData} field="dgt_actualsubmissiondate" value={filters.dgt_actualsubmissiondate} onChange={(v) => updateFilter('dgt_actualsubmissiondate', v)} label="Act. Sub" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -830,7 +755,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_actualreturndate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Act. Return" />
+                      <DateColumnFilter data={filterData} field="dgt_actualreturndate" value={filters.dgt_actualreturndate} onChange={(v) => updateFilter('dgt_actualreturndate', v)} label="Act. Return" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-20">
@@ -842,7 +767,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_revision" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_revision" value={filters.dgt_revision} onChange={(v) => updateFilter('dgt_revision', v)} label="Revision" />
+                      <ColumnFilter data={filterData} field="dgt_revision" value={filters.dgt_revision} onChange={(v) => updateFilter('dgt_revision', v)} label="Revision" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-28">
@@ -854,7 +779,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                       <SortIcon field="dgt_status" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
+                      <ColumnFilter data={filterData} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-16 text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">
@@ -863,7 +788,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                   <th className="px-3 py-2 text-left align-top w-16">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Mod ID</div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="mod_id" value={filters.mod_id} onChange={(v) => updateFilter('mod_id', v)} label="Mod ID" />
+                      <ColumnFilter data={filterData} field="mod_id" value={filters.mod_id} onChange={(v) => updateFilter('mod_id', v)} label="Mod ID" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
@@ -872,14 +797,14 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedData.length === 0 ? (
+                {data.length === 0 ? (
                   <tr>
                     <td colSpan={13} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((record) => {
+                  data.map((record) => {
                     const isEditing = editingId === record.dgt_dbp6bd041engineeringid
                     return (
                       <tr key={record.dgt_dbp6bd041engineeringid} className={isEditing ? 'bg-amber-50' : record.mod_id === 1 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
@@ -968,7 +893,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
-            totalItems={filteredAndSortedData.length}
+            totalItems={totalCount}
             itemsPerPage={ITEMS_PER_PAGE}
           />
         </div>

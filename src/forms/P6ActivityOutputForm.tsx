@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { schemaClient } from '@/lib/supabase'
 import type { P6ActivityOutput } from '@/types/database'
 import { Pagination } from '@/components/Pagination'
@@ -30,81 +30,72 @@ const statusBadge = (status: string | null) => {
 const selectCls = 'h-8 px-2 text-xs border border-gray-300 rounded-md bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400'
 
 export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTextId: string; schemaName: string }) {
-  const supabase = schemaClient(schemaName)
+  const supabaseClient = schemaClient(schemaName)
   const [data, setData] = useState<P6ActivityOutput[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [wbsFilter, setWbsFilter] = useState('')
   const [activityTypeFilter, setActivityTypeFilter] = useState('')
+  const [statusOptions, setStatusOptions] = useState<string[]>([])
+  const [wbsOptions, setWbsOptions] = useState<string[]>([])
+  const [activityTypeOptions, setActivityTypeOptions] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
-  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortField, setSortField] = useState<SortField>('activity_id')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const { notification, hideNotification, showError } = useNotification()
 
-  const fetchData = async () => {
-    setLoading(true)
-    const PAGE_SIZE = 1000
-    let allRecords: P6ActivityOutput[] = []
-    let from = 0
-    while (true) {
-      let query = supabase
-        .from('p6_activity_output_flat')
-        .select('*')
-        .order('activity_id', { ascending: true })
-        .range(from, from + PAGE_SIZE - 1)
-      if (projectTextId) query = query.eq('project_code', projectTextId)
-      const { data: records, error } = await query
-      if (error) { showError('Failed to fetch data: ' + error.message); break }
-      allRecords = allRecords.concat((records as P6ActivityOutput[] | null) || [])
-      if (!records || records.length < PAGE_SIZE) break
-      from += PAGE_SIZE
+  // Fetch distinct filter options once per project
+  const fetchFilterOptions = async () => {
+    if (!projectTextId) return
+    const { data: rows } = await supabaseClient
+      .from('p6_activity_output_flat')
+      .select('status, wbs_code, activity_type')
+      .eq('project_code', projectTextId)
+    if (rows) {
+      const r = rows as { status: string | null; wbs_code: string | null; activity_type: string | null }[]
+      setStatusOptions([...new Set(r.map(x => x.status).filter(Boolean) as string[])].sort())
+      setWbsOptions([...new Set(r.map(x => x.wbs_code).filter(Boolean) as string[])].sort())
+      setActivityTypeOptions([...new Set(r.map(x => x.activity_type).filter(Boolean) as string[])].sort())
     }
-    setData(allRecords)
+  }
+
+  const fetchData = async () => {
+    if (!projectTextId) return
+    setLoading(true)
+    const from = (currentPage - 1) * ITEMS_PER_PAGE
+    const to = from + ITEMS_PER_PAGE - 1
+    let query = supabaseClient
+      .from('p6_activity_output_flat')
+      .select('id,project_code,activity_id,activity_name,status,wbs_code,activity_type,duration_pct_complete,actual_start,actual_finish,early_start,early_finish,total_float', { count: 'exact' })
+      .eq('project_code', projectTextId)
+      .order(sortField, { ascending: sortDirection === 'asc' })
+      .range(from, to)
+    if (debouncedSearch) {
+      query = query.or(`activity_id.ilike.%${debouncedSearch}%,activity_name.ilike.%${debouncedSearch}%,wbs_code.ilike.%${debouncedSearch}%`)
+    }
+    if (statusFilter) query = query.eq('status', statusFilter)
+    if (wbsFilter) query = query.eq('wbs_code', wbsFilter)
+    if (activityTypeFilter) query = query.eq('activity_type', activityTypeFilter)
+    const { data: records, count, error } = await query
+    if (error) { showError('Failed to fetch data: ' + error.message) }
+    else { setData((records as P6ActivityOutput[] | null) ?? []); setTotalCount(count ?? 0) }
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [projectTextId, schemaName])
-  useEffect(() => { setCurrentPage(1) }, [searchTerm, statusFilter, wbsFilter, activityTypeFilter])
-
-  const statusOptions = useMemo(() =>
-    [...new Set(data.map(r => r.status).filter(Boolean))].sort() as string[]
-  , [data])
-
-  const wbsOptions = useMemo(() =>
-    [...new Set(data.map(r => r.wbs_code).filter(Boolean))].sort() as string[]
-  , [data])
-
-  const activityTypeOptions = useMemo(() =>
-    [...new Set(data.map(r => r.activity_type).filter(Boolean))].sort() as string[]
-  , [data])
-
-  const filteredAndSortedData = useMemo(() => {
-    let result = data
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(item =>
-        item.activity_id?.toLowerCase().includes(term) ||
-        item.activity_name?.toLowerCase().includes(term) ||
-        item.status?.toLowerCase().includes(term) ||
-        item.wbs_code?.toLowerCase().includes(term)
-      )
-    }
-    if (statusFilter) result = result.filter(item => item.status === statusFilter)
-    if (wbsFilter) result = result.filter(item => item.wbs_code === wbsFilter)
-    if (activityTypeFilter) result = result.filter(item => item.activity_type === activityTypeFilter)
-    if (sortField) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sortField]; const bVal = b[sortField]
-        if (aVal == null) return sortDirection === 'asc' ? 1 : -1
-        if (bVal == null) return sortDirection === 'asc' ? -1 : 1
-        return sortDirection === 'asc'
-          ? String(aVal).localeCompare(String(bVal))
-          : String(bVal).localeCompare(String(aVal))
-      })
-    }
-    return result
-  }, [data, searchTerm, statusFilter, wbsFilter, activityTypeFilter, sortField, sortDirection])
+  useEffect(() => { fetchFilterOptions() }, [projectTextId, schemaName])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, statusFilter, wbsFilter, activityTypeFilter])
+  useEffect(() => {
+    setStatusFilter(''); setWbsFilter(''); setActivityTypeFilter('')
+    setDebouncedSearch(''); setSearchTerm('')
+  }, [projectTextId])
+  useEffect(() => { fetchData() }, [projectTextId, schemaName, currentPage, debouncedSearch, statusFilter, wbsFilter, activityTypeFilter, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) { setSortDirection(d => d === 'asc' ? 'desc' : 'asc') }
@@ -138,11 +129,7 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
     setActivityTypeFilter('')
   }
 
-  const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
-  const paginatedData = filteredAndSortedData.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
 
   return (
     <div className="space-y-4">
@@ -179,12 +166,12 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
             <span className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
+              Showing <span className="font-semibold text-gray-900">{totalCount}</span> record{totalCount !== 1 ? 's' : ''}
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[600px]">
             <table className="w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   {colHeaders.map(({ key, label }) => (
                     <th key={key} className="px-3 py-3 text-left">
@@ -199,9 +186,9 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedData.length === 0 ? (
+                {data.length === 0 ? (
                   <tr><td colSpan={9} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
-                ) : paginatedData.map(record => (
+                ) : data.map(record => (
                   <tr key={record.id} className="hover:bg-gray-50">
                     <td className="px-3 py-2.5 text-sm font-mono text-gray-900 whitespace-nowrap">{record.activity_id || '-'}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-900">{record.activity_name || '-'}</td>
@@ -219,7 +206,7 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
               </tbody>
             </table>
           </div>
-          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} totalItems={filteredAndSortedData.length} itemsPerPage={ITEMS_PER_PAGE} />
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} totalItems={totalCount} itemsPerPage={ITEMS_PER_PAGE} />
         </div>
       )}
     </div>

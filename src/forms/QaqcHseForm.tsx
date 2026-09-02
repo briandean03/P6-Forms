@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { schemaClient } from '@/lib/supabase'
 import type { QaqcHse, Discipline, Type } from '@/types/database'
@@ -42,9 +42,12 @@ type SortDirection = 'asc' | 'desc'
 export function QaqcHseForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
   const [data, setData] = useState<QaqcHse[]>([])
+  const [filterData, setFilterData] = useState<Pick<QaqcHse, 'dgt_docid' | 'dgt_docref' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_date_issued_to_contractor' | 'dgt_status' | 'week_num' | 'mod_id'>[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [saving, setSaving] = useState(false)
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
@@ -104,19 +107,78 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     }
   }
 
-  const fetchData = async () => {
-    setLoading(true)
-    const { data: records, error } = await supabase
+  const fetchFilterOptions = async () => {
+    if (!projectId) return
+    const { data: rows } = await supabase
       .from('dbp6_000402_qaqc_hse_current')
-      .select('*')
+      .select('dgt_docid,dgt_docref,dgt_discipline,dgt_documenttype,dgt_submissiondate,dgt_responsedate,dgt_date_issued_to_contractor,dgt_status,week_num,mod_id')
       .eq('dgt_dbp6bd00projectdataid', projectId)
-      .order('dgt_docref', { ascending: true })
+    setFilterData((rows as typeof filterData | null) ?? [])
+  }
 
-    if (error) {
-      showError('Failed to fetch data: ' + error.message)
-    } else {
-      setData(records || [])
+  const fetchData = async () => {
+    if (!projectId) return
+    setLoading(true)
+    const from = (currentPage - 1) * ITEMS_PER_PAGE
+    const to = from + ITEMS_PER_PAGE - 1
+    let query = supabase
+      .from('dbp6_000402_qaqc_hse_current')
+      .select('*', { count: 'exact' })
+      .eq('dgt_dbp6bd00projectdataid', projectId)
+      .order(sortField ?? 'dgt_docref', { ascending: sortDirection === 'asc' })
+      .range(from, to)
+    if (debouncedSearch) {
+      query = query.or(`dgt_docid.ilike.%${debouncedSearch}%,dgt_docref.ilike.%${debouncedSearch}%,dgt_documentsubject.ilike.%${debouncedSearch}%`)
     }
+    if (filters.dgt_docid) {
+      if (filters.dgt_docid === 'BLANK') { query = query.is('dgt_docid', null) }
+      else { query = query.eq('dgt_docid', filters.dgt_docid) }
+    }
+    if (filters.dgt_docref) {
+      if (filters.dgt_docref === 'BLANK') { query = query.is('dgt_docref', null) }
+      else { query = query.eq('dgt_docref', filters.dgt_docref) }
+    }
+    if (filters.dgt_discipline) {
+      if (filters.dgt_discipline === 'BLANK') { query = query.is('dgt_discipline', null) }
+      else { query = query.eq('dgt_discipline', filters.dgt_discipline) }
+    }
+    if (filters.dgt_documenttype) {
+      if (filters.dgt_documenttype === 'BLANK') { query = query.is('dgt_documenttype', null) }
+      else { query = query.eq('dgt_documenttype', filters.dgt_documenttype) }
+    }
+    if (filters.dgt_submissiondate) {
+      if (filters.dgt_submissiondate === 'BLANK') { query = query.is('dgt_submissiondate', null) }
+      else {
+        const [y, m] = filters.dgt_submissiondate.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_submissiondate', start).lt('dgt_submissiondate', nextMonth)
+      }
+    }
+    if (filters.dgt_responsedate) {
+      if (filters.dgt_responsedate === 'BLANK') { query = query.is('dgt_responsedate', null) }
+      else {
+        const [y, m] = filters.dgt_responsedate.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_responsedate', start).lt('dgt_responsedate', nextMonth)
+      }
+    }
+    if (filters.dgt_date_issued_to_contractor) {
+      if (filters.dgt_date_issued_to_contractor === 'BLANK') { query = query.is('dgt_date_issued_to_contractor', null) }
+      else {
+        const [y, m] = filters.dgt_date_issued_to_contractor.split('-')
+        const start = `${y}-${m}-01`
+        const nextMonth = parseInt(m) === 12 ? `${parseInt(y)+1}-01-01` : `${y}-${String(parseInt(m)+1).padStart(2,'0')}-01`
+        query = query.gte('dgt_date_issued_to_contractor', start).lt('dgt_date_issued_to_contractor', nextMonth)
+      }
+    }
+    if (filters.dgt_status) query = query.eq('dgt_status', filters.dgt_status)
+    if (filters.week_num) query = query.eq('week_num', filters.week_num)
+    if (filters.mod_id) query = query.eq('mod_id', filters.mod_id)
+    const { data: records, count, error } = await query
+    if (error) { showError('Failed to fetch data: ' + error.message) }
+    else { setData((records as QaqcHse[] | null) ?? []); setTotalCount(count ?? 0) }
     setLoading(false)
   }
 
@@ -131,111 +193,16 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   }
 
   useEffect(() => {
-    fetchData()
+    fetchFilterOptions()
     fetchDisciplines()
     fetchTypes()
   }, [projectId])
-
-  const filteredAndSortedData = useMemo(() => {
-    let result = data
-
-    // Text search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(
-        (item) =>
-          item.dgt_docid?.toLowerCase().includes(term) ||
-          item.dgt_docref?.toLowerCase().includes(term) ||
-          item.dgt_documentsubject?.toLowerCase().includes(term) ||
-          item.dgt_discipline?.toString().includes(term) ||
-          item.dgt_documenttype?.toLowerCase().includes(term)
-      )
-    }
-
-    // Column filters
-    if (filters.dgt_docid) {
-      result = result.filter((item) => item.dgt_docid === filters.dgt_docid)
-    }
-    if (filters.dgt_docref) {
-      result = result.filter((item) => item.dgt_docref === filters.dgt_docref)
-    }
-    if (filters.dgt_discipline) {
-      result = result.filter((item) => item.dgt_discipline?.toString() === filters.dgt_discipline)
-    }
-    if (filters.dgt_documenttype) {
-      result = result.filter((item) => item.dgt_documenttype === filters.dgt_documenttype)
-    }
-    if (filters.dgt_submissiondate) {
-      if (filters.dgt_submissiondate === 'BLANK') {
-        result = result.filter((item) => !item.dgt_submissiondate)
-      } else {
-        // Filter by month/year (format: YYYY-MM)
-        result = result.filter((item) => {
-          if (!item.dgt_submissiondate) return false
-          const date = new Date(item.dgt_submissiondate)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_submissiondate
-        })
-      }
-    }
-    if (filters.dgt_responsedate) {
-      if (filters.dgt_responsedate === 'BLANK') {
-        result = result.filter((item) => !item.dgt_responsedate)
-      } else {
-        // Filter by month/year (format: YYYY-MM)
-        result = result.filter((item) => {
-          if (!item.dgt_responsedate) return false
-          const date = new Date(item.dgt_responsedate)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_responsedate
-        })
-      }
-    }
-    if (filters.dgt_date_issued_to_contractor) {
-      if (filters.dgt_date_issued_to_contractor === 'BLANK') {
-        result = result.filter((item) => !item.dgt_date_issued_to_contractor)
-      } else {
-        result = result.filter((item) => {
-          if (!item.dgt_date_issued_to_contractor) return false
-          const date = new Date(item.dgt_date_issued_to_contractor)
-          const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          return monthYear === filters.dgt_date_issued_to_contractor
-        })
-      }
-    }
-    if (filters.dgt_status) {
-      result = result.filter((item) => item.dgt_status === filters.dgt_status)
-    }
-    if (filters.week_num) {
-      result = result.filter((item) => item.week_num?.toString() === filters.week_num)
-    }
-    if (filters.mod_id) {
-      result = result.filter((item) => item.mod_id?.toString() === filters.mod_id)
-    }
-
-    // Sort
-    if (sortField) {
-      result = [...result].sort((a, b) => {
-        const aVal = a[sortField]
-        const bVal = b[sortField]
-
-        if (aVal === null || aVal === undefined) return sortDirection === 'asc' ? 1 : -1
-        if (bVal === null || bVal === undefined) return sortDirection === 'asc' ? -1 : 1
-
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          return sortDirection === 'asc'
-            ? aVal.localeCompare(bVal)
-            : bVal.localeCompare(aVal)
-        }
-
-        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-        return 0
-      })
-    }
-
-    return result
-  }, [data, searchTerm, filters, sortField, sortDirection])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
+  useEffect(() => { fetchData() }, [projectId, currentPage, debouncedSearch, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -275,15 +242,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     return types.find(t => t.type_code?.toString() === code)?.type_name || code
   }
 
-  const totalPages = Math.ceil(filteredAndSortedData.length / ITEMS_PER_PAGE)
-  const paginatedData = filteredAndSortedData.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm])
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
 
   const openCreateModal = () => {
     reset({
@@ -389,8 +348,8 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
     if (error) {
       showError('Failed to delete record: ' + error.message)
     } else {
-      setData((prev) => prev.filter((item) => item.dgt_dbp6bd0402qaqchseid !== recordId))
       showSuccess('Record deleted successfully')
+      fetchData(); fetchFilterOptions()
     }
     setDeleting(false)
     setDeleteConfirm(null)
@@ -684,7 +643,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
           {/* Results count */}
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
             <span className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{filteredAndSortedData.length}</span> record{filteredAndSortedData.length !== 1 ? 's' : ''}
+              Showing <span className="font-semibold text-gray-900">{totalCount}</span> record{totalCount !== 1 ? 's' : ''}
               {(Object.values(filters).some(v => v !== '') || searchTerm) && (
                 <span className="ml-1 text-gray-500">
                   (filtered from {data.length} total)
@@ -692,9 +651,9 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
               )}
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[600px]">
             <table className="min-w-max w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr className="border-b border-gray-200">
                   <th className="px-3 py-2 text-left align-top w-28">
                     <div
@@ -705,7 +664,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_docid" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_docid" value={filters.dgt_docid} onChange={(v) => updateFilter('dgt_docid', v)} label="Doc ID" />
+                      <ColumnFilter data={filterData} field="dgt_docid" value={filters.dgt_docid} onChange={(v) => updateFilter('dgt_docid', v)} label="Doc ID" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -717,7 +676,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_docref" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_docref" value={filters.dgt_docref} onChange={(v) => updateFilter('dgt_docref', v)} label="Doc Ref" />
+                      <ColumnFilter data={filterData} field="dgt_docref" value={filters.dgt_docref} onChange={(v) => updateFilter('dgt_docref', v)} label="Doc Ref" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top">
@@ -738,7 +697,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_discipline" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(v as string)} />
+                      <ColumnFilter data={filterData} field="dgt_discipline" value={filters.dgt_discipline} onChange={(v) => updateFilter('dgt_discipline', v)} label="Discipline" formatValue={(v) => getDisciplineName(v as string)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -750,7 +709,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_documenttype" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" formatValue={(v) => getDocTypeName(v as string | null)} />
+                      <ColumnFilter data={filterData} field="dgt_documenttype" value={filters.dgt_documenttype} onChange={(v) => updateFilter('dgt_documenttype', v)} label="Doc Type" formatValue={(v) => getDocTypeName(v as string | null)} />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -762,7 +721,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_submissiondate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_submissiondate" value={filters.dgt_submissiondate} onChange={(v) => updateFilter('dgt_submissiondate', v)} label="Submission" />
+                      <DateColumnFilter data={filterData} field="dgt_submissiondate" value={filters.dgt_submissiondate} onChange={(v) => updateFilter('dgt_submissiondate', v)} label="Submission" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -774,7 +733,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_responsedate" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_responsedate" value={filters.dgt_responsedate} onChange={(v) => updateFilter('dgt_responsedate', v)} label="Response" />
+                      <DateColumnFilter data={filterData} field="dgt_responsedate" value={filters.dgt_responsedate} onChange={(v) => updateFilter('dgt_responsedate', v)} label="Response" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-32">
@@ -786,7 +745,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_date_issued_to_contractor" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <DateColumnFilter data={data} field="dgt_date_issued_to_contractor" value={filters.dgt_date_issued_to_contractor} onChange={(v) => updateFilter('dgt_date_issued_to_contractor', v)} label="Issued to Contr." />
+                      <DateColumnFilter data={filterData} field="dgt_date_issued_to_contractor" value={filters.dgt_date_issued_to_contractor} onChange={(v) => updateFilter('dgt_date_issued_to_contractor', v)} label="Issued to Contr." />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-28">
@@ -798,7 +757,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="dgt_status" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
+                      <ColumnFilter data={filterData} field="dgt_status" value={filters.dgt_status} onChange={(v) => updateFilter('dgt_status', v)} label="Status" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-20">
@@ -810,13 +769,13 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                       <SortIcon field="week_num" />
                     </div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="week_num" value={filters.week_num} onChange={(v) => updateFilter('week_num', v)} label="Week" />
+                      <ColumnFilter data={filterData} field="week_num" value={filters.week_num} onChange={(v) => updateFilter('week_num', v)} label="Week" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top w-16">
                     <div className="text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap">Mod ID</div>
                     <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
-                      <ColumnFilter data={data} field="mod_id" value={filters.mod_id} onChange={(v) => updateFilter('mod_id', v)} label="Mod ID" />
+                      <ColumnFilter data={filterData} field="mod_id" value={filters.mod_id} onChange={(v) => updateFilter('mod_id', v)} label="Mod ID" />
                     </div>
                   </th>
                   <th className="px-3 py-2 text-left align-top text-xs font-medium text-gray-600 uppercase tracking-wide w-20">
@@ -825,14 +784,14 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedData.length === 0 ? (
+                {data.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="px-6 py-8 text-center text-gray-500">
                       No records found
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map((record) => (
+                  data.map((record) => (
                     <tr key={record.dgt_dbp6bd0402qaqchseid} className={record.mod_id === 1 ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'}>
                       <td className="px-3 py-2.5 whitespace-nowrap text-sm text-gray-900">
                         {record.dgt_docid || '-'}
@@ -938,7 +897,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
-            totalItems={filteredAndSortedData.length}
+            totalItems={totalCount}
             itemsPerPage={ITEMS_PER_PAGE}
           />
         </div>

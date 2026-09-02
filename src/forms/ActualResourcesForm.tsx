@@ -48,8 +48,9 @@ type SortDirection = 'asc' | 'desc'
 
 const inputCls = 'w-full px-1 py-0.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500'
 
-export function ActualResourcesForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+export function ActualResourcesForm({ projectTextId, schemaName }: { projectTextId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
+  const [projectId, setProjectId] = useState<string>('')
   const [data, setData] = useState<ActualResources[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -125,11 +126,41 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
 
   const fetchData = async () => {
     setLoading(true)
+    console.log('[ActualResources] fetchData — projectTextId:', projectTextId, 'schemaName:', schemaName)
+
+    // Resolve the schema-local project UUID from the schema's own projectdata table
+    const { data: projectRow, error: projectRowError } = await supabase
+      .from('dbp6_0000_projectdata')
+      .select('dgt_dbp6bd00projectdataid')
+      .eq('dgt_projectid', projectTextId)
+      .maybeSingle()
+
+    console.log('[ActualResources] projectdata lookup — row:', projectRow, 'error:', projectRowError)
+
+    const resolvedProjectId = (projectRow as { dgt_dbp6bd00projectdataid: string } | null)?.dgt_dbp6bd00projectdataid || ''
+    setProjectId(resolvedProjectId)
+
+    if (!resolvedProjectId) {
+      console.log('[ActualResources] no resolvedProjectId — stopping')
+      setData([])
+      setLoading(false)
+      return
+    }
+
     const { data: records, error } = await supabase
       .from('dbp6_000501_actualresources_current')
       .select('*')
-      .eq('dgt_dbp6bd00projectdataid', projectId)
+      .eq('dgt_dbp6bd00projectdataid', resolvedProjectId)
       .order('created_at', { ascending: false })
+
+    console.log('[ActualResources] records query — count:', records?.length, 'error:', error)
+
+    // Debug: fetch all rows without any filter to see what's in the table
+    const { data: allRows, error: allErr } = await supabase
+      .from('dbp6_000501_actualresources_current')
+      .select('dgt_dbp6bd00projectdataid, dgt_projectid, resource_name')
+      .limit(5)
+    console.log('[ActualResources] unfiltered sample (first 5):', allRows, 'error:', allErr)
 
     if (error) {
       showError('Failed to fetch data: ' + error.message)
@@ -151,10 +182,11 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
 
   useEffect(() => {
     setSelectedWeek(null)
+    setProjectId('')
     fetchData()
     fetchDisciplines()
     fetchTypes()
-  }, [projectId])
+  }, [projectTextId])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data
@@ -628,9 +660,9 @@ export function ActualResourcesForm({ projectId, schemaName }: { projectId: stri
               )}
             </span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[600px]">
             <table className="min-w-max w-full">
-              <thead>
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-2 py-1.5 text-left align-top sticky left-0 bg-gray-50 z-10 border-r border-gray-300">
                     <div
