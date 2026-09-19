@@ -325,7 +325,7 @@ function App() {
     setShowRunUpdateConfirm(false)
     setRunUpdateLoading(true)
     try {
-      const params = new URLSearchParams({ project_id: selectedProjectId, schema: selectedSchemaName })
+      const params = new URLSearchParams({ project_id: selectedProject?.textProjectId || '', schema: selectedSchemaName })
       await Promise.allSettled([
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9?${params}`, { method: 'GET' }),
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' }),
@@ -356,15 +356,15 @@ function App() {
           />
         )
       case 'engineering':
-        return <EngineeringForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
+        return <EngineeringForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'qaqc':
-        return <QaqcHseForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
+        return <QaqcHseForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'resources':
         return <ActualResourcesForm projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'dynamic':
         return <DynamicActualDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'projectdata':
-        return <ProjectDataForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
+        return <ProjectDataForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'aoc':
         return <AreasOfConcernForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'variations':

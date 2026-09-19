@@ -74,7 +74,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function ProjectDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+export function ProjectDataForm({ projectId, projectTextId, schemaName }: { projectId: string; projectTextId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
   const [data, setData] = useState<ProjectData[]>([])
   const [loading, setLoading] = useState(true)
@@ -282,7 +282,7 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
   const triggerWebhook = async (id: string, url: string) => {
     setWebhookStatus(prev => ({ ...prev, [id]: 'loading' }))
     try {
-      const params = new URLSearchParams({ project_id: projectId, schema: schemaName })
+      const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName })
       await fetch(`${url}?${params}`, { method: 'GET' })
       setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
     } catch {

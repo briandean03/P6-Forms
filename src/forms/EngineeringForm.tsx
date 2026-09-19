@@ -40,7 +40,7 @@ type SortDirection = 'asc' | 'desc'
 
 
 
-export function EngineeringForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+export function EngineeringForm({ projectId, projectTextId, schemaName }: { projectId: string; projectTextId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
   const [data, setData] = useState<Engineering[]>([])
   const [filterData, setFilterData] = useState<Pick<Engineering, 'dgt_transmittalref' | 'dgt_discipline' | 'dgt_transmittaltype' | 'dgt_plannedsubmissiondate' | 'dgt_plannedapprovaldate' | 'dgt_actualsubmissiondate' | 'dgt_actualreturndate' | 'dgt_revision' | 'dgt_status' | 'mod_id'>[]>([])
@@ -429,7 +429,7 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const triggerWebhook51 = async () => {
     setWebhookStatus('loading')
     try {
-      const params = new URLSearchParams({ project_id: projectId, schema: schemaName })
+      const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName })
       await fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' })
       setWebhookStatus('success')
     } catch {

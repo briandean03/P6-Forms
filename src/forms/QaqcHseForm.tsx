@@ -39,7 +39,7 @@ type EditingCell = {
 type SortField = 'dgt_docid' | 'dgt_docref' | 'dgt_documentsubject' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_date_issued_to_contractor' | 'dgt_status' | 'week_num'
 type SortDirection = 'asc' | 'desc'
 
-export function QaqcHseForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
+export function QaqcHseForm({ projectId, projectTextId, schemaName }: { projectId: string; projectTextId: string; schemaName: string }) {
   const supabase = schemaClient(schemaName)
   const [data, setData] = useState<QaqcHse[]>([])
   const [filterData, setFilterData] = useState<Pick<QaqcHse, 'dgt_docid' | 'dgt_docref' | 'dgt_discipline' | 'dgt_documenttype' | 'dgt_submissiondate' | 'dgt_responsedate' | 'dgt_date_issued_to_contractor' | 'dgt_status' | 'week_num' | 'mod_id'>[]>([])
@@ -80,7 +80,7 @@ export function QaqcHseForm({ projectId, schemaName }: { projectId: string; sche
   const triggerWebhook51 = async () => {
     setWebhookStatus('loading')
     try {
-      const params = new URLSearchParams({ project_id: projectId, schema: schemaName })
+      const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName })
       await fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' })
       setWebhookStatus('success')
     } catch {
