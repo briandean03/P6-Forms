@@ -325,15 +325,10 @@ function App() {
     setShowRunUpdateConfirm(false)
     setRunUpdateLoading(true)
     try {
-      const webhookBody = JSON.stringify({ project_id: selectedProjectId, schema: selectedSchemaName })
-      const webhookOptions = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: webhookBody,
-      }
+      const params = new URLSearchParams({ project_id: selectedProjectId, schema: selectedSchemaName })
       await Promise.allSettled([
-        fetch('https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9', webhookOptions),
-        fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec', webhookOptions),
+        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9?${params}`, { method: 'GET' }),
+        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' }),
       ])
 
       showSuccess('Update triggered successfully')

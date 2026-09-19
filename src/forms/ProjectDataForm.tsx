@@ -282,11 +282,8 @@ export function ProjectDataForm({ projectId, schemaName }: { projectId: string; 
   const triggerWebhook = async (id: string, url: string) => {
     setWebhookStatus(prev => ({ ...prev, [id]: 'loading' }))
     try {
-      await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, schema: schemaName }),
-      })
+      const params = new URLSearchParams({ project_id: projectId, schema: schemaName })
+      await fetch(`${url}?${params}`, { method: 'GET' })
       setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
     } catch {
       setWebhookStatus(prev => ({ ...prev, [id]: 'error' }))
