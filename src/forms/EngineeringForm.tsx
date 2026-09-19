@@ -429,7 +429,11 @@ export function EngineeringForm({ projectId, schemaName }: { projectId: string; 
   const triggerWebhook51 = async () => {
     setWebhookStatus('loading')
     try {
-      await fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec', { method: 'GET' })
+      await fetch('https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, schema: schemaName }),
+      })
       setWebhookStatus('success')
     } catch {
       setWebhookStatus('error')
