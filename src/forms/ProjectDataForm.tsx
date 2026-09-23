@@ -48,7 +48,7 @@ const WEBHOOKS = [
   { id: '52', label: 'Webhook 52', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
   { id: '53', label: 'Webhook 53', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
   { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
-  { id: '62', label: 'Webhook 62', url: 'https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d' },
+  { id: '62', label: 'Webhook 62', url: 'https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d', method: 'POST' as const },
 ] as const
 
 const DATE_FIELDS = new Set([
@@ -280,11 +280,11 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
     setDeleteConfirm(null)
   }
 
-  const triggerWebhook = async (id: string, url: string) => {
+  const triggerWebhook = async (id: string, url: string, method: 'GET' | 'POST' = 'GET') => {
     setWebhookStatus(prev => ({ ...prev, [id]: 'loading' }))
     try {
       const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName })
-      await fetch(`${url}?${params}`, { method: 'GET' })
+      await fetch(`${url}?${params}`, { method })
       setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
     } catch {
       setWebhookStatus(prev => ({ ...prev, [id]: 'error' }))
@@ -706,13 +706,14 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
       <Modal isOpen={webhookModal} onClose={() => setWebhookModal(false)} title="Sync / Update Webhooks">
         <div className="space-y-3 py-2">
           <p className="text-sm text-gray-500 mb-4">Trigger an n8n workflow to sync project data.</p>
-          {WEBHOOKS.map(({ id, label, url }) => {
+          {WEBHOOKS.map(({ id, label, url, ...rest }) => {
+            const method = 'method' in rest ? (rest as { method: 'GET' | 'POST' }).method : 'GET'
             const status = webhookStatus[id]
             return (
               <div key={id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 bg-gray-50">
                 <span className="text-sm font-medium text-gray-700">{label}</span>
                 <button
-                  onClick={() => triggerWebhook(id, url)}
+                  onClick={() => triggerWebhook(id, url, method)}
                   disabled={anyWebhookLoading}
                   className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed ${
                     status === 'success' ? 'bg-green-100 text-green-700 border border-green-300' :

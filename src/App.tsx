@@ -329,7 +329,7 @@ function App() {
       await Promise.allSettled([
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9?${params}`, { method: 'GET' }),
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' }),
-        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d?${params}`, { method: 'GET' }),
+        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d?${params}`, { method: 'POST' }),
       ])
 
       showSuccess('Update triggered successfully')
