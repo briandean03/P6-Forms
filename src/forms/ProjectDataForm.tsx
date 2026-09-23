@@ -48,6 +48,7 @@ const WEBHOOKS = [
   { id: '52', label: 'Webhook 52', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
   { id: '53', label: 'Webhook 53', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
   { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
+  { id: '62', label: 'Webhook 62', url: 'https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d' },
 ] as const
 
 const DATE_FIELDS = new Set([
@@ -85,7 +86,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [webhookModal, setWebhookModal] = useState(false)
   const [webhookStatus, setWebhookStatus] = useState<Record<string, WebhookStatus>>({
-    '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle',
+    '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle',
   })
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [cellValue, setCellValue] = useState('')
