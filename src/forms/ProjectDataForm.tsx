@@ -445,7 +445,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         <div className="flex gap-2 items-center">
           <button
             onClick={() => {
-              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle' })
+              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle' })
               setWebhookModal(true)
             }}
             className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 flex items-center gap-2"
