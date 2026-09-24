@@ -138,7 +138,7 @@ function ReferenceCard({ config, schemaName, onNotify }: ReferenceCardProps) {
     setLoading(false)
   }
 
-  useEffect(() => { fetchRows() }, []) // config is from a constant, safe to omit
+  useEffect(() => { fetchRows() }, [schemaName])
 
   // ── Add ──────────────────────────────────────────────────────────────────
   const handleAdd = async () => {

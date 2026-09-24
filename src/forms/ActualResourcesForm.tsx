@@ -187,7 +187,7 @@ export function ActualResourcesForm({ projectTextId, schemaName }: { projectText
     fetchData()
     fetchDisciplines()
     fetchTypes()
-  }, [projectTextId])
+  }, [projectTextId, schemaName])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data

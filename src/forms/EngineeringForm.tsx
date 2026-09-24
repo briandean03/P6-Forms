@@ -215,13 +215,13 @@ export function EngineeringForm({ projectId, projectTextId, schemaName }: { proj
     fetchFilterOptions()
     fetchProjects()
     fetchDisciplines()
-  }, [projectId])
+  }, [projectId, schemaName])
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
     return () => clearTimeout(t)
   }, [searchTerm])
   useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
-  useEffect(() => { fetchData() }, [projectId, currentPage, debouncedSearch, filters, sortField, sortDirection])
+  useEffect(() => { fetchData() }, [projectId, schemaName, currentPage, debouncedSearch, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

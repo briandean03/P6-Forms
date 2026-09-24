@@ -203,7 +203,7 @@ export function QaqcHseForm({ projectId, projectTextId, schemaName }: { projectI
     return () => clearTimeout(t)
   }, [searchTerm])
   useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
-  useEffect(() => { fetchData() }, [projectId, currentPage, debouncedSearch, filters, sortField, sortDirection])
+  useEffect(() => { fetchData() }, [projectId, schemaName, currentPage, debouncedSearch, filters, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

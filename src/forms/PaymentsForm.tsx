@@ -76,7 +76,7 @@ export function PaymentsForm({ projectId, schemaName }: { projectId: string; sch
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [projectId])
+  useEffect(() => { fetchData() }, [projectId, schemaName])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {

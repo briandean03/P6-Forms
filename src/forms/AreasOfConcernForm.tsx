@@ -75,7 +75,7 @@ export function AreasOfConcernForm({ projectId, schemaName }: { projectId: strin
 
   useEffect(() => {
     fetchData()
-  }, [projectId])
+  }, [projectId, schemaName])
 
   const filteredAndSortedData = useMemo(() => {
     let result = data

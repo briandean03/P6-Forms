@@ -69,7 +69,7 @@ export function VariationsForm({ projectTextId, schemaName }: { projectTextId: s
     setLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [projectTextId])
+  useEffect(() => { fetchData() }, [projectTextId, schemaName])
   useEffect(() => { setCurrentPage(1) }, [searchTerm])
 
   const filteredAndSortedData = useMemo(() => {
