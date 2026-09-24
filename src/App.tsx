@@ -293,7 +293,6 @@ function App() {
   }, [])
 
   const handleSelectProject = async (projectId: string) => {
-    setSelectedProjectId(projectId)
     const project = projectInfo.find(p => p.id === projectId)
     let schemaName = 'public'
     if (project?.textProjectId) {
@@ -305,6 +304,7 @@ function App() {
       schemaName = (data as { schema_name?: string } | null)?.schema_name || 'public'
     }
     setSelectedSchemaName(schemaName)
+    setSelectedProjectId(projectId)
     setActiveTab('dashboard')
     setView('app')
     fetchSidebarBadges(projectId, schemaName)
