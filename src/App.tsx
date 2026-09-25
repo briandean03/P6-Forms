@@ -325,7 +325,7 @@ function App() {
     setShowRunUpdateConfirm(false)
     setRunUpdateLoading(true)
     try {
-      const params = new URLSearchParams({ project_id: selectedProject?.textProjectId || '', schema: selectedSchemaName })
+      const params = new URLSearchParams({ project_id: selectedProject?.textProjectId || '', schema: selectedSchemaName, t: Date.now().toString() })
       await Promise.allSettled([
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9?${params}`, { method: 'GET' }),
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' }),
