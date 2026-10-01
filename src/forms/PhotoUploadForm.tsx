@@ -57,12 +57,13 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadCounterRef = useRef(1)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
+  const db = schemaName === 'daikin' ? schemaClient('daikin') : atgcDb
 
   const fetchPhotos = async () => {
     setLoading(true)
     try {
       const folder = schemaName === 'daikin' ? 'daikin' : projectId
-      const { data, error } = await atgcDb
+      const { data, error } = await db
         .from('p6forms_photoupload')
         .select('*')
         .like('imageurl', `%/${folder}/%`)
@@ -141,14 +142,17 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
 
         // 2. Save metadata to Supabase
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: insertError } = await (atgcDb as any)
+        const insertPayload: Record<string, string> = {
+          filename: displayName,
+          photodate: photoDate,
+          imageurl: `${BLOB_BASE}/${blobName}`,
+          serialnumber: String(serial),
+        }
+        if (schemaName === 'daikin') insertPayload.dgt_projectid = projectId
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: insertError } = await (db as any)
           .from('p6forms_photoupload')
-          .insert({
-            filename: displayName,
-            photodate: photoDate,
-            imageurl: `${BLOB_BASE}/${blobName}`,
-            serialnumber: String(serial),
-          })
+          .insert(insertPayload)
         if (insertError) {
           await getContainerClient().deleteBlob(blobName)
           throw insertError
@@ -183,7 +187,7 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
     setDeleting(true)
     try {
       await getContainerClient().deleteBlob(deleteTarget.blobName)
-      const { error } = await atgcDb
+      const { error } = await db
         .from('p6forms_photoupload')
         .delete()
         .eq('id', deleteTarget.supabaseId)
