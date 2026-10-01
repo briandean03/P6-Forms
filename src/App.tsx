@@ -381,7 +381,7 @@ function App() {
       case 'p6projectmapping':
         return <P6ProjectMappingForm />
       case 'photos':
-        return <PhotoUploadForm projectId={selectedProjectId} />
+        return <PhotoUploadForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'pdfupload':
         return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} />
       default:

@@ -43,7 +43,7 @@ interface SupabasePhotoRow {
   serialnumber: string | null
 }
 
-export function PhotoUploadForm({ projectId }: { projectId: string }) {
+export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
   const [photos, setPhotos] = useState<Photo[]>([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -61,10 +61,11 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
   const fetchPhotos = async () => {
     setLoading(true)
     try {
+      const folder = schemaName === 'daikin' ? `daikin/${projectId}` : projectId
       const { data, error } = await atgcDb
         .from('p6forms_photoupload')
         .select('*')
-        .like('imageurl', `%/${projectId}/%`)
+        .like('imageurl', `%/${folder}/%`)
         .order('photodate', { ascending: false }) as { data: SupabasePhotoRow[] | null; error: unknown }
 
       if (error) throw error
@@ -129,7 +130,8 @@ export function PhotoUploadForm({ projectId }: { projectId: string }) {
         const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : ''
         const serial = uploadCounterRef.current
         const displayName = `${photoDate}${ext}`
-        const blobName = `${projectId}/${photoDate}-${serial}${ext}`
+        const folder = schemaName === 'daikin' ? `daikin/${projectId}` : projectId
+        const blobName = `${folder}/${photoDate}-${serial}${ext}`
 
         // 1. Upload to Azure
         const blockBlob = getContainerClient().getBlockBlobClient(blobName)
