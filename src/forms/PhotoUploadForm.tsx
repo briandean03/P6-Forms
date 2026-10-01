@@ -61,7 +61,7 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
   const fetchPhotos = async () => {
     setLoading(true)
     try {
-      const folder = schemaName === 'daikin' ? `daikin/${projectId}` : projectId
+      const folder = schemaName === 'daikin' ? 'daikin' : projectId
       const { data, error } = await atgcDb
         .from('p6forms_photoupload')
         .select('*')
@@ -130,7 +130,7 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
         const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : ''
         const serial = uploadCounterRef.current
         const displayName = `${photoDate}${ext}`
-        const folder = schemaName === 'daikin' ? `daikin/${projectId}` : projectId
+        const folder = schemaName === 'daikin' ? 'daikin' : projectId
         const blobName = `${folder}/${photoDate}-${serial}${ext}`
 
         // 1. Upload to Azure
