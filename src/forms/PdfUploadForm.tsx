@@ -113,7 +113,7 @@ export function PdfUploadForm({
       }
       console.log('[PdfUpload] inserting:', insertPayload)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: insertError, status, statusText } = await (atgcDb as any)
+      const { error: insertError, status, statusText } = await (db as any)
         .from('pdf_form_uploads')
         .insert(insertPayload)
       console.log('[PdfUpload] insert result:', { status, statusText, insertError })
