@@ -26,24 +26,30 @@ interface ProjectMeta {
 export function PdfUploadForm({
   projectId,
   projectTextId,
+  schemaName,
 }: {
   projectId: string
   projectTextId: string
+  schemaName: string
 }) {
   const [activityType, setActivityType] = useState<ActivityType>('LA')
   const [file, setFile] = useState<File | null>(null)
   const [meta, setMeta] = useState<ProjectMeta>({ dataDate: null, weekNum: null, projectId: null })
+  const [dataDateOverride, setDataDateOverride] = useState<string>('')
+  const [weekNumOverride, setWeekNumOverride] = useState<string>('')
   const [loadingMeta, setLoadingMeta] = useState(true)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
+
+  const db = schemaName === 'daikin' ? schemaClient('daikin') : atgcDb
 
   useEffect(() => {
     if (!projectId) return
     const fetchMeta = async () => {
       setLoadingMeta(true)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (atgcDb as any)
+      const { data, error } = await (db as any)
         .from('dbp6_0000_projectdata')
         .select('dgt_datadate, dgt_weeknum, dgt_projectid')
         .eq('dgt_dbp6bd00projectdataid', projectId)
@@ -54,17 +60,13 @@ export function PdfUploadForm({
           weekNum: data.dgt_weeknum ?? null,
           projectId: data.dgt_projectid ?? null,
         })
+        setDataDateOverride(data.dgt_datadate ? data.dgt_datadate.split('T')[0] : '')
+        setWeekNumOverride(data.dgt_weeknum != null ? String(data.dgt_weeknum) : '')
       }
       setLoadingMeta(false)
     }
     fetchMeta()
-  }, [projectId])
-
-  const formatDate = (d: string | null) => {
-    if (!d) return '—'
-    try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }
-    catch { return d }
-  }
+  }, [projectId, schemaName])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null
@@ -76,14 +78,21 @@ export function PdfUploadForm({
     setFile(f)
   }
 
+  const effectiveWeekNum = weekNumOverride !== '' ? parseInt(weekNumOverride, 10) : meta.weekNum
+  const effectiveDataDate = dataDateOverride || meta.dataDate
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!file) { showError('Please select a PDF file'); return }
-    if (meta.weekNum === null) { showError('Week number not available for this project'); return }
+    if (effectiveWeekNum === null || isNaN(effectiveWeekNum as number)) {
+      showError('Please enter a week number')
+      return
+    }
 
     setUploading(true)
     try {
-      const blobName = `${projectTextId || projectId}/${activityType}_${meta.weekNum}.pdf`
+      const folder = schemaName === 'daikin' ? 'daikin' : (projectTextId || projectId)
+      const blobName = `${folder}/${activityType}_${effectiveWeekNum}.pdf`
       const { client: pdfClient, base: pdfBase } = getPdfContainerClient()
       const pdfUrl = `${pdfBase}/${blobName}`
 
@@ -95,12 +104,12 @@ export function PdfUploadForm({
 
       // 2. Insert record into Supabase
       const insertPayload = {
-        filename: `${activityType}_${meta.weekNum}.pdf`,
+        filename: `${activityType}_${effectiveWeekNum}.pdf`,
         activity_type: activityType,
         pdf_url: pdfUrl,
         dgt_projectid: meta.projectId ?? projectTextId ?? null,
         dgt_dbp6bd00projectdataid: projectId,
-        data_date: meta.dataDate ?? null,
+        data_date: effectiveDataDate ?? null,
       }
       console.log('[PdfUpload] inserting:', insertPayload)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,7 +124,7 @@ export function PdfUploadForm({
         throw insertError
       }
 
-      showSuccess(`${activityType}_${meta.weekNum}.pdf uploaded successfully`)
+      showSuccess(`${activityType}_${effectiveWeekNum}.pdf uploaded successfully`)
       setFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err: unknown) {
@@ -201,31 +210,42 @@ export function PdfUploadForm({
             </div>
           </div>
 
-          {/* Read-only project meta */}
+          {/* Editable project meta */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Data Date</label>
-              <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
-                {formatDate(meta.dataDate)}
-              </div>
+              <input
+                type="date"
+                value={dataDateOverride}
+                onChange={e => setDataDateOverride(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Week Number</label>
-              <div className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
-                {meta.weekNum ?? '—'}
-              </div>
+              <input
+                type="number"
+                min={1}
+                value={weekNumOverride}
+                onChange={e => setWeekNumOverride(e.target.value)}
+                placeholder="e.g. 42"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
             </div>
           </div>
 
           {/* Filename preview */}
-          {meta.weekNum !== null && (
+          {effectiveWeekNum !== null && !isNaN(effectiveWeekNum as number) && (
             <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
               <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className="text-xs text-gray-500">
                 Will be saved as{' '}
-                <span className="font-mono font-semibold text-gray-700">{activityType}_{meta.weekNum}.pdf</span>
+                <span className="font-mono font-semibold text-gray-700">{activityType}_{effectiveWeekNum}.pdf</span>
+                {schemaName === 'daikin' && (
+                  <span className="ml-1 text-gray-400">(daikin folder)</span>
+                )}
               </span>
             </div>
           )}

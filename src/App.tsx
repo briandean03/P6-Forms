@@ -383,7 +383,7 @@ function App() {
       case 'photos':
         return <PhotoUploadForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'pdfupload':
-        return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} />
+        return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       default:
         return null
     }

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm run build)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(grep -r \"schema\\\\|Schema\" src/forms/*.tsx --include=\"*.tsx\")"
     ]
   }
 }
