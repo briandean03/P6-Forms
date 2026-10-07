@@ -268,6 +268,7 @@ export interface P6ProjectMapping {
   id: number
   dgt_projectid: string
   p6_project_code: string
+  schema_name: string | null
 }
 
 export interface P6RunTrigger {

@@ -19,6 +19,7 @@ import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
 import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 import { PdfUploadForm } from '@/forms/PdfUploadForm'
 import { ProjectDashboard } from '@/forms/ProjectDashboard'
+import { InspectionReportForm } from '@/forms/InspectionReportForm'
 
 type TabKey =
   | 'dashboard'
@@ -38,6 +39,7 @@ type TabKey =
   | 'p6projectmapping'
   | 'photos'
   | 'pdfupload'
+  | 'inspectionreports'
 
 interface NavItem {
   key: TabKey
@@ -241,7 +243,7 @@ function App() {
     try {
       // Check if data date is stale (> 8 days old)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: pdData } = await (schemaClient('atgc') as any)
+      const { data: pdData } = await (db as any)
         .from('dbp6_0000_projectdata')
         .select('dgt_datadate')
         .eq('dgt_dbp6bd00projectdataid', projectId)
@@ -301,7 +303,7 @@ function App() {
         .select('schema_name')
         .eq('dgt_projectid', project.textProjectId)
         .maybeSingle()
-      schemaName = (data as { schema_name?: string } | null)?.schema_name || 'public'
+      schemaName = (data as { schema_name?: string | null } | null)?.schema_name || 'public'
     }
     setSelectedSchemaName(schemaName)
     setSelectedProjectId(projectId)
@@ -326,13 +328,17 @@ function App() {
     setRunUpdateLoading(true)
     try {
       const params = new URLSearchParams({ project_id: selectedProject?.textProjectId || '', schema: selectedSchemaName, t: Date.now().toString() })
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9?${params}`, { method: 'GET' }),
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' }),
         fetch(`https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d?${params}`, { method: 'POST' }),
       ])
-
-      showSuccess('Update triggered successfully')
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok))
+      if (failed.length > 0) {
+        showError(`Update triggered but ${failed.length} webhook(s) returned an error`)
+      } else {
+        showSuccess('Update triggered successfully')
+      }
     } catch (err) {
       showError('Failed to run update: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
@@ -384,6 +390,8 @@ function App() {
         return <PhotoUploadForm projectId={selectedProjectId} schemaName={selectedSchemaName} />
       case 'pdfupload':
         return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
+      case 'inspectionreports':
+        return <InspectionReportForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       default:
         return null
     }

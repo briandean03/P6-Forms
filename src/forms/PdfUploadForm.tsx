@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { ContainerClient } from '@azure/storage-blob'
 import { schemaClient } from '@/lib/supabase'
+import { getSchemaConfig } from '@/lib/schemaConfig'
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
-
-const atgcDb = schemaClient('atgc')
 
 function getPdfContainerClient() {
   const account = import.meta.env.VITE_PDF_AZURE_STORAGE_ACCOUNT as string
@@ -42,7 +41,8 @@ export function PdfUploadForm({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
 
-  const db = schemaName === 'daikin' ? schemaClient('daikin') : atgcDb
+  const db = schemaClient(schemaName)
+  const schemaCfg = getSchemaConfig(schemaName)
 
   useEffect(() => {
     if (!projectId) return
@@ -91,7 +91,7 @@ export function PdfUploadForm({
 
     setUploading(true)
     try {
-      const folder = schemaName === 'daikin' ? 'daikin' : (projectTextId || projectId)
+      const folder = schemaCfg.blobFolder ?? (projectTextId || projectId)
       const blobName = `${folder}/${activityType}_${effectiveWeekNum}.pdf`
       const { client: pdfClient, base: pdfBase } = getPdfContainerClient()
       const pdfUrl = `${pdfBase}/${blobName}`
@@ -243,8 +243,8 @@ export function PdfUploadForm({
               <span className="text-xs text-gray-500">
                 Will be saved as{' '}
                 <span className="font-mono font-semibold text-gray-700">{activityType}_{effectiveWeekNum}.pdf</span>
-                {schemaName === 'daikin' && (
-                  <span className="ml-1 text-gray-400">(daikin folder)</span>
+                {schemaCfg.blobFolder && (
+                  <span className="ml-1 text-gray-400">({schemaCfg.blobFolder} folder)</span>
                 )}
               </span>
             </div>

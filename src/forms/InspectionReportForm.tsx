@@ -131,8 +131,7 @@ export function InspectionReportForm({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
-  const atgcDb = schemaClient('atgc')       // shared: project meta, disciplines
-  const projectDb = schemaClient(schemaName) // project-specific: inspection reports
+  const projectDb = schemaClient(schemaName)
 
   useEffect(() => {
     if (!projectId) return
@@ -140,7 +139,7 @@ export function InspectionReportForm({
       setLoadingMeta(true)
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data } = await (atgcDb as any)
+        const { data } = await (projectDb as any)
           .from('dbp6_0000_projectdata')
           .select('dgt_employersname, dgt_consultantsname, dgt_contractorsname, dgt_projectname, dgt_location, dgt_projectid')
           .eq('dgt_dbp6bd00projectdataid', projectId)

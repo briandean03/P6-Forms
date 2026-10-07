@@ -159,7 +159,6 @@ export function ProjectDashboard({
   const [queueLoading, setQueueLoading] = useState(true)
 
   const db = schemaClient(schemaName)
-  const atgcDb = schemaClient('atgc')
 
   // ── Fetch project meta ──────────────────────────────────────────────────
   useEffect(() => {
@@ -167,7 +166,7 @@ export function ProjectDashboard({
     const run = async () => {
       setMetaLoading(true)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (atgcDb as any)
+      const { data } = await (db as any)
         .from('dbp6_0000_projectdata')
         .select('dgt_projectname, dgt_projectid, dgt_datadate, dgt_weeknum, dgt_contractorsname, dgt_employersname, dgt_location, dgt_projectstartdate, dgt_projectenddate')
         .eq('dgt_dbp6bd00projectdataid', projectId)
@@ -252,7 +251,7 @@ export function ProjectDashboard({
       (async () => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { count: total } = await (atgcDb as any).from('p6_inspection_reports').select('*', { count: 'exact', head: true }).eq('dgt_dbp6bd00projectdataid', projectId)
+          const { count: total } = await (db as any).from('p6_inspection_reports').select('*', { count: 'exact', head: true }).eq('dgt_dbp6bd00projectdataid', projectId)
           setCard('inspections', total ?? 0, 0)
         } catch { setCard('inspections', 0, 0) }
       })(),

@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ContainerClient } from '@azure/storage-blob'
 import { schemaClient } from '@/lib/supabase'
-
-const atgcDb = schemaClient('atgc')
+import { getSchemaConfig } from '@/lib/schemaConfig'
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -57,17 +56,18 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadCounterRef = useRef(1)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
-  const db = schemaName === 'daikin' ? schemaClient('daikin') : atgcDb
+  const db = schemaClient(schemaName)
+  const schemaCfg = getSchemaConfig(schemaName)
+  const folder = schemaCfg.blobFolder ?? projectId
 
   const fetchPhotos = async () => {
     setLoading(true)
     try {
-      const folder = schemaName === 'daikin' ? 'daikin' : projectId
       const { data, error } = await db
         .from('p6forms_photoupload')
         .select('*')
         .like('imageurl', `%/${folder}/%`)
-        .order('photodate', { ascending: false }) as { data: SupabasePhotoRow[] | null; error: unknown }
+        .order('photodate', { ascending: false }) as unknown as { data: SupabasePhotoRow[] | null; error: unknown }
 
       if (error) throw error
 
@@ -83,6 +83,13 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
         }
       })
       setPhotos(result)
+      // Seed serial counter above the highest existing serial so uploads in a
+      // new session never collide with blobs already in Azure.
+      const maxSerial = result.reduce((max, p) => {
+        const n = parseInt(p.serialNumber, 10)
+        return isNaN(n) ? max : Math.max(max, n)
+      }, 0)
+      uploadCounterRef.current = maxSerial + 1
     } catch (err: unknown) {
       showError(err instanceof Error ? err.message : 'Failed to load photos')
     }
@@ -131,7 +138,6 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
         const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : ''
         const serial = uploadCounterRef.current
         const displayName = `${photoDate}${ext}`
-        const folder = schemaName === 'daikin' ? 'daikin' : projectId
         const blobName = `${folder}/${photoDate}-${serial}${ext}`
 
         // 1. Upload to Azure
@@ -147,8 +153,8 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
           photodate: photoDate,
           imageurl: `${BLOB_BASE}/${blobName}`,
           serialnumber: String(serial),
+          dgt_projectid: projectId,
         }
-        if (schemaName === 'daikin') insertPayload.dgt_projectid = projectId
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: insertError } = await (db as any)
           .from('p6forms_photoupload')
