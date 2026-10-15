@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { schemaClient } from '../lib/supabase'
 import { ProjectData } from '../types/database'
@@ -49,7 +49,26 @@ const WEBHOOKS = [
   { id: '53', label: 'Webhook 53', url: 'https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8' },
   { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
   { id: '62', label: 'Webhook 62', url: 'https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d', method: 'POST' as const },
+  { id: '146', label: 'Generate Weekly Activity Report', url: 'https://pmc2p2c.app.n8n.cloud/webhook/47c2c01f-c886-4071-9a7a-f0591fefe6ss', method: 'POST' as const },
 ] as const
+
+interface WeeklyReportRow {
+  id: number
+  report_section: 'LAST_WEEK_PROGRESS' | 'NEXT_WEEK_LOOKAHEAD'
+  activity_id: string
+  activity_name: string | null
+  current_week_num: number
+  reporting_status: string | null
+  criticality: string | null
+  current_percent_complete: number | null
+  previous_percent_complete: number | null
+  progress_achieved_percentage_points: number | null
+  forecast_percent_complete_end_next_week: number | null
+  work_type_name: string | null
+  activity_discipline_name: string | null
+  observation: string | null
+  created_at: string
+}
 
 const DATE_FIELDS = new Set([
   'dgt_projectstartdate',
@@ -86,8 +105,16 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
   const [webhookModal, setWebhookModal] = useState(false)
   const [webhookStatus, setWebhookStatus] = useState<Record<string, WebhookStatus>>({
-    '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle',
+    '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle', '146': 'idle',
   })
+  const [reportPolling, setReportPolling] = useState(false)
+  const [reportRows, setReportRows] = useState<WeeklyReportRow[]>([])
+  const [reportWeek, setReportWeek] = useState<number | null>(null)
+  const [reportSectionOpen, setReportSectionOpen] = useState<Record<string, boolean>>({
+    LAST_WEEK_PROGRESS: true, NEXT_WEEK_LOOKAHEAD: true,
+  })
+  const pollCountRef = useRef(0)
+  const reportPanelRef = useRef<HTMLDivElement>(null)
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [cellValue, setCellValue] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -142,6 +169,43 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   useEffect(() => {
     fetchData()
   }, [])
+
+  const fetchReport = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rows, error } = await (supabase as any)
+      .from('dbp6_0008_weekly_activity_report')
+      .select('id, report_section, activity_id, activity_name, current_week_num, reporting_status, criticality, current_percent_complete, previous_percent_complete, progress_achieved_percentage_points, forecast_percent_complete_end_next_week, work_type_name, activity_discipline_name, observation, created_at')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) {
+      console.error('[fetchReport] error:', error)
+      showError('Failed to load report: ' + (error.message ?? String(error)))
+      return []
+    }
+    if (rows && rows.length > 0) {
+      setReportRows(rows)
+      setReportWeek(rows[0].current_week_num)
+    }
+    return rows ?? []
+  }
+
+  useEffect(() => {
+    if (!reportPolling) return
+    pollCountRef.current = 0
+
+    const poll = async () => {
+      pollCountRef.current += 1
+      if (pollCountRef.current > 24) { setReportPolling(false); return }
+      const rows = await fetchReport()
+      if (rows.length > 0) {
+        setReportPolling(false)
+        setTimeout(() => reportPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+      }
+    }
+
+    const interval = setInterval(poll, 5000)
+    return () => clearInterval(interval)
+  }, [reportPolling, schemaName])
 
   const getInputType = (field: string): 'text' | 'date' | 'number' => {
     if (DATE_FIELDS.has(field)) return 'date'
@@ -283,9 +347,19 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   const triggerWebhook = async (id: string, url: string, method: 'GET' | 'POST' = 'GET') => {
     setWebhookStatus(prev => ({ ...prev, [id]: 'loading' }))
     try {
-      const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName, t: Date.now().toString() })
-      await fetch(`${url}?${params}`, { method })
-      setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
+      if (id === '146') {
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flow_parameters: { schema: schemaName } }),
+        })
+        setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
+        setReportPolling(true)
+      } else {
+        const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName, t: Date.now().toString() })
+        await fetch(`${url}?${params}`, { method })
+        setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
+      }
     } catch {
       setWebhookStatus(prev => ({ ...prev, [id]: 'error' }))
     }
@@ -445,7 +519,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         <div className="flex gap-2 items-center">
           <button
             onClick={() => {
-              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle' })
+              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle', '146': 'idle' })
               setWebhookModal(true)
             }}
             className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 flex items-center gap-2"
@@ -454,6 +528,19 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Sync
+          </button>
+          <button
+            onClick={async () => {
+              const rows = await fetchReport()
+              if (rows.length === 0) showError('No report found. Generate one first via Sync → Generate Weekly Activity Report.')
+              else setTimeout(() => reportPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+            }}
+            className="px-4 py-2 bg-indigo-50 text-indigo-700 text-sm font-medium rounded hover:bg-indigo-100 flex items-center gap-2 border border-indigo-200"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            View Report
           </button>
           <CsvControls onExport={handleExport} onImport={handleImport} />
           <button
@@ -748,6 +835,161 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         onConfirm={() => { setShowDiscardConfirm(false); setIsModalOpen(false); reset() }}
         onCancel={() => setShowDiscardConfirm(false)}
       />
+
+      {/* ── Weekly Activity Report Panel ───────────────────────────────────── */}
+      {(reportPolling || reportRows.length > 0) && (
+        <div ref={reportPanelRef} className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-3 bg-indigo-50 border-b border-indigo-100">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3 className="text-sm font-semibold text-indigo-800">
+                Weekly Activity Report{reportWeek !== null ? ` — Week ${reportWeek}` : ''}
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              {reportPolling && (
+                <span className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium">
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Processing…
+                </span>
+              )}
+              {!reportPolling && reportRows.length > 0 && (
+                <button
+                  onClick={() => fetchReport()}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </button>
+              )}
+            </div>
+          </div>
+
+          {reportPolling && reportRows.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-400">
+              n8n is generating the report — this usually takes 1–2 minutes…
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {(['LAST_WEEK_PROGRESS', 'NEXT_WEEK_LOOKAHEAD'] as const).map(section => {
+                const sectionRows = reportRows.filter(r => r.report_section === section)
+                const sectionLabel = section === 'LAST_WEEK_PROGRESS' ? 'Last Week Progress' : 'Next Week Lookahead'
+                const isOpen = reportSectionOpen[section]
+
+                const critBadge = (c: string | null) => {
+                  const cfg: Record<string, string> = {
+                    CRITICAL: 'bg-red-100 text-red-700',
+                    NEAR_CRITICAL: 'bg-amber-100 text-amber-700',
+                    NON_CRITICAL: 'bg-green-100 text-green-700',
+                    UNKNOWN: 'bg-gray-100 text-gray-500',
+                  }
+                  if (!c) return null
+                  return <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${cfg[c] ?? 'bg-gray-100 text-gray-500'}`}>{c.replace('_', ' ')}</span>
+                }
+
+                const statusBadge = (s: string | null) => {
+                  if (!s) return <span className="text-gray-400 text-xs">—</span>
+                  const cfg: Record<string, string> = {
+                    PROGRESSED: 'bg-blue-100 text-blue-700',
+                    COMPLETED: 'bg-green-100 text-green-700',
+                    PARTIAL_COMPLETION: 'bg-amber-100 text-amber-700',
+                    FULL_COMPLETION: 'bg-emerald-100 text-emerald-700',
+                  }
+                  return <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${cfg[s] ?? 'bg-gray-100 text-gray-500'}`}>{s.replace('_', ' ')}</span>
+                }
+
+                const pct = (v: number | null) => v != null ? `${Number(v).toFixed(1)}%` : '—'
+
+                return (
+                  <div key={section}>
+                    <button
+                      onClick={() => setReportSectionOpen(prev => ({ ...prev, [section]: !prev[section] }))}
+                      className="w-full flex items-center justify-between px-5 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">{sectionLabel}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">{sectionRows.length} activit{sectionRows.length !== 1 ? 'ies' : 'y'}</span>
+                        <svg className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {isOpen && (
+                      <div className="overflow-x-auto">
+                        {sectionRows.length === 0 ? (
+                          <p className="px-5 py-4 text-sm text-gray-400">No activities in this section.</p>
+                        ) : (
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-200">
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">Activity ID</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500">Activity Name</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">Work Type</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500 whitespace-nowrap">Discipline</th>
+                                {section === 'LAST_WEEK_PROGRESS' ? (
+                                  <>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-500 whitespace-nowrap">Prev %</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-500 whitespace-nowrap">Curr %</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-500 whitespace-nowrap">Progress</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Status</th>
+                                  </>
+                                ) : (
+                                  <>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-500 whitespace-nowrap">Curr %</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-gray-500 whitespace-nowrap">Forecast %</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Completion</th>
+                                  </>
+                                )}
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500">Criticality</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-500">Observation</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                              {sectionRows.map(row => (
+                                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+                                  <td className="px-3 py-2 font-mono text-gray-600 whitespace-nowrap">{row.activity_id}</td>
+                                  <td className="px-3 py-2 text-gray-800 max-w-xs">{row.activity_name ?? '—'}</td>
+                                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.work_type_name ?? '—'}</td>
+                                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.activity_discipline_name ?? '—'}</td>
+                                  {section === 'LAST_WEEK_PROGRESS' ? (
+                                    <>
+                                      <td className="px-3 py-2 text-right text-gray-600">{pct(row.previous_percent_complete)}</td>
+                                      <td className="px-3 py-2 text-right text-gray-800 font-medium">{pct(row.current_percent_complete)}</td>
+                                      <td className="px-3 py-2 text-right text-emerald-700 font-semibold">{pct(row.progress_achieved_percentage_points)}</td>
+                                      <td className="px-3 py-2">{statusBadge(row.reporting_status)}</td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td className="px-3 py-2 text-right text-gray-600">{pct(row.current_percent_complete)}</td>
+                                      <td className="px-3 py-2 text-right text-indigo-700 font-semibold">{pct(row.forecast_percent_complete_end_next_week)}</td>
+                                      <td className="px-3 py-2">{statusBadge(row.reporting_status)}</td>
+                                    </>
+                                  )}
+                                  <td className="px-3 py-2">{critBadge(row.criticality)}</td>
+                                  <td className="px-3 py-2 text-gray-500 max-w-sm">{row.observation ?? '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
