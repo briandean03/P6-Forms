@@ -347,10 +347,6 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
     setDeleteConfirm(null)
   }
 
-  const REPORT_EDITABLE_FIELDS = new Set<keyof WeeklyReportRow>([
-    'observation', 'reporting_status', 'criticality', 'forecast_percent_complete_end_next_week',
-  ])
-
   const startReportEdit = (rowId: number, field: keyof WeeklyReportRow, currentValue: string | number | null) => {
     setReportEditingCell({ rowId, field })
     setReportCellValue(currentValue?.toString() ?? '')
