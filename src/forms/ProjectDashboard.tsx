@@ -7,7 +7,7 @@ interface ProjectMeta {
   dgt_projectname: string | null
   dgt_projectid: string | null
   dgt_datadate: string | null
-  dgt_weeknum: number | null
+  dgt_current_weeknum: number | null
   dgt_contractorsname: string | null
   dgt_employersname: string | null
   dgt_location: string | null
@@ -168,7 +168,7 @@ export function ProjectDashboard({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (db as any)
         .from('dbp6_0000_projectdata')
-        .select('dgt_projectname, dgt_projectid, dgt_datadate, dgt_weeknum, dgt_contractorsname, dgt_employersname, dgt_location, dgt_projectstartdate, dgt_projectenddate')
+        .select('dgt_projectname, dgt_projectid, dgt_datadate, dgt_current_weeknum, dgt_contractorsname, dgt_employersname, dgt_location, dgt_projectstartdate, dgt_projectenddate')
         .eq('dgt_dbp6bd00projectdataid', projectId)
         .maybeSingle()
       if (data) setMeta(data)
@@ -184,7 +184,7 @@ export function ProjectDashboard({
     const setCard = (key: keyof DashboardCards, total: number, pending: number) =>
       setCards(prev => ({ ...prev, [key]: { total, pending, loading: false } }))
 
-    const weekNum = meta?.dgt_weeknum ?? null
+    const weekNum = meta?.dgt_current_weeknum ?? null
 
     await Promise.allSettled([
       // Engineering
@@ -256,7 +256,7 @@ export function ProjectDashboard({
         } catch { setCard('inspections', 0, 0) }
       })(),
     ])
-  }, [projectId, projectTextId, schemaName, meta?.dgt_weeknum])
+  }, [projectId, projectTextId, schemaName, meta?.dgt_current_weeknum])
 
   useEffect(() => {
     if (!metaLoading) fetchCards()
@@ -322,7 +322,7 @@ export function ProjectDashboard({
             <div className="h-8 w-px bg-gray-200 hidden sm:block" />
             <div>
               <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Week</p>
-              <p className="text-sm font-bold text-gray-800">{meta?.dgt_weeknum ?? '—'}</p>
+              <p className="text-sm font-bold text-gray-800">{meta?.dgt_current_weeknum ?? '—'}</p>
             </div>
             <div className="h-8 w-px bg-gray-200 hidden sm:block" />
             <div>

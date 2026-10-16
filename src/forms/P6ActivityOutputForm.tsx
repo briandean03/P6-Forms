@@ -8,7 +8,7 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 
 const ITEMS_PER_PAGE = 15
-type SortField = 'activity_id' | 'activity_name' | 'status' | 'duration_pct_complete' | 'actual_start' | 'actual_finish' | 'early_start' | 'early_finish' | 'total_float'
+type SortField = 'activity_id' | 'activity_name' | 'status' | 'duration_pct_complete' | 'actual_start' | 'actual_finish' | 'early_start' | 'early_finish' | 'total_float' | 'week_num'
 type SortDirection = 'asc' | 'desc'
 
 const formatDate = (d: string | null) => {
@@ -39,9 +39,11 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
   const [statusFilter, setStatusFilter] = useState('')
   const [wbsFilter, setWbsFilter] = useState('')
   const [activityTypeFilter, setActivityTypeFilter] = useState('')
+  const [weekNumFilter, setWeekNumFilter] = useState('')
   const [statusOptions, setStatusOptions] = useState<string[]>([])
   const [wbsOptions, setWbsOptions] = useState<string[]>([])
   const [activityTypeOptions, setActivityTypeOptions] = useState<string[]>([])
+  const [weekNumOptions, setWeekNumOptions] = useState<number[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [sortField, setSortField] = useState<SortField>('activity_id')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -52,13 +54,14 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
     if (!projectTextId) return
     const { data: rows } = await supabaseClient
       .from('p6_activity_output_flat')
-      .select('status, wbs_code, activity_type')
+      .select('status, wbs_code, activity_type, week_num')
       .eq('project_code', projectTextId)
     if (rows) {
-      const r = rows as { status: string | null; wbs_code: string | null; activity_type: string | null }[]
+      const r = rows as { status: string | null; wbs_code: string | null; activity_type: string | null; week_num: number | null }[]
       setStatusOptions([...new Set(r.map(x => x.status).filter(Boolean) as string[])].sort())
       setWbsOptions([...new Set(r.map(x => x.wbs_code).filter(Boolean) as string[])].sort())
       setActivityTypeOptions([...new Set(r.map(x => x.activity_type).filter(Boolean) as string[])].sort())
+      setWeekNumOptions([...new Set(r.map(x => x.week_num).filter(x => x != null) as number[])].sort((a, b) => a - b))
     }
   }
 
@@ -69,7 +72,7 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
     const to = from + ITEMS_PER_PAGE - 1
     let query = supabaseClient
       .from('p6_activity_output_flat')
-      .select('id,project_code,activity_id,activity_name,status,wbs_code,activity_type,duration_pct_complete,actual_start,actual_finish,early_start,early_finish,total_float', { count: 'exact' })
+      .select('id,project_code,activity_id,activity_name,status,wbs_code,activity_type,duration_pct_complete,actual_start,actual_finish,early_start,early_finish,total_float,week_num', { count: 'exact' })
       .eq('project_code', projectTextId)
       .order(sortField, { ascending: sortDirection === 'asc' })
       .range(from, to)
@@ -79,6 +82,7 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
     if (statusFilter) query = query.eq('status', statusFilter)
     if (wbsFilter) query = query.eq('wbs_code', wbsFilter)
     if (activityTypeFilter) query = query.eq('activity_type', activityTypeFilter)
+    if (weekNumFilter) query = query.eq('week_num', parseInt(weekNumFilter))
     const { data: records, count, error } = await query
     if (error) { showError('Failed to fetch data: ' + error.message) }
     else { setData((records as P6ActivityOutput[] | null) ?? []); setTotalCount(count ?? 0) }
@@ -90,12 +94,12 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
     return () => clearTimeout(t)
   }, [searchTerm])
-  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, statusFilter, wbsFilter, activityTypeFilter])
+  useEffect(() => { setCurrentPage(1) }, [debouncedSearch, statusFilter, wbsFilter, activityTypeFilter, weekNumFilter])
   useEffect(() => {
-    setStatusFilter(''); setWbsFilter(''); setActivityTypeFilter('')
+    setStatusFilter(''); setWbsFilter(''); setActivityTypeFilter(''); setWeekNumFilter('')
     setDebouncedSearch(''); setSearchTerm('')
   }, [projectTextId])
-  useEffect(() => { fetchData() }, [projectTextId, schemaName, currentPage, debouncedSearch, statusFilter, wbsFilter, activityTypeFilter, sortField, sortDirection])
+  useEffect(() => { fetchData() }, [projectTextId, schemaName, currentPage, debouncedSearch, statusFilter, wbsFilter, activityTypeFilter, weekNumFilter, sortField, sortDirection])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) { setSortDirection(d => d === 'asc' ? 'desc' : 'asc') }
@@ -110,6 +114,7 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
   }
 
   const colHeaders: { key: SortField; label: string }[] = [
+    { key: 'week_num', label: 'Week #' },
     { key: 'activity_id', label: 'Activity ID' },
     { key: 'activity_name', label: 'Activity Name' },
     { key: 'status', label: 'Status' },
@@ -121,12 +126,13 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
     { key: 'total_float', label: 'Total Float' },
   ]
 
-  const hasActiveFilters = statusFilter || wbsFilter || activityTypeFilter
+  const hasActiveFilters = statusFilter || wbsFilter || activityTypeFilter || weekNumFilter
 
   const clearFilters = () => {
     setStatusFilter('')
     setWbsFilter('')
     setActivityTypeFilter('')
+    setWeekNumFilter('')
   }
 
   const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE))
@@ -153,6 +159,11 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
         <select value={activityTypeFilter} onChange={e => setActivityTypeFilter(e.target.value)} className={selectCls}>
           <option value="">All Activity Types</option>
           {activityTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <select value={weekNumFilter} onChange={e => setWeekNumFilter(e.target.value)} className={selectCls}>
+          <option value="">All Weeks</option>
+          {weekNumOptions.map(w => <option key={w} value={w}>Week {w}</option>)}
         </select>
 
         {hasActiveFilters && (
@@ -187,9 +198,10 @@ export function P6ActivityOutputForm({ projectTextId, schemaName }: { projectTex
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {data.length === 0 ? (
-                  <tr><td colSpan={9} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
+                  <tr><td colSpan={10} className="px-6 py-8 text-center text-gray-500">No records found</td></tr>
                 ) : data.map(record => (
                   <tr key={record.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2.5 text-sm text-gray-700 whitespace-nowrap text-center">{record.week_num ?? '-'}</td>
                     <td className="px-3 py-2.5 text-sm font-mono text-gray-900 whitespace-nowrap">{record.activity_id || '-'}</td>
                     <td className="px-3 py-2.5 text-sm text-gray-900">{record.activity_name || '-'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">{statusBadge(record.status)}</td>

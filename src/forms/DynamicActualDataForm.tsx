@@ -15,10 +15,11 @@ type SortField =
   | 'dgt_actualstart'
   | 'dgt_actualfinish'
   | 'dgt_pctcomplete'
+  | 'total_float'
+  | 'remaining_duration'
 
 interface AppliedFilters {
   activityId: string
-  weekNum: string
 }
 
 export function DynamicActualDataForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
@@ -26,13 +27,13 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
   const [totalCount, setTotalCount] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [latestWeekNum, setLatestWeekNum] = useState<number | null>(null)
 
-  // Pending filter inputs (not yet applied)
+  // Pending filter input (not yet applied)
   const [activityInput, setActivityInput] = useState('')
-  const [weekNumInput, setWeekNumInput] = useState('')
 
   // Applied filters (sent to Supabase)
-  const [applied, setApplied] = useState<AppliedFilters>({ activityId: '', weekNum: '' })
+  const [applied, setApplied] = useState<AppliedFilters>({ activityId: '' })
 
   // Sort (applied immediately on header click)
   const [sortField, setSortField] = useState<SortField>('dgt_activityid')
@@ -41,31 +42,53 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
   const { notification, hideNotification, showError } = useNotification()
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-  const hasActiveFilters = applied.activityId || applied.weekNum
+  const hasActiveFilters = !!applied.activityId
+
+  const latestDataDate = data[0]?.dgt_datadate ?? null
 
   useEffect(() => {
     let cancelled = false
 
     const fetchData = async () => {
       setLoading(true)
+      const supabase = schemaClient(schemaName)
+
+      // Step 1: get the max week number for this project
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: maxRow, error: maxError } = await (supabase as any)
+        .from('dbp6_0006_progressdata')
+        .select('dgt_weeknum')
+        .eq('dgt_dbp6bd00projectdataid', projectId)
+        .order('dgt_weeknum', { ascending: false })
+        .limit(1)
+        .single()
+
+      if (cancelled) return
+
+      if (maxError || !maxRow) {
+        showError('Failed to determine latest week: ' + (maxError?.message ?? 'no data'))
+        setLoading(false)
+        return
+      }
+
+      const maxWeek: number = maxRow.dgt_weeknum
+      setLatestWeekNum(maxWeek)
+
+      // Step 2: fetch paginated data filtered to that week
       const from = (currentPage - 1) * PAGE_SIZE
       const to = from + PAGE_SIZE - 1
 
-      const supabase = schemaClient(schemaName)
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let query: any = supabase
-        .from('progress_latest_week')
+        .from('dbp6_0006_progressdata')
         .select('*', { count: 'exact' })
         .eq('dgt_dbp6bd00projectdataid', projectId)
+        .eq('dgt_weeknum', maxWeek)
         .order(sortField, { ascending: sortDir === 'asc' })
         .range(from, to)
 
       if (applied.activityId.trim()) {
         query = query.ilike('dgt_activityid', `%${applied.activityId.trim()}%`)
-      }
-      if (applied.weekNum.trim()) {
-        query = query.eq('dgt_weeknum', parseInt(applied.weekNum))
       }
 
       const { data: records, count, error } = await query
@@ -86,14 +109,13 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
   }, [projectId, schemaName, currentPage, applied, sortField, sortDir])
 
   const applyFilters = () => {
-    setApplied({ activityId: activityInput, weekNum: weekNumInput })
+    setApplied({ activityId: activityInput })
     setCurrentPage(1)
   }
 
   const clearFilters = () => {
     setActivityInput('')
-    setWeekNumInput('')
-    setApplied({ activityId: '', weekNum: '' })
+    setApplied({ activityId: '' })
     setCurrentPage(1)
   }
 
@@ -169,6 +191,15 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
     return 'bg-red-400'
   }
 
+  const getCriticalBadge = (val: string | null) => {
+    if (!val || val === '0' || val.toLowerCase() === 'false' || val.toLowerCase() === 'no') return null
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
+        Critical
+      </span>
+    )
+  }
+
   const rangeStart = totalCount === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
   const rangeEnd = Math.min(currentPage * PAGE_SIZE, totalCount)
 
@@ -180,6 +211,24 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
           message={notification.message}
           onClose={hideNotification}
         />
+      )}
+
+      {/* Latest week banner */}
+      {!loading && (latestWeekNum !== null || latestDataDate !== null) && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+          <svg className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-sm text-blue-800">
+            Showing <span className="font-semibold">latest week</span>
+            {latestWeekNum !== null && (
+              <> &mdash; Week <span className="font-semibold">{latestWeekNum}</span></>
+            )}
+            {latestDataDate !== null && (
+              <span className="text-blue-600 ml-1">(Data Date: {formatDate(latestDataDate)})</span>
+            )}
+          </span>
+        </div>
       )}
 
       {/* Filter bar */}
@@ -201,20 +250,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-          </div>
-
-          {/* Week # */}
-          <div className="w-28">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Week #</label>
-            <input
-              type="number"
-              value={weekNumInput}
-              onChange={e => setWeekNumInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. 42"
-              min="1"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
           </div>
 
           {/* Actions */}
@@ -247,11 +282,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                 Activity ID: <span className="font-medium">{applied.activityId}</span>
               </span>
             )}
-            {applied.weekNum && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200">
-                Week #: <span className="font-medium">{applied.weekNum}</span>
-              </span>
-            )}
           </div>
         )}
       </div>
@@ -280,18 +310,22 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <SortableHeader field="dgt_activityid" label="Activity ID" className="text-left" />
-                  <SortableHeader field="dgt_projectid" label="Project ID" className="text-left" />
                   <SortableHeader field="dgt_weeknum" label="Week #" className="text-center" />
                   <SortableHeader field="dgt_datadate" label="Data Date" className="text-left" />
                   <SortableHeader field="dgt_actualstart" label="Actual Start" className="text-left" />
                   <SortableHeader field="dgt_actualfinish" label="Actual Finish" className="text-left" />
                   <SortableHeader field="dgt_pctcomplete" label="% Complete" className="text-left" />
+                  <SortableHeader field="remaining_duration" label="Rem. Dur." className="text-center" />
+                  <SortableHeader field="total_float" label="Total Float" className="text-center" />
+                  <th className="px-3 py-2 text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap text-center">Free Float</th>
+                  <th className="px-3 py-2 text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap text-center">Critical</th>
+                  <th className="px-3 py-2 text-xs font-medium text-gray-600 uppercase tracking-wide whitespace-nowrap text-center">Longest Path</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={11} className="px-3 py-8 text-center text-sm text-gray-500">
                       No records found
                     </td>
                   </tr>
@@ -300,9 +334,6 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                     <tr key={record.dgt_dbp6bd06dynamicactualdataid} className="hover:bg-gray-50">
                       <td className="px-3 py-1.5 text-xs text-gray-900 font-mono whitespace-nowrap">
                         {record.dgt_activityid || '-'}
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-gray-700 whitespace-nowrap">
-                        {record.dgt_projectid || '-'}
                       </td>
                       <td className="px-3 py-1.5 text-xs text-gray-700 text-center">
                         {record.dgt_weeknum ?? '-'}
@@ -321,15 +352,36 @@ export function DynamicActualDataForm({ projectId, schemaName }: { projectId: st
                           <div className="w-16 bg-gray-200 rounded-full h-1.5 shrink-0">
                             <div
                               className={`h-1.5 rounded-full ${getProgressColor(record.dgt_pctcomplete)}`}
-                              style={{
-                                width: `${Math.min(record.dgt_pctcomplete || 0, 100)}%`,
-                              }}
+                              style={{ width: `${Math.min(record.dgt_pctcomplete || 0, 100)}%` }}
                             />
                           </div>
                           <span className="text-xs text-gray-600 font-mono">
                             {formatPct(record.dgt_pctcomplete)}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 text-center font-mono">
+                        {record.remaining_duration ?? '-'}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 text-center font-mono">
+                        {record.total_float ?? '-'}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-gray-700 text-center font-mono">
+                        {record.free_float ?? '-'}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-center">
+                        {getCriticalBadge(record.is_critical) ?? (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-center">
+                        {record.is_longest_path && record.is_longest_path !== '0' && record.is_longest_path.toLowerCase() !== 'false' && record.is_longest_path.toLowerCase() !== 'no' ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                            LP
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
                     </tr>
                   ))

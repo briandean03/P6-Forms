@@ -293,17 +293,17 @@ export function P6ActivityUpdatesForm({ projectTextId, schemaName }: { projectTe
     if (!projectTextId) { setProjectHeader(null); return }
     const { data: row } = await schemaClient(schemaName)
       .from('dbp6_0000_projectdata')
-      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_weeknum, rpt_week_offset, current_p6_project_code')
+      .select('dgt_projectid, dgt_projectname, dgt_datadate, dgt_dbp6bd00projectdataid, dgt_current_weeknum, rpt_week_offset, current_p6_project_code')
       .eq('dgt_projectid', projectTextId)
       .single()
     if (row) {
-      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_weeknum'> & { rpt_week_offset: number | null; current_p6_project_code: string | null }
+      const d = row as Pick<ProjectData, 'dgt_projectid' | 'dgt_projectname' | 'dgt_datadate' | 'dgt_dbp6bd00projectdataid' | 'dgt_current_weeknum'> & { rpt_week_offset: number | null; current_p6_project_code: string | null }
       setProjectHeader({
         project_code: d.dgt_projectid,
         project_name: d.dgt_projectname,
         data_date: d.dgt_datadate,
         project_uuid: d.dgt_dbp6bd00projectdataid,
-        week_num: d.dgt_weeknum,
+        week_num: d.dgt_current_weeknum,
         rpt_week_offset: d.rpt_week_offset,
         current_p6_project_code: d.current_p6_project_code ?? null,
       })

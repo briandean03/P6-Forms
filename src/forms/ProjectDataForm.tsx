@@ -30,7 +30,7 @@ interface ProjectDataFormData {
   dgt_datadate: string
   dgt_elapsedduration: string
   dgt_eotawarded: string
-  dgt_weeknum: string
+  dgt_current_weeknum: string
   timezoneruleversionnumber: string
   utcconversiontimezonecode: string
   owningbusinessunit: string
@@ -76,7 +76,7 @@ const DATE_FIELDS = new Set([
   'dgt_reportingstartingdate',
   'dgt_datadate',
 ])
-const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_weeknum'])
+const NUMBER_FIELDS = new Set(['dgt_contractvalue', 'dgt_current_weeknum'])
 const NON_EDITABLE_FIELDS = new Set<string>([])
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -119,6 +119,9 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   const [cellValue, setCellValue] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
+  const [reportEditingCell, setReportEditingCell] = useState<{ rowId: number; field: keyof WeeklyReportRow } | null>(null)
+  const [reportCellValue, setReportCellValue] = useState('')
+  const [reportSaving, setReportSaving] = useState(false)
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
   const {
@@ -342,6 +345,50 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
     }
     setDeleting(false)
     setDeleteConfirm(null)
+  }
+
+  const REPORT_EDITABLE_FIELDS = new Set<keyof WeeklyReportRow>([
+    'observation', 'reporting_status', 'criticality', 'forecast_percent_complete_end_next_week',
+  ])
+
+  const startReportEdit = (rowId: number, field: keyof WeeklyReportRow, currentValue: string | number | null) => {
+    setReportEditingCell({ rowId, field })
+    setReportCellValue(currentValue?.toString() ?? '')
+  }
+
+  const saveReportCell = async (rowId: number, field: keyof WeeklyReportRow) => {
+    setReportSaving(true)
+    const isNumeric = field === 'forecast_percent_complete_end_next_week'
+    const updateValue: string | number | null = reportCellValue === ''
+      ? null
+      : isNumeric ? parseFloat(reportCellValue) || null : reportCellValue
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('dbp6_0008_weekly_activity_report')
+        .update({ [field]: updateValue })
+        .eq('id', rowId)
+
+      if (error) {
+        showError('Failed to update: ' + error.message)
+      } else {
+        setReportRows(prev =>
+          prev.map(r => r.id === rowId ? { ...r, [field]: updateValue } : r)
+        )
+        showSuccess('Updated successfully')
+      }
+    } catch (err) {
+      showError('Failed to update: ' + String(err))
+    }
+    setReportSaving(false)
+    setReportEditingCell(null)
+    setReportCellValue('')
+  }
+
+  const handleReportCellKeyDown = (e: React.KeyboardEvent, rowId: number, field: keyof WeeklyReportRow) => {
+    if (e.key === 'Enter') saveReportCell(rowId, field)
+    else if (e.key === 'Escape') { setReportEditingCell(null); setReportCellValue('') }
   }
 
   const triggerWebhook = async (id: string, url: string, method: 'GET' | 'POST' = 'GET') => {
@@ -652,7 +699,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
                       <FieldRow label="End Date">{renderCell(record, 'dgt_projectenddate')}</FieldRow>
                       <FieldRow label="Reporting Start">{renderCell(record, 'dgt_reportingstartingdate')}</FieldRow>
                       <FieldRow label="Data Date">{renderCell(record, 'dgt_datadate')}</FieldRow>
-                      <FieldRow label="Week #">{renderCell(record, 'dgt_weeknum')}</FieldRow>
+                      <FieldRow label="Week #">{renderCell(record, 'dgt_current_weeknum')}</FieldRow>
                     </div>
                   </div>
 
@@ -732,7 +779,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
 
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Contract Value" type="number" {...register('dgt_contractvalue')} />
-            <FormField label="Week Number" type="number" {...register('dgt_weeknum')} />
+            <FormField label="Week Number" type="number" {...register('dgt_current_weeknum')} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -954,30 +1001,131 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                              {sectionRows.map(row => (
-                                <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                                  <td className="px-3 py-2 font-mono text-gray-600 whitespace-nowrap">{row.activity_id}</td>
-                                  <td className="px-3 py-2 text-gray-800 max-w-xs">{row.activity_name ?? '—'}</td>
-                                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.work_type_name ?? '—'}</td>
-                                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.activity_discipline_name ?? '—'}</td>
-                                  {section === 'LAST_WEEK_PROGRESS' ? (
-                                    <>
-                                      <td className="px-3 py-2 text-right text-gray-600">{pct(row.previous_percent_complete)}</td>
-                                      <td className="px-3 py-2 text-right text-gray-800 font-medium">{pct(row.current_percent_complete)}</td>
-                                      <td className="px-3 py-2 text-right text-emerald-700 font-semibold">{pct(row.progress_achieved_percentage_points)}</td>
-                                      <td className="px-3 py-2">{statusBadge(row.reporting_status)}</td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <td className="px-3 py-2 text-right text-gray-600">{pct(row.current_percent_complete)}</td>
-                                      <td className="px-3 py-2 text-right text-indigo-700 font-semibold">{pct(row.forecast_percent_complete_end_next_week)}</td>
-                                      <td className="px-3 py-2">{statusBadge(row.reporting_status)}</td>
-                                    </>
-                                  )}
-                                  <td className="px-3 py-2">{critBadge(row.criticality)}</td>
-                                  <td className="px-3 py-2 text-gray-500 max-w-sm">{row.observation ?? '—'}</td>
-                                </tr>
-                              ))}
+                              {sectionRows.map(row => {
+                                const isEditingField = (field: keyof WeeklyReportRow) =>
+                                  reportEditingCell?.rowId === row.id && reportEditingCell.field === field
+
+                                const EditableTextCell = ({ field, className = '' }: { field: keyof WeeklyReportRow; className?: string }) => {
+                                  const val = row[field] as string | null
+                                  if (isEditingField(field)) {
+                                    return (
+                                      <td className={`px-1 py-1 ${className}`}>
+                                        <input
+                                          autoFocus
+                                          type="text"
+                                          value={reportCellValue}
+                                          onChange={e => setReportCellValue(e.target.value)}
+                                          onKeyDown={e => handleReportCellKeyDown(e, row.id, field)}
+                                          onBlur={() => saveReportCell(row.id, field)}
+                                          disabled={reportSaving}
+                                          className="w-full px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                      </td>
+                                    )
+                                  }
+                                  return (
+                                    <td
+                                      className={`px-3 py-2 cursor-pointer hover:bg-blue-50 group ${className}`}
+                                      onClick={() => startReportEdit(row.id, field, val)}
+                                      title="Click to edit"
+                                    >
+                                      <span className="text-gray-500 group-hover:text-gray-700">{val ?? '—'}</span>
+                                    </td>
+                                  )
+                                }
+
+                                const EditableSelectCell = ({ field, options }: { field: keyof WeeklyReportRow; options: string[] }) => {
+                                  const val = row[field] as string | null
+                                  if (isEditingField(field)) {
+                                    return (
+                                      <td className="px-1 py-1">
+                                        <select
+                                          autoFocus
+                                          value={reportCellValue}
+                                          onChange={e => setReportCellValue(e.target.value)}
+                                          onBlur={() => saveReportCell(row.id, field)}
+                                          onKeyDown={e => { if (e.key === 'Escape') { setReportEditingCell(null); setReportCellValue('') } }}
+                                          disabled={reportSaving}
+                                          className="w-full px-1 py-0.5 text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        >
+                                          <option value="">—</option>
+                                          {options.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
+                                        </select>
+                                      </td>
+                                    )
+                                  }
+                                  return (
+                                    <td
+                                      className="px-3 py-2 cursor-pointer hover:bg-blue-50 group"
+                                      onClick={() => startReportEdit(row.id, field, val)}
+                                      title="Click to edit"
+                                    >
+                                      {val ? (
+                                        <span className="group-hover:opacity-80">{critBadge(val) ?? statusBadge(val)}</span>
+                                      ) : (
+                                        <span className="text-gray-300 group-hover:text-gray-400">—</span>
+                                      )}
+                                    </td>
+                                  )
+                                }
+
+                                const EditableNumberCell = ({ field }: { field: keyof WeeklyReportRow }) => {
+                                  const val = row[field] as number | null
+                                  if (isEditingField(field)) {
+                                    return (
+                                      <td className="px-1 py-1">
+                                        <input
+                                          autoFocus
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          step={0.1}
+                                          value={reportCellValue}
+                                          onChange={e => setReportCellValue(e.target.value)}
+                                          onKeyDown={e => handleReportCellKeyDown(e, row.id, field)}
+                                          onBlur={() => saveReportCell(row.id, field)}
+                                          disabled={reportSaving}
+                                          className="w-20 px-2 py-1 text-xs border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right"
+                                        />
+                                      </td>
+                                    )
+                                  }
+                                  return (
+                                    <td
+                                      className="px-3 py-2 text-right cursor-pointer hover:bg-blue-50 group"
+                                      onClick={() => startReportEdit(row.id, field, val)}
+                                      title="Click to edit"
+                                    >
+                                      <span className="text-indigo-700 font-semibold group-hover:opacity-80">{pct(val)}</span>
+                                    </td>
+                                  )
+                                }
+
+                                return (
+                                  <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-3 py-2 font-mono text-gray-600 whitespace-nowrap">{row.activity_id}</td>
+                                    <td className="px-3 py-2 text-gray-800 max-w-xs">{row.activity_name ?? '—'}</td>
+                                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.work_type_name ?? '—'}</td>
+                                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.activity_discipline_name ?? '—'}</td>
+                                    {section === 'LAST_WEEK_PROGRESS' ? (
+                                      <>
+                                        <td className="px-3 py-2 text-right text-gray-600">{pct(row.previous_percent_complete)}</td>
+                                        <td className="px-3 py-2 text-right text-gray-800 font-medium">{pct(row.current_percent_complete)}</td>
+                                        <td className="px-3 py-2 text-right text-emerald-700 font-semibold">{pct(row.progress_achieved_percentage_points)}</td>
+                                        <EditableSelectCell field="reporting_status" options={['PROGRESSED','COMPLETED','PARTIAL_COMPLETION','FULL_COMPLETION']} />
+                                      </>
+                                    ) : (
+                                      <>
+                                        <td className="px-3 py-2 text-right text-gray-600">{pct(row.current_percent_complete)}</td>
+                                        <EditableNumberCell field="forecast_percent_complete_end_next_week" />
+                                        <EditableSelectCell field="reporting_status" options={['PROGRESSED','COMPLETED','PARTIAL_COMPLETION','FULL_COMPLETION']} />
+                                      </>
+                                    )}
+                                    <EditableSelectCell field="criticality" options={['CRITICAL','NEAR_CRITICAL','NON_CRITICAL','UNKNOWN']} />
+                                    <EditableTextCell field="observation" className="max-w-sm" />
+                                  </tr>
+                                )
+                              })}
                             </tbody>
                           </table>
                         )}

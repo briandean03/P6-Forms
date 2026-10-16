@@ -51,17 +51,17 @@ export function PdfUploadForm({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (db as any)
         .from('dbp6_0000_projectdata')
-        .select('dgt_datadate, dgt_weeknum, dgt_projectid')
+        .select('dgt_datadate, dgt_current_weeknum, dgt_projectid')
         .eq('dgt_dbp6bd00projectdataid', projectId)
         .maybeSingle()
       if (!error && data) {
         setMeta({
           dataDate: data.dgt_datadate ?? null,
-          weekNum: data.dgt_weeknum ?? null,
+          weekNum: data.dgt_current_weeknum ?? null,
           projectId: data.dgt_projectid ?? null,
         })
         setDataDateOverride(data.dgt_datadate ? data.dgt_datadate.split('T')[0] : '')
-        setWeekNumOverride(data.dgt_weeknum != null ? String(data.dgt_weeknum) : '')
+        setWeekNumOverride(data.dgt_current_weeknum != null ? String(data.dgt_current_weeknum) : '')
       }
       setLoadingMeta(false)
     }

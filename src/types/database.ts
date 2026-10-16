@@ -103,6 +103,12 @@ export interface DynamicActualData {
   dgt_datadate: string | null
   dgt_weeknum: number | null
   rpt_weeknum: number | null
+  total_float: string | null
+  free_float: string | null
+  float_path: string | null
+  is_critical: string | null
+  is_longest_path: string | null
+  remaining_duration: string | null
 }
 
 export interface Type {
@@ -244,6 +250,7 @@ export interface P6ActivityOutput {
   total_float: string | null
   free_float: string | null
   last_updated: string | null
+  week_num: number | null
 }
 
 export interface P6ActivityUpdate {
@@ -311,7 +318,7 @@ export interface ProjectData {
   timezoneruleversionnumber: string | null
   utcconversiontimezonecode: string | null
   versionnumber: number | null
-  dgt_weeknum: number | null
+  dgt_current_weeknum: number | null
   owningbusinessunit: string | null
   project_id: string | null
   current_p6_project_code: string | null
