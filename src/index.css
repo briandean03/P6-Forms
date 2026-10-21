@@ -59,3 +59,19 @@ tbody tr:hover {
     display: none !important;
   }
 }
+
+/* Report dashboard nav — active pill */
+.report-nav-item {
+  color: #6b7280;
+  transition: background 0.15s, color 0.15s;
+}
+.report-nav-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.report-nav-item.active {
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}

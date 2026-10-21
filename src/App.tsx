@@ -20,6 +20,7 @@ import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
 import { PdfUploadForm } from '@/forms/PdfUploadForm'
 import { ProjectDashboard } from '@/forms/ProjectDashboard'
 import { InspectionReportForm } from '@/forms/InspectionReportForm'
+import { ReportDashboardForm } from '@/forms/ReportDashboardForm'
 
 type TabKey =
   | 'dashboard'
@@ -223,7 +224,7 @@ interface ProjectInfo {
 }
 
 function App() {
-  const [view, setView] = useState<'home' | 'app'>('home')
+  const [view, setView] = useState<'home' | 'app' | 'report'>('home')
   const [activeTab, setActiveTab] = useState<TabKey>('engineering')
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
@@ -478,6 +479,53 @@ function App() {
     )
   }
 
+  if (view === 'report') {
+    return (
+      <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
+        {notification && (
+          <Notification
+            type={notification.type}
+            message={notification.message}
+            onClose={hideNotification}
+          />
+        )}
+        <header className="bg-white border-b border-gray-200 flex-shrink-0">
+          <div className="px-6 py-2 border-b border-gray-100">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setView('app')}
+                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back
+              </button>
+              <div className="h-4 w-px bg-gray-300" />
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Project:</span>
+                <span className="text-sm font-semibold text-gray-900">{selectedProject?.projectname || '—'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-2">
+            <h2 className="text-2xl font-bold text-gray-900 text-center">Generate Report</h2>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto px-6 py-6">
+          <ReportDashboardForm
+            projectId={selectedProjectId}
+            projectTextId={selectedProject?.textProjectId || ''}
+            schemaName={selectedSchemaName}
+          />
+        </main>
+        <footer className="bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0">
+          <p className="text-center text-xs text-gray-400">P6 Project Controls Data Management</p>
+        </footer>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
       {notification && (
@@ -672,7 +720,16 @@ function App() {
                 <span className="text-xs text-gray-500">Project:</span>
                 <span className="text-sm font-semibold text-gray-900">{selectedProject?.projectname || '—'}</span>
               </div>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => setView('report')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Generate Report
+                </button>
                 <button
                   onClick={() => setShowRunUpdateConfirm(true)}
                   disabled={runUpdateLoading || !selectedProject?.textProjectId}

@@ -6,7 +6,9 @@
       "Bash(grep -r \"schema\\\\|Schema\" src/forms/*.tsx --include=\"*.tsx\")",
       "Bash(grep -n \"jpeg_url\\\\|jpg_url\\\\|image_url\\\\|pdf_form_uploads\" /c/Users/bd502/OneDrive/Desktop/Projects/P6ProjectControlForms/src/**/*.tsx)",
       "Bash(xargs grep -l \"pdf_form_uploads\\\\|jpeg_url\")",
-      "Bash(xargs grep -l \"pdf\\\\|PDF\")"
+      "Bash(xargs grep -l \"pdf\\\\|PDF\")",
+      "Bash(xargs grep -l \"onedrive\\\\|microsoft\\\\|graph\\\\|webhook\" -i)",
+      "Bash(npm install recharts)"
     ]
   }
 }
