@@ -483,21 +483,100 @@ function ProgressBarWidget({ ast }: { ast: Record<string, unknown> }) {
 
 const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
 
-type SeriesSpec = { key: string; label: string; color?: string }
+// Compact zoom slider — shows last `zoom`% of data points
+function ZoomSlider({ zoom, setZoom }: { zoom: number; setZoom: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <span className="text-[9px] text-gray-400 uppercase tracking-wider flex-shrink-0">Zoom</span>
+      <input
+        type="range" min={10} max={100} step={5} value={zoom}
+        onChange={e => setZoom(Number(e.target.value))}
+        className="flex-1 h-1 accent-blue-500 cursor-pointer"
+      />
+      <span className="text-[9px] text-gray-400 w-7 text-right">{zoom}%</span>
+    </div>
+  )
+}
+
+// Detect low-cardinality string columns suitable for filtering
+// Returns { key, values[] } pairs, ignoring xKey and the label field
+function detectFilterFields(
+  data: Record<string, unknown>[],
+  excludeKeys: string[]
+): { key: string; values: string[] }[] {
+  if (!data.length) return []
+  return Object.keys(data[0])
+    .filter(k => {
+      if (excludeKeys.includes(k)) return false
+      const sample = data[0][k]
+      if (typeof sample !== 'string') return false
+      const uniq = new Set(data.map(d => String(d[k] ?? '')))
+      return uniq.size >= 2 && uniq.size <= 15
+    })
+    .map(k => ({ key: k, values: [...new Set(data.map(d => String(d[k] ?? '')))] }))
+}
+
+// Compact filter bar — renders one dropdown per filterable field
+function ChartFilters({
+  fields,
+  active,
+  setActive,
+}: {
+  fields: { key: string; values: string[] }[]
+  active: Record<string, string>
+  setActive: (v: Record<string, string>) => void
+}) {
+  if (!fields.length) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+      {fields.map(f => (
+        <div key={f.key} className="flex items-center gap-1">
+          <span className="text-[9px] text-gray-400 capitalize">{f.key.replace(/_/g, ' ')}:</span>
+          <select
+            value={active[f.key] ?? ''}
+            onChange={e => setActive({ ...active, [f.key]: e.target.value })}
+            className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          >
+            <option value="">All</option>
+            {f.values.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+      ))}
+      {Object.values(active).some(Boolean) && (
+        <button
+          onClick={() => setActive({})}
+          className="text-[9px] text-gray-400 hover:text-gray-600 px-1 py-0.5 rounded border border-gray-200"
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  )
+}
+
+function applyFilters(data: Record<string, unknown>[], active: Record<string, string>) {
+  return Object.entries(active).reduce((acc, [k, v]) => {
+    if (!v) return acc
+    return acc.filter(row => String(row[k] ?? '') === v)
+  }, data)
+}
+
+type SeriesSpec = { key: string; label: string; color?: string; dashed?: boolean }
 
 // Normalise series from content:
-//   content.series[]: { value_field, name, color?, semantic_series? }
+//   content.series[]: { value_field, name, color?, line_style?, semantic_series? }
 // Falls back to all numeric keys except xKey.
 function normaliseSeries(content: Record<string, unknown>, xKey: string): SeriesSpec[] {
-  type RawSeries = { value_field?: string; name?: string; color?: string }
+  type RawSeries = { value_field?: string; name?: string; color?: string; line_style?: string; semantic_series?: string }
   const raw = content.series as RawSeries[] | null
   if (raw?.length) {
     return raw
       .filter(s => s.value_field)
       .map((s, i) => ({
-        key:   s.value_field!,
-        label: s.name ?? s.value_field!,
-        color: s.color ?? PALETTE[i % PALETTE.length],
+        key:    s.value_field!,
+        label:  s.name ?? s.value_field!,
+        color:  s.color ?? (s.semantic_series === 'planned' ? '#3b82f6' : s.semantic_series === 'actual' ? '#10b981' : PALETTE[i % PALETTE.length]),
+        dashed: s.line_style === 'dashed',
       }))
   }
   // Auto-infer from first data row
@@ -509,37 +588,235 @@ function normaliseSeries(content: Record<string, unknown>, xKey: string): Series
 }
 
 // line_chart — content.data[], content.series[].value_field, content.category_field
+// Routes to SCurveLineChartWidget when semantic_role === 's_curve'
 function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
+  const semanticRole = ast.semantic_role as string | null
+  const title = ast.title as string | null
+  const isSCurve = semanticRole === 's_curve' || (title ?? '').toLowerCase().includes('s-curve')
+  if (isSCurve) return <SCurveLineChartWidget ast={ast} />
+
   const content = getContent(ast)
   const data  = content.data as Record<string, unknown>[] | null
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
+  const labelKey = (content.category_label_field ?? xKey) as string
   const series = normaliseSeries(content, xKey)
+  const [zoom, setZoom] = useState(100)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
 
   if (!data?.length) return <NoData />
 
+  const filterFields = useMemo(() => detectFilterFields(data, [xKey, labelKey]), [data, xKey, labelKey])
+  const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
+  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
+  const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
+
   return (
-    <ResponsiveContainer width="100%" height={240}>
-      <LineChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
-        {series.map((s, i) => (
-          <Line
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            name={s.label}
-            stroke={s.color ?? PALETTE[i % PALETTE.length]}
-            dot={{ r: 2 }}
-            activeDot={{ r: 4 }}
-            strokeWidth={2}
-            connectNulls={false}
-          />
+    <div>
+      <ResponsiveContainer width="100%" height={240}>
+        <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {series.map((s, i) => (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color ?? PALETTE[i % PALETTE.length]}
+              strokeDasharray={s.dashed ? '6 3' : undefined}
+              dot={false}
+              activeDot={{ r: 4 }}
+              strokeWidth={2}
+              connectNulls={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
+      {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+    </div>
+  )
+}
+
+// ── S-Curve widget with Power BI-style range slicer ───────────────────────────
+function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
+  const content = getContent(ast)
+  const data = content.data as Record<string, unknown>[] | null
+  if (!data?.length) return <NoData />
+
+  const xKey      = (content.category_field      ?? 'period_end')   as string
+  const labelKey  = (content.category_label_field ?? xKey)           as string
+  const series    = normaliseSeries(content, xKey)
+  const yUnit     = ((content.y_axis as Record<string, unknown> | null)?.unit ?? '') as string
+
+  const totalLen = data.length
+  const [rangeStart, setRangeStart] = useState(0)
+  const [rangeEnd,   setRangeEnd]   = useState(totalLen - 1)
+  const trackRef  = useRef<HTMLDivElement>(null)
+  const dragging  = useRef<'start' | 'end' | null>(null)
+
+  // Keep range valid if data length changes
+  useEffect(() => {
+    setRangeStart(0)
+    setRangeEnd(totalLen - 1)
+  }, [totalLen])
+
+  const slicedData = useMemo(
+    () => data.slice(rangeStart, rangeEnd + 1).map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] })),
+    [data, rangeStart, rangeEnd, labelKey, xKey]
+  )
+
+  // Convert clientX → index clamped to [0, totalLen-1]
+  function clientXToIndex(clientX: number): number {
+    if (!trackRef.current) return 0
+    const rect = trackRef.current.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    return Math.round(ratio * (totalLen - 1))
+  }
+
+  function onMouseDown(handle: 'start' | 'end') {
+    return (e: React.MouseEvent) => {
+      e.preventDefault()
+      dragging.current = handle
+      const onMove = (ev: MouseEvent) => {
+        const idx = clientXToIndex(ev.clientX)
+        if (dragging.current === 'start') setRangeStart(Math.min(idx, rangeEnd - 1))
+        else                              setRangeEnd(Math.max(idx, rangeStart + 1))
+      }
+      const onUp = () => {
+        dragging.current = null
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup',   onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup',   onUp)
+    }
+  }
+
+  function onTouchStart(handle: 'start' | 'end') {
+    return () => {
+      const onMove = (ev: TouchEvent) => {
+        const idx = clientXToIndex(ev.touches[0].clientX)
+        if (handle === 'start') setRangeStart(Math.min(idx, rangeEnd - 1))
+        else                    setRangeEnd(Math.max(idx, rangeStart + 1))
+      }
+      const onEnd = () => {
+        window.removeEventListener('touchmove', onMove)
+        window.removeEventListener('touchend',  onEnd)
+      }
+      window.addEventListener('touchmove', onMove)
+      window.addEventListener('touchend',  onEnd)
+    }
+  }
+
+  const startPct = (rangeStart / (totalLen - 1)) * 100
+  const endPct   = (rangeEnd   / (totalLen - 1)) * 100
+  const startLabel = String(data[rangeStart]?.[labelKey] ?? data[rangeStart]?.[xKey] ?? '')
+  const endLabel   = String(data[rangeEnd]  ?.[labelKey] ?? data[rangeEnd]  ?.[xKey] ?? '')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const customTooltip = (props: any) => {
+    const { active, payload, label } = props
+    if (!active || !payload?.length) return null
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-xs">
+        <p className="font-semibold text-gray-600 mb-1">{label}</p>
+        {payload.map((p: { name: string; value: number; color: string }, i: number) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ background: p.color }} />
+            <span className="text-gray-500">{p.name}:</span>
+            <span className="font-bold text-gray-800">{p.value != null ? `${Number(p.value).toFixed(1)}${yUnit}` : '—'}</span>
+          </div>
         ))}
-      </LineChart>
-    </ResponsiveContainer>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Chart */}
+      <ResponsiveContainer width="100%" height={240}>
+        <LineChart data={slicedData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} unit={yUnit} domain={[0, 'auto']} />
+          <Tooltip content={customTooltip} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {series.map((s, i) => (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color ?? PALETTE[i % PALETTE.length]}
+              strokeDasharray={s.dashed ? '6 3' : undefined}
+              dot={false}
+              activeDot={{ r: 4 }}
+              strokeWidth={2}
+              connectNulls={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+
+      {/* Slicer */}
+      <div className="px-1 pt-1 pb-2 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center justify-between mb-1.5 px-1">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
+          <div className="flex items-center gap-1 text-[10px] text-gray-500">
+            <span className="font-medium text-gray-700">{startLabel}</span>
+            <span className="text-gray-300">→</span>
+            <span className="font-medium text-gray-700">{endLabel}</span>
+            <span className="ml-1 text-gray-400">({rangeEnd - rangeStart + 1} periods)</span>
+          </div>
+        </div>
+
+        {/* Track */}
+        <div
+          ref={trackRef}
+          className="relative mx-3 h-1.5 rounded-full bg-gray-200 cursor-pointer select-none"
+          style={{ userSelect: 'none' }}
+        >
+          {/* Selected range fill */}
+          <div
+            className="absolute h-full rounded-full bg-blue-400"
+            style={{ left: `${startPct}%`, width: `${endPct - startPct}%` }}
+          />
+
+          {/* Start handle */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white border-2 border-blue-500 shadow-md cursor-grab active:cursor-grabbing z-10 flex items-center justify-center"
+            style={{ left: `${startPct}%` }}
+            onMouseDown={onMouseDown('start')}
+            onTouchStart={onTouchStart('start')}
+          >
+            <div className="w-1 h-2 rounded-full bg-blue-400" />
+          </div>
+
+          {/* End handle */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white border-2 border-blue-500 shadow-md cursor-grab active:cursor-grabbing z-10 flex items-center justify-center"
+            style={{ left: `${endPct}%` }}
+            onMouseDown={onMouseDown('end')}
+            onTouchStart={onTouchStart('end')}
+          >
+            <div className="w-1 h-2 rounded-full bg-blue-400" />
+          </div>
+        </div>
+
+        {/* Tick labels — show first, middle, last */}
+        <div className="flex justify-between px-3 mt-1">
+          {[0, Math.floor((totalLen - 1) / 2), totalLen - 1].map(idx => (
+            <span key={idx} className="text-[9px] text-gray-400">
+              {String(data[idx]?.[labelKey] ?? data[idx]?.[xKey] ?? '')}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -547,14 +824,15 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 // Some grouped_bar_chart records nest data under content.chart.data instead of content.data
 function BarChartWidget({ ast, horizontal }: { ast: Record<string, unknown>; horizontal?: boolean }) {
   const content = getContent(ast)
-  // Support nested chart object: content.chart.{ data, series, category_field }
   const chartObj = (content.chart ?? {}) as Record<string, unknown>
   const data  = (content.data ?? chartObj.data) as Record<string, unknown>[] | null
   const merged = chartObj.data ? { ...content, ...chartObj } : content
   const xKey  = (merged.category_field ?? merged.x_key ?? merged.x_axis ?? 'category') as string
   const series = normaliseSeries(merged, xKey)
+  const [zoom, setZoom] = useState(100)
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
 
-  // Handle empty_state for unavailable data
   if (!data?.length) {
     const emptyState = (content.empty_state ?? chartObj.empty_state) as { heading?: string; message?: string } | null
     if (emptyState?.heading) {
@@ -568,36 +846,54 @@ function BarChartWidget({ ast, horizontal }: { ast: Record<string, unknown>; hor
     return <NoData />
   }
 
+  const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
+  const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
+
+  const toggleSeries = (key: string) =>
+    setHidden(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
+
+  const visibleSeries = series.filter(s => !hidden.has(s.key))
+
   if (horizontal) {
+    const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
     return (
-      <ResponsiveContainer width="100%" height={Math.max(200, data.length * 32)}>
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, left: 80, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-          <XAxis type="number" tick={{ fontSize: 10 }} />
-          <YAxis type="category" dataKey={xKey} tick={{ fontSize: 10 }} width={76} />
-          <Tooltip />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          {series.map((s, i) => (
-            <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[0, 2, 2, 0]} />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+      <div>
+        <ResponsiveContainer width="100%" height={Math.max(200, sliced.length * 32)}>
+          <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 12, left: 80, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+            <XAxis type="number" tick={{ fontSize: 10 }} />
+            <YAxis type="category" dataKey={xKey} tick={{ fontSize: 10 }} width={76} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: 11 }} onClick={p => toggleSeries(p.dataKey as string)} />
+            {visibleSeries.map((s, i) => (
+              <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[0, 2, 2, 0]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+        <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
+        {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+      </div>
     )
   }
 
+  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
   return (
-    <ResponsiveContainer width="100%" height={240}>
-      <BarChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
-        {series.map((s, i) => (
-          <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[2, 2, 0, 0]} />
-        ))}
-      </BarChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={sliced} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 11 }} onClick={p => toggleSeries(p.dataKey as string)} />
+          {visibleSeries.map((s, i) => (
+            <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[2, 2, 0, 0]} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
+      {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+    </div>
   )
 }
 
@@ -607,32 +903,42 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const data  = content.data as Record<string, unknown>[] | null
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
   const series = normaliseSeries(content, xKey)
+  const [zoom, setZoom] = useState(100)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
 
   if (!data?.length) return <NoData />
 
+  const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
+  const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
+  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
+
   return (
-    <ResponsiveContainer width="100%" height={240}>
-      <AreaChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
-        {series.map((s, i) => (
-          <Area
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            name={s.label}
-            stroke={s.color ?? PALETTE[i % PALETTE.length]}
-            fill={s.color ?? PALETTE[i % PALETTE.length]}
-            fillOpacity={0.15}
-            strokeWidth={2}
-            connectNulls={false}
-          />
-        ))}
-      </AreaChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={240}>
+        <AreaChart data={sliced} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {series.map((s, i) => (
+            <Area
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color ?? PALETTE[i % PALETTE.length]}
+              fill={s.color ?? PALETTE[i % PALETTE.length]}
+              fillOpacity={0.15}
+              strokeWidth={2}
+              connectNulls={false}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+      <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
+      {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+    </div>
   )
 }
 

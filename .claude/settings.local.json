@@ -8,7 +8,9 @@
       "Bash(xargs grep -l \"pdf_form_uploads\\\\|jpeg_url\")",
       "Bash(xargs grep -l \"pdf\\\\|PDF\")",
       "Bash(xargs grep -l \"onedrive\\\\|microsoft\\\\|graph\\\\|webhook\" -i)",
-      "Bash(npm install recharts)"
+      "Bash(npm install recharts)",
+      "Bash(python3 -c \":*)",
+      "Bash(node -e \":*)"
     ]
   }
 }
