@@ -333,10 +333,18 @@ function KpiCardWidget({ ast }: { ast: Record<string, unknown> }) {
 }
 
 // kpi_group — content.items[] OR content.kpis[]
+// Some KPI items use actual_current_period/kpi instead of value/label
 function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
-  const items = (content.items ?? content.kpis) as KpiItem[] | null
-  if (!items?.length) return <NoData />
+  const rawItems = (content.items ?? content.kpis) as (KpiItem & Record<string, unknown>)[] | null
+  if (!rawItems?.length) return <NoData />
+  const items: KpiItem[] = rawItems.map(raw => ({
+    ...raw,
+    label: (raw.label ?? raw.kpi ?? '') as string,
+    value: raw.value ?? raw.actual_current_period ?? null,
+    comparison_label: (raw.comparison_label ?? (raw.planned_current_period != null ? 'Planned' : null)) as string | null,
+    comparison_value: (raw.comparison_value ?? raw.planned_current_period ?? null) as number | null,
+  }))
   return (
     <div className="grid grid-cols-2 gap-2">
       {items.map((item, i) => <KpiCard key={i} item={item} />)}
@@ -369,18 +377,21 @@ function MetadataPanelWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// alert_panel — content.alerts[]: { alert_id, headline, severity, value, unit, detail, metrics[] }
+// alert_panel — content.alerts[]: { alert_id, title|headline, severity, value, unit, summary|detail, metrics[] }
 function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
+  type AlertMetric = { label: string; value: unknown; unit?: string | null }
   type AlertItem = {
     alert_id?: string
+    title?: string
     headline?: string
     label?: string
     severity?: string
     value?: number | null
     unit?: string
+    summary?: string
     detail?: string
-    metrics?: { label: string; value: unknown; unit?: string }[]
+    metrics?: AlertMetric[]
   }
   const alerts = (content.alerts ?? content.items ?? content.exceptions) as AlertItem[] | null
   if (!alerts?.length) return <NoData />
@@ -401,7 +412,8 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
           : isOverdue
           ? 'bg-orange-100 text-orange-700'
           : 'bg-amber-100 text-amber-700'
-        const headline = alert.headline ?? alert.label ?? ''
+        const headline = alert.title ?? alert.headline ?? alert.label ?? ''
+        const detail   = alert.summary ?? alert.detail ?? ''
         return (
           <div key={i} className={`rounded-lg border px-4 py-3 ${rowCls}`}>
             <div className="flex items-start justify-between gap-2">
@@ -414,8 +426,19 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize ${badgeCls}`}>{sev}</span>
               </div>
             </div>
-            {alert.detail && (
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{alert.detail}</p>
+            {detail && (
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{detail}</p>
+            )}
+            {alert.metrics && alert.metrics.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                {alert.metrics.map((m, j) => (
+                  <span key={j} className="text-[10px] text-gray-600">
+                    <span className="font-medium">{m.label}:</span>{' '}
+                    {m.value != null ? String(m.value) : '—'}
+                    {m.unit ? ` ${m.unit}` : ''}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         )
@@ -424,14 +447,16 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// status_summary — content.items[]: { key, label, value, unit, status_semantic, reference_value, reference_label }
+// status_summary — content.items[]: { key, label, value|count, unit, semantic_status|status_semantic, reference_value, reference_label }
 function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   type StatusItem = {
     key?: string
     label: string
     value?: number | null
+    count?: number | null
     unit?: string
+    semantic_status?: string
     status_semantic?: string
     reference_label?: string
     reference_value?: number | null
@@ -442,10 +467,12 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {items.map((item, i) => {
-        const sColor = severityColor(item.status_semantic)
+        const displayValue = item.value ?? item.count
+        const statusKey    = item.semantic_status ?? item.status_semantic
+        const sColor       = severityColor(statusKey)
         return (
           <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
-            <span className={`text-2xl font-bold ${sColor}`}>{item.value != null ? String(item.value) : '—'}</span>
+            <span className={`text-2xl font-bold ${sColor}`}>{displayValue != null ? String(displayValue) : '—'}</span>
             {item.unit && <span className="text-[10px] text-gray-400">{item.unit}</span>}
             <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mt-0.5 leading-tight">{item.label}</span>
             {item.reference_label && item.reference_value != null && (
