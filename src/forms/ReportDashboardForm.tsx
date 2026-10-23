@@ -263,6 +263,7 @@ type KpiItem = {
   unit?: string | null
   status?: string | null
   variance?: number | null
+  variance_unit?: string | null
   comparison_label?: string | null
   comparison_value?: number | null
   data_type?: string
@@ -272,7 +273,8 @@ function severityColor(status: string | null | undefined) {
   if (!status) return 'text-gray-500'
   if (['critical', 'error', 'behind'].includes(status)) return 'text-red-500'
   if (['overdue', 'warning'].includes(status)) return 'text-amber-600'
-  if (['ahead', 'ok', 'good'].includes(status)) return 'text-green-600'
+  if (['ahead', 'ok', 'good', 'on_track'].includes(status)) return 'text-green-600'
+  if (status === 'neutral') return 'text-gray-500'
   return 'text-gray-500'
 }
 
@@ -293,7 +295,7 @@ function KpiCard({ item }: { item: KpiItem }) {
       )}
       {variance != null && (
         <span className={`text-[10px] font-semibold mt-0.5 ${variance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-          {variance >= 0 ? '+' : ''}{fmtNum(variance)}{item.unit ? ' ' + item.unit : ''}
+          {variance >= 0 ? '+' : ''}{fmtNum(variance)}{item.variance_unit ? ' ' + item.variance_unit : (item.unit ? ' ' + item.unit : '')}
         </span>
       )}
       {item.status && (
@@ -315,6 +317,7 @@ function KpiCardWidget({ ast }: { ast: Record<string, unknown> }) {
     unit:             raw.unit as string | null,
     status:           raw.status as string | null,
     variance:         raw.variance as number | null,
+    variance_unit:    raw.variance_unit as string | null,
     comparison_label: raw.comparison_label as string | null,
     comparison_value: raw.comparison_value as number | null,
     data_type:        raw.data_type as string | undefined,
@@ -333,17 +336,37 @@ function KpiCardWidget({ ast }: { ast: Record<string, unknown> }) {
 }
 
 // kpi_group — content.items[] OR content.kpis[]
-// Some KPI items use actual_current_period/kpi instead of value/label
+// Some KPI items use actual_current_period/kpi instead of value/label.
+// content.empty_state: { title, message, hint } shown when data is unavailable.
 function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const rawItems = (content.items ?? content.kpis) as (KpiItem & Record<string, unknown>)[] | null
-  if (!rawItems?.length) return <NoData />
+
+  // If all items have status "unavailable" or none exist, check for an empty_state
+  const emptyState = content.empty_state as { title?: string; message?: string; hint?: string } | null
+  const hasData = rawItems?.some(r => r.value != null && r.status !== 'unavailable')
+
+  if (!rawItems?.length || (!hasData && emptyState?.title)) {
+    return (
+      <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-5 text-center space-y-1">
+        <p className="text-xs font-semibold text-gray-500">{emptyState?.title ?? 'No data available'}</p>
+        {emptyState?.message && <p className="text-xs text-gray-400 leading-relaxed">{emptyState.message}</p>}
+        {emptyState?.hint && <p className="text-[10px] text-gray-300 italic leading-relaxed mt-1">{emptyState.hint}</p>}
+      </div>
+    )
+  }
+
   const items: KpiItem[] = rawItems.map(raw => ({
     ...raw,
-    label: (raw.label ?? raw.kpi ?? '') as string,
-    value: raw.value ?? raw.actual_current_period ?? null,
+    label:            (raw.label ?? raw.kpi ?? '') as string,
+    value:            raw.value ?? raw.actual_current_period ?? null,
+    unit:             raw.unit as string | null,
+    status:           raw.status as string | null,
+    variance:         raw.variance as number | null,
+    variance_unit:    raw.variance_unit as string | null,
     comparison_label: (raw.comparison_label ?? (raw.planned_current_period != null ? 'Planned' : null)) as string | null,
     comparison_value: (raw.comparison_value ?? raw.planned_current_period ?? null) as number | null,
+    data_type:        raw.data_type as string | undefined,
   }))
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -352,23 +375,27 @@ function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// metadata_panel — content.fields[]: { key, label, value, status, emphasis, data_type }
+// metadata_panel — content.fields[] or content.items[]:
+//   { key, label, value, display_value?, status, emphasis, data_type }
+// emphasis: "primary" (col-span-2, large text) | "secondary" (normal, prominent) | "tertiary" (small, muted)
 function MetadataPanelWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
-  type Field = { key?: string; label: string; value: unknown; status?: string; emphasis?: string; data_type?: string }
-  // Actual schema uses "fields", fallback to "items" for robustness
+  type Field = { key?: string; label: string; value: unknown; display_value?: unknown; status?: string; emphasis?: string; data_type?: string }
   const fields = (content.fields ?? content.items) as Field[] | null
   if (!fields?.length) return <NoData />
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
       {fields.map((f, i) => {
         const isUnavailable = f.status === 'unavailable'
-        const isPrimary = f.emphasis === 'primary'
+        const isPrimary   = f.emphasis === 'primary'
+        const isTertiary  = f.emphasis === 'tertiary'
+        // Prefer display_value when present (e.g. "W17" instead of 17, or formatted date)
+        const display = f.display_value ?? f.value
         return (
           <div key={i} className={isPrimary ? 'col-span-2' : ''}>
-            <dt className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{f.label}</dt>
-            <dd className={`text-sm font-medium ${isUnavailable ? 'text-gray-300 italic' : 'text-gray-800'}`}>
-              {f.value != null ? String(f.value) : isUnavailable ? 'Unavailable' : '—'}
+            <dt className={`text-[10px] font-semibold uppercase tracking-wide ${isTertiary ? 'text-gray-300' : 'text-gray-400'}`}>{f.label}</dt>
+            <dd className={`font-medium ${isPrimary ? 'text-base text-gray-900' : isTertiary ? 'text-xs text-gray-400' : 'text-sm text-gray-800'} ${isUnavailable ? 'italic opacity-50' : ''}`}>
+              {display != null ? String(display) : isUnavailable ? 'Unavailable' : '—'}
             </dd>
           </div>
         )
@@ -447,7 +474,12 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// status_summary — content.items[]: { key, label, value|count, unit, semantic_status|status_semantic, reference_value, reference_label }
+// status_summary — multiple content shapes:
+//   content.items[]:        { key, label, value|count, unit, semantic_status|status_semantic, reference_label, reference_value }
+//   content.statuses[]:     { label, value, unit, semantic_status, status_code, percentage_of_total }   (widget [32] QA/QC)
+//   content.metrics[]:      { key, label, value, unit, status, status_label, share_of_total_percent }   (widget [31] Aging)
+//   content.status_counts[]: fallback
+// Also renders content.breakdown.rows[] as a compact table when present.
 function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   type StatusItem = {
@@ -456,31 +488,51 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
     value?: number | null
     count?: number | null
     unit?: string
+    status?: string
     semantic_status?: string
     status_semantic?: string
+    status_label?: string
     reference_label?: string
     reference_value?: number | null
+    share_of_total_percent?: number | null
+    percentage_of_total?: number | null
   }
-  const items = (content.items ?? content.statuses ?? content.status_counts) as StatusItem[] | null
-  if (!items?.length) return <NoData />
+
+  // Normalise from any of the known array fields
+  const raw = (content.items ?? content.statuses ?? content.metrics ?? content.status_counts) as StatusItem[] | null
+  if (!raw?.length) return <NoData />
+
+  // breakdown.rows gives a supplementary table (e.g. per-transmittal-type for Aging widget)
+  const breakdownRows = ((content.breakdown as Record<string, unknown> | null)?.rows) as Record<string, unknown>[] | null
+  const breakdownCols = ((content.breakdown as Record<string, unknown> | null)?.columns) as { key: string; label: string }[] | null
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {items.map((item, i) => {
-        const displayValue = item.value ?? item.count
-        const statusKey    = item.semantic_status ?? item.status_semantic
-        const sColor       = severityColor(statusKey)
-        return (
-          <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
-            <span className={`text-2xl font-bold ${sColor}`}>{displayValue != null ? String(displayValue) : '—'}</span>
-            {item.unit && <span className="text-[10px] text-gray-400">{item.unit}</span>}
-            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mt-0.5 leading-tight">{item.label}</span>
-            {item.reference_label && item.reference_value != null && (
-              <span className="text-[10px] text-gray-400 mt-0.5">of {item.reference_value} {item.reference_label.toLowerCase()}</span>
-            )}
-          </div>
-        )
-      })}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        {raw.map((item, i) => {
+          const displayValue = item.value ?? item.count
+          const statusKey    = item.status ?? item.semantic_status ?? item.status_semantic
+          const sColor       = severityColor(statusKey)
+          const subLabel     = item.status_label ?? (item.share_of_total_percent != null ? `${item.share_of_total_percent}% of total` : null) ?? (item.percentage_of_total != null ? `${item.percentage_of_total}%` : null)
+          return (
+            <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
+              <span className={`text-2xl font-bold ${sColor}`}>{displayValue != null ? String(displayValue) : '—'}</span>
+              {item.unit && <span className="text-[10px] text-gray-400">{item.unit}</span>}
+              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mt-0.5 leading-tight">{item.label}</span>
+              {subLabel && <span className="text-[10px] text-gray-400 mt-0.5">{subLabel}</span>}
+              {item.reference_label && item.reference_value != null && (
+                <span className="text-[10px] text-gray-400 mt-0.5">of {item.reference_value} {item.reference_label.toLowerCase()}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {breakdownRows?.length ? (
+        <SortableTable
+          columns={breakdownCols?.length ? breakdownCols : Object.keys(breakdownRows[0])}
+          rows={breakdownRows}
+        />
+      ) : null}
     </div>
   )
 }
@@ -969,47 +1021,87 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// donut_chart — content.data[]: { status_label, status_code, count, percentage, color? }
+// donut_chart — data items vary by widget but share common patterns:
+//   name:  status_label | label | name | status_code
+//   value: count | value
+//   pct:   display_percent | percentage | percent_of_categorized
+//   color: color (optional)
+//   zero:  zero_value | is_zero_count | (value === 0)
+// center_label: { label, value, unit, secondary_label?, secondary_value?, secondary_unit? }
 function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
-  type Slice = {
-    name?: string; label?: string; status_label?: string; status_code?: string
-    value?: number; count?: number; color?: string
-  }
+  type Slice = Record<string, unknown>
   const raw = (content.data ?? content.segments ?? content.slices) as Slice[] | null
 
   if (!raw?.length) return <NoData />
-  // Filter out zero-count slices to keep the donut readable
-  const normalised = raw
-    .map(d => ({
-      name:  d.status_label ?? d.label ?? d.name ?? d.status_code ?? '?',
-      value: d.count ?? d.value ?? 0,
-      color: d.color,
-    }))
+
+  type NormSlice = { name: string; value: number; pct: number; color?: string }
+  const normalised: NormSlice[] = raw
+    .map(d => {
+      const name  = String(d.status_label ?? d.label ?? d.name ?? d.status_code ?? '?')
+      const value = (d.count ?? d.value ?? 0) as number
+      const pct   = (d.display_percent ?? d.percentage ?? d.percent_of_categorized ?? 0) as number
+      return { name, value, pct, color: d.color as string | undefined }
+    })
+    // Filter zero-count slices (explicit flag or derived)
     .filter(d => d.value > 0)
 
+  const centerLabel = content.center_label as { label?: string; value?: number; unit?: string; secondary_label?: string; secondary_value?: number; secondary_unit?: string } | null
+
+  if (!normalised.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-4 text-center gap-1">
+        <p className="text-xs font-semibold text-gray-400">All categories are zero</p>
+        {centerLabel && (
+          <p className="text-[10px] text-gray-300">{centerLabel.label}: {centerLabel.value ?? 0} {centerLabel.unit ?? ''}</p>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <PieChart>
-        <Pie
-          data={normalised}
-          dataKey="value"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          innerRadius={55}
-          outerRadius={85}
-          label={({ name, percent }: { name?: string; percent?: number }) =>
-            `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`
-          }
-        >
-          {normalised.map((entry, idx) => (
-            <Cell key={idx} fill={entry.color ?? PALETTE[idx % PALETTE.length]} />
-          ))}
-        </Pie>
-        <Tooltip />
-      </PieChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={220}>
+        <PieChart>
+          <Pie
+            data={normalised}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            innerRadius={55}
+            outerRadius={85}
+            label={({ name, index }: { name?: string; index?: number }) => {
+              const entry = normalised[index ?? 0]
+              const p = entry?.pct ?? 0
+              return `${name ?? ''} ${p.toFixed(0)}%`
+            }}
+            labelLine={false}
+          >
+            {normalised.map((entry, idx) => (
+              <Cell key={idx} fill={entry.color ?? PALETTE[idx % PALETTE.length]} />
+            ))}
+          </Pie>
+          <Tooltip />
+        </PieChart>
+      </ResponsiveContainer>
+      {centerLabel && (
+        <div className="text-center mt-1">
+          <p className="text-[10px] text-gray-400 leading-tight">
+            <span className="font-semibold text-gray-700">{centerLabel.value ?? 0}</span>{' '}
+            {centerLabel.unit && <span>{centerLabel.unit}</span>}
+            {' · '}{centerLabel.label}
+          </p>
+          {centerLabel.secondary_label && (
+            <p className="text-[10px] text-gray-400 leading-tight">
+              <span className="font-semibold text-gray-700">{centerLabel.secondary_value ?? 0}</span>{' '}
+              {centerLabel.secondary_unit && <span>{centerLabel.secondary_unit}</span>}
+              {' · '}{centerLabel.secondary_label}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
