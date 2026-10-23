@@ -1180,6 +1180,78 @@ function JsonFallback({ ast, type }: { ast: Record<string, unknown>; type: strin
   )
 }
 
+// narrative_summary — content.items[]: { id, order, title, category, severity, narrative, evidence[], required_action, navigation }
+function NarrativeSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
+  const content = getContent(ast)
+  type EvidenceItem = { label: string; value: unknown; unit?: string | null; data_type?: string }
+  type NarrativeItem = {
+    id?: string
+    order?: number
+    title?: string
+    category?: string
+    severity?: string
+    narrative?: string
+    evidence?: EvidenceItem[]
+    required_action?: string
+    navigation?: { label?: string; target_page_id?: string }
+  }
+  const heading  = content.heading  as string | undefined
+  const subtitle = content.subtitle as string | undefined
+  const footerNote = content.footer_note as string | undefined
+  const items = (content.items ?? []) as NarrativeItem[]
+  if (!items.length) return <NoData />
+
+  return (
+    <div className="space-y-3">
+      {heading && <p className="text-xs font-semibold text-gray-700">{heading}</p>}
+      {subtitle && <p className="text-[11px] text-gray-500 leading-relaxed">{subtitle}</p>}
+      {items
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((item, i) => {
+          const sev = item.severity ?? 'info'
+          const isCritical = sev === 'critical' || sev === 'error'
+          const isWarning  = sev === 'warning'
+          const borderCls  = isCritical ? 'border-red-300'  : isWarning ? 'border-amber-300'  : 'border-blue-200'
+          const bgCls      = isCritical ? 'bg-red-50'       : isWarning ? 'bg-amber-50'       : 'bg-blue-50'
+          const badgeCls   = isCritical ? 'bg-red-100 text-red-700' : isWarning ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+          const actionCls  = isCritical ? 'border-red-200 text-red-800' : isWarning ? 'border-amber-200 text-amber-800' : 'border-blue-200 text-blue-800'
+          return (
+            <div key={item.id ?? i} className={`rounded-lg border ${borderCls} ${bgCls} px-4 py-3 space-y-2`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-xs font-semibold text-gray-800 leading-snug flex-1">{item.title}</p>
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize flex-shrink-0 ${badgeCls}`}>{sev}</span>
+              </div>
+              {item.narrative && (
+                <p className="text-[11px] text-gray-600 leading-relaxed">{item.narrative}</p>
+              )}
+              {item.evidence && item.evidence.length > 0 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+                  {item.evidence.map((ev, j) => (
+                    <span key={j} className="text-[10px] text-gray-600">
+                      <span className="font-medium">{ev.label}:</span>{' '}
+                      {ev.value != null ? String(ev.value) : '—'}
+                      {ev.unit ? ` ${ev.unit}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {item.required_action && (
+                <div className={`mt-1 rounded border-l-2 pl-2 py-1 ${actionCls}`}>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide">Required action: </span>
+                  <span className="text-[10px]">{item.required_action}</span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      {footerNote && (
+        <p className="text-[10px] text-gray-400 leading-relaxed italic pt-1">{footerNote}</p>
+      )}
+    </div>
+  )
+}
+
 // ── Widget sizing hint ────────────────────────────────────────────────────────
 // Returns a CSS grid column-span class for a 4-column grid.
 // small (1 col): KPI tiles, progress bars, single-metric cards
@@ -1209,6 +1281,7 @@ function colSpan(type: string | null): string {
     case 'hierarchical_table':
     case 'resource_table':
     case 'alert_panel':
+    case 'narrative_summary':
     case 'text_block':
     default:
       return 'col-span-4'
@@ -1242,6 +1315,7 @@ function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
       case 'lookahead_table':    return <MilestoneTableWidget ast={ast} />
       case 'hierarchical_table': return <HierarchicalTableWidget ast={ast} />
       case 'resource_table':     return <ResourceTableWidget ast={ast} />
+      case 'narrative_summary':  return <NarrativeSummaryWidget ast={ast} />
       case 'text_block':         return <TextBlockWidget ast={ast} />
       default:                   return <JsonFallback ast={ast} type={type} />
     }
