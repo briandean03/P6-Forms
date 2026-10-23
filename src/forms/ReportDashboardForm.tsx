@@ -419,12 +419,29 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
     summary?: string
     detail?: string
     metrics?: AlertMetric[]
+    // engineering exception fields (WGT-005 shape)
+    reference?: string
+    subject?: string
+    metric_label?: string
+    metric_value?: number | null
+    metric_unit?: string
+    date_label?: string
+    date_value?: string
+    document_class_label?: string
+    discipline?: string
+    exception_type?: string
   }
   const alerts = (content.alerts ?? content.items ?? content.exceptions) as AlertItem[] | null
   if (!alerts?.length) return <NoData />
 
+  // Also render a top-level headline summary if present
+  const panelHeadline = content.headline as string | undefined
+
   return (
     <div className="space-y-2">
+      {panelHeadline && (
+        <p className="text-[11px] text-gray-600 leading-relaxed pb-1">{panelHeadline}</p>
+      )}
       {alerts.map((alert, i) => {
         const sev = alert.severity ?? 'warning'
         const isCritical = sev === 'critical' || sev === 'error'
@@ -439,20 +456,50 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
           : isOverdue
           ? 'bg-orange-100 text-orange-700'
           : 'bg-amber-100 text-amber-700'
-        const headline = alert.title ?? alert.headline ?? alert.label ?? ''
-        const detail   = alert.summary ?? alert.detail ?? ''
+
+        // Resolve headline: prefer explicit title/headline/label, fall back to
+        // the engineering exception shape (reference + optional subject)
+        const headline = alert.title ?? alert.headline ?? alert.label
+          ?? (alert.reference
+            ? [alert.reference, alert.subject].filter(Boolean).join(' — ')
+            : '')
+
+        // Resolve detail text
+        const detail = alert.summary ?? alert.detail
+          ?? (alert.date_label && alert.date_value
+            ? `${alert.date_label}: ${alert.date_value}`
+            : undefined)
+
+        // Resolve numeric metric
+        const metricValue = alert.value ?? alert.metric_value
+        const metricUnit  = alert.unit  ?? alert.metric_unit
+
+        // Sub-chips for document class / discipline / metric label
+        const chips = [
+          alert.document_class_label,
+          alert.discipline,
+          alert.metric_label,
+        ].filter(Boolean)
+
         return (
-          <div key={i} className={`rounded-lg border px-4 py-3 ${rowCls}`}>
+          <div key={alert.alert_id ?? i} className={`rounded-lg border px-4 py-3 ${rowCls}`}>
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-semibold text-gray-800 leading-snug flex-1">{headline}</p>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {alert.value != null && (
-                  <span className="text-base font-bold text-gray-900">{String(alert.value)}</span>
+                {metricValue != null && (
+                  <span className="text-base font-bold text-gray-900">{String(metricValue)}</span>
                 )}
-                {alert.unit && <span className="text-xs text-gray-500">{alert.unit}</span>}
+                {metricUnit && <span className="text-xs text-gray-500">{metricUnit}</span>}
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize ${badgeCls}`}>{sev}</span>
               </div>
             </div>
+            {chips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {chips.map((chip, j) => (
+                  <span key={j} className="text-[10px] px-1.5 py-0.5 rounded bg-white/70 border border-gray-200 text-gray-500">{chip}</span>
+                ))}
+              </div>
+            )}
             {detail && (
               <p className="text-xs text-gray-500 mt-1 leading-relaxed">{detail}</p>
             )}
