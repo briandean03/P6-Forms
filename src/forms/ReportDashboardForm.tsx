@@ -2067,11 +2067,11 @@ function ExecutiveOverviewPage({
           </div>
         </div>
 
-        {/* ── QA/QC + Exceptions row ─────────────────────────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: 16, alignItems: 'stretch' }}>
+        {/* ── QA/QC + Exceptions — single-column stacked layout ─────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* QA/QC */}
-          <div style={{ ...CARD, padding: '14px 16px', alignSelf: 'start' }}>
+          {/* QA/QC — full-width row 1 */}
+          <div style={{ ...CARD }}>
             <p style={{ ...SECTION_LABEL, marginBottom: 8 }}>{wgt006?.widget_title ?? 'Overall QA/QC Open vs Closed'}</p>
 
             {/* Segment bar */}
@@ -2139,9 +2139,9 @@ function ExecutiveOverviewPage({
             )}
           </div>
 
-          {/* Major Exceptions */}
+          {/* Major Exceptions — full-width row 2 */}
           {wgt007 && (
-            <div style={{ ...CARD }}>
+            <div style={{ ...CARD, padding: '16px 20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{wgt007.widget_title}</p>
                 {excCnts && (
