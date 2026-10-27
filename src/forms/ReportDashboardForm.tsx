@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
+  ReferenceLine,
 } from 'recharts'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
@@ -56,6 +57,50 @@ function fmtNum(v: unknown, decimals = 1): string {
   const n = Number(v)
   if (isNaN(n)) return String(v)
   return n % 1 === 0 ? String(n) : n.toFixed(decimals)
+}
+
+// Whole-number formatter — rounds to nearest integer (for worker/manpower counts)
+function fmtInt(v: unknown): string {
+  if (v == null) return '—'
+  const n = Number(v)
+  if (isNaN(n)) return String(v)
+  return String(Math.round(n))
+}
+
+// Returns true if the unit string indicates a headcount / manpower quantity
+function isWorkerUnit(unit: string | null | undefined): boolean {
+  if (!unit) return false
+  const u = unit.toLowerCase()
+  return ['worker', 'workers', 'manpower', 'headcount', 'persons', 'person', 'people', 'staff', 'head'].some(k => u.includes(k))
+}
+
+// Context that carries the current report's Data Date (ISO string) to all chart widgets
+const DataDateContext = createContext<string>('')
+
+// Find the x-axis label value in chart data whose date is closest to the given dataDate ISO string
+function findDataDateLabel(
+  data: Record<string, unknown>[],
+  xKey: string,
+  labelKey: string,
+  dataDate: string,
+): string | null {
+  if (!dataDate || !data.length) return null
+  const target = new Date(dataDate).getTime()
+  if (isNaN(target)) return null
+  let best: string | null = null
+  let bestDiff = Infinity
+  for (const row of data) {
+    const raw = String(row[labelKey] ?? row[xKey] ?? '')
+    const t = new Date(raw).getTime()
+    if (!isNaN(t)) {
+      const diff = Math.abs(t - target)
+      if (diff < bestDiff) {
+        bestDiff = diff
+        best = raw
+      }
+    }
+  }
+  return best
 }
 
 // ── Generic reusable sub-components ──────────────────────────────────────────
@@ -151,13 +196,13 @@ function SortableTable({
   }
 
   const thBase = accentHeader
-    ? 'px-3 py-2 text-left font-semibold text-red-600 uppercase tracking-wider whitespace-nowrap bg-red-50'
-    : 'px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50'
+    ? 'px-3 py-2.5 text-left font-semibold text-red-600 uppercase tracking-wider whitespace-nowrap bg-red-50 text-[11px]'
+    : 'px-3 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 text-[11px]'
 
   return (
     <div className="flex flex-col min-h-0 h-full">
       {/* Filter bar */}
-      <div className="flex items-center gap-2 mb-2 flex-shrink-0">
+      <div className="no-print flex items-center gap-2 mb-2 flex-shrink-0">
         <div className="relative flex-1">
           <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
@@ -167,13 +212,13 @@ function SortableTable({
             value={filter}
             onChange={e => setFilter(e.target.value)}
             placeholder="Filter rows…"
-            className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
           />
         </div>
         <select
           value={colFilter ?? ''}
           onChange={e => setColFilter(e.target.value || null)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-600 max-w-[120px]"
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-600 max-w-[120px]"
         >
           <option value="">All columns</option>
           {specs.map(({ key, label }) => (
@@ -188,14 +233,14 @@ function SortableTable({
             Clear
           </button>
         )}
-        <span className="text-[10px] text-gray-400 whitespace-nowrap flex-shrink-0">
+        <span className="text-[11px] text-gray-400 whitespace-nowrap flex-shrink-0">
           {sorted.length}/{rows.length} rows
         </span>
       </div>
 
       {/* Table with frozen header */}
-      <div ref={containerRef} className="overflow-auto flex-1" style={{ maxHeight: '420px' }}>
-        <table className="min-w-full text-xs border-separate border-spacing-0">
+      <div ref={containerRef} className="overflow-auto flex-1" style={{ maxHeight: '560px' }}>
+        <table className="min-w-full border-separate border-spacing-0" style={{ fontSize: 12 }}>
           <thead>
             <tr>
               {specs.map(({ key, label }) => (
@@ -221,7 +266,7 @@ function SortableTable({
             ) : sorted.map((row, idx) => (
               <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50/40 transition-colors`}>
                 {specs.map(({ key }) => (
-                  <td key={key} className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                  <td key={key} className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
                     {row[key] != null ? String(row[key]) : '—'}
                   </td>
                 ))}
@@ -281,25 +326,29 @@ function severityColor(status: string | null | undefined) {
 function KpiCard({ item }: { item: KpiItem }) {
   const sColor = severityColor(item.status)
   const variance = item.variance
+  const isWorker = isWorkerUnit(item.unit) || item.data_type === 'integer' || item.data_type === 'count'
+  const displayValue = item.value != null
+    ? (isWorker ? fmtInt(item.value) : String(item.value))
+    : '—'
   return (
-    <div className="flex flex-col rounded-lg px-3 py-2 bg-gray-50 border border-gray-100">
-      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">{item.label}</span>
-      <span className="text-xl font-bold mt-0.5 text-gray-900">
-        {item.value != null ? String(item.value) : '—'}
+    <div className="flex flex-col rounded-lg px-4 py-3 bg-gray-50 border border-gray-100">
+      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate">{item.label}</span>
+      <span className="text-2xl font-bold mt-1 text-gray-900">
+        {displayValue}
         {item.unit && <span className="text-sm font-normal text-gray-500 ml-1">{item.unit}</span>}
       </span>
       {item.comparison_label && (
-        <span className="text-[10px] text-gray-400 mt-0.5">
-          {item.comparison_label}{item.comparison_value != null ? `: ${fmtNum(item.comparison_value)}${item.unit ? ' ' + item.unit : ''}` : ''}
+        <span className="text-[11px] text-gray-400 mt-1">
+          {item.comparison_label}{item.comparison_value != null ? `: ${isWorker ? fmtInt(item.comparison_value) : fmtNum(item.comparison_value)}${item.unit ? ' ' + item.unit : ''}` : ''}
         </span>
       )}
       {variance != null && (
-        <span className={`text-[10px] font-semibold mt-0.5 ${variance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+        <span className={`text-[11px] font-semibold mt-1 ${variance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
           {variance >= 0 ? '+' : ''}{fmtNum(variance)}{item.variance_unit ? ' ' + item.variance_unit : (item.unit ? ' ' + item.unit : '')}
         </span>
       )}
       {item.status && (
-        <span className={`text-[10px] font-semibold mt-0.5 capitalize ${sColor}`}>{item.status}</span>
+        <span className={`text-[11px] font-semibold mt-1 capitalize ${sColor}`}>{item.status}</span>
       )}
     </div>
   )
@@ -335,12 +384,12 @@ function KpiCardWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// kpi_group — content.items[] OR content.kpis[]
+// kpi_group — content.items[] OR content.kpis[] OR content.metrics[]
 // Some KPI items use actual_current_period/kpi instead of value/label.
 // content.empty_state: { title, message, hint } shown when data is unavailable.
 function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
-  const rawItems = (content.items ?? content.kpis) as (KpiItem & Record<string, unknown>)[] | null
+  const rawItems = (content.items ?? content.kpis ?? content.metrics) as (KpiItem & Record<string, unknown>)[] | null
 
   // If all items have status "unavailable" or none exist, check for an empty_state
   const emptyState = content.empty_state as { title?: string; message?: string; hint?: string } | null
@@ -609,19 +658,43 @@ function ProgressBarWidget({ ast }: { ast: Record<string, unknown> }) {
 
 const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
 
-// Compact zoom slider — shows last `zoom`% of data points
-function ZoomSlider({ zoom, setZoom }: { zoom: number; setZoom: (v: number) => void }) {
+// Compact timeframe picker — pill buttons that control how many data points to show.
+// frames: array of { label, pct } where pct is the tail-% of the full data set to keep.
+// "All" = 100%, "6M" ≈ last 26 weeks, "3M" ≈ last 13 weeks, "1M" ≈ last 4 weeks.
+const TIMEFRAMES = [
+  { label: '1M',  pct: 12 },
+  { label: '3M',  pct: 37 },
+  { label: '6M',  pct: 74 },
+  { label: 'All', pct: 100 },
+] as const
+type TFLabel = typeof TIMEFRAMES[number]['label']
+
+function TimeframePicker({ active, setActive }: { active: TFLabel; setActive: (v: TFLabel) => void }) {
   return (
-    <div className="flex items-center gap-2 mt-2">
-      <span className="text-[9px] text-gray-400 uppercase tracking-wider flex-shrink-0">Zoom</span>
-      <input
-        type="range" min={10} max={100} step={5} value={zoom}
-        onChange={e => setZoom(Number(e.target.value))}
-        className="flex-1 h-1 accent-blue-500 cursor-pointer"
-      />
-      <span className="text-[9px] text-gray-400 w-7 text-right">{zoom}%</span>
+    <div className="no-print flex items-center gap-1 mt-2 justify-end">
+      {TIMEFRAMES.map(tf => (
+        <button
+          key={tf.label}
+          onClick={() => setActive(tf.label)}
+          style={{
+            fontSize: 10, fontWeight: active === tf.label ? 700 : 500,
+            padding: '2px 8px', borderRadius: 4, border: '1px solid',
+            borderColor: active === tf.label ? '#3b82f6' : '#e2e8f0',
+            background: active === tf.label ? '#eff6ff' : '#ffffff',
+            color: active === tf.label ? '#1d4ed8' : '#64748b',
+            cursor: 'pointer', lineHeight: '16px',
+          }}
+        >
+          {tf.label}
+        </button>
+      ))}
     </div>
   )
+}
+
+// Convert a timeframe label to a data-slice pct
+function tfPct(label: TFLabel): number {
+  return TIMEFRAMES.find(t => t.label === label)?.pct ?? 100
 }
 
 // Detect low-cardinality string columns suitable for filtering
@@ -726,25 +799,27 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
   const labelKey = (content.category_label_field ?? xKey) as string
   const series = normaliseSeries(content, xKey)
-  const [zoom, setZoom] = useState(100)
+  const [tf, setTf] = useState<TFLabel>('All')
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
+  const dataDate = useContext(DataDateContext)
 
   if (!data?.length) return <NoData />
 
   const filterFields = useMemo(() => detectFilterFields(data, [xKey, labelKey]), [data, xKey, labelKey])
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
-  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
+  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
+  const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip contentStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
           {series.map((s, i) => (
             <Line
               key={s.key}
@@ -759,10 +834,19 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
               connectNulls={false}
             />
           ))}
+          {ddLabel && (
+            <ReferenceLine
+              x={ddLabel}
+              stroke="#ef4444"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+      {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -777,6 +861,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const labelKey  = (content.category_label_field ?? xKey)           as string
   const series    = normaliseSeries(content, xKey)
   const yUnit     = ((content.y_axis as Record<string, unknown> | null)?.unit ?? '') as string
+  const dataDate  = useContext(DataDateContext)
 
   const totalLen = data.length
   const [rangeStart, setRangeStart] = useState(0)
@@ -854,23 +939,25 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
           <div key={i} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ background: p.color }} />
             <span className="text-gray-500">{p.name}:</span>
-            <span className="font-bold text-gray-800">{p.value != null ? `${Number(p.value).toFixed(1)}${yUnit}` : '—'}</span>
+            <span className="font-bold text-gray-800">{p.value != null ? `${Number(p.value).toFixed(2)}${yUnit}` : '—'}</span>
           </div>
         ))}
       </div>
     )
   }
 
+  const ddLabelSC = findDataDateLabel(slicedData, xKey, labelKey, dataDate)
+
   return (
     <div className="flex flex-col gap-3">
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={slicedData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={slicedData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 10 }} unit={yUnit} domain={[0, 'auto']} />
+          <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 11 }} unit={yUnit} domain={[0, 'auto']} />
           <Tooltip content={customTooltip} />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
           {series.map((s, i) => (
             <Line
               key={s.key}
@@ -885,6 +972,15 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
               connectNulls={false}
             />
           ))}
+          {ddLabelSC && (
+            <ReferenceLine
+              x={ddLabelSC}
+              stroke="#ef4444"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
 
@@ -946,16 +1042,16 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 }
 
-// bar_chart / grouped_bar_chart
+// bar_chart / grouped_bar_chart / stacked_bar_chart
 // Some grouped_bar_chart records nest data under content.chart.data instead of content.data
-function BarChartWidget({ ast, horizontal }: { ast: Record<string, unknown>; horizontal?: boolean }) {
+function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unknown>; horizontal?: boolean; stacked?: boolean }) {
   const content = getContent(ast)
   const chartObj = (content.chart ?? {}) as Record<string, unknown>
   const data  = (content.data ?? chartObj.data) as Record<string, unknown>[] | null
   const merged = chartObj.data ? { ...content, ...chartObj } : content
   const xKey  = (merged.category_field ?? merged.x_key ?? merged.x_axis ?? 'category') as string
   const series = normaliseSeries(merged, xKey)
-  const [zoom, setZoom] = useState(100)
+  const [tf, setTf] = useState<TFLabel>('All')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
 
@@ -981,44 +1077,51 @@ function BarChartWidget({ ast, horizontal }: { ast: Record<string, unknown>; hor
   const visibleSeries = series.filter(s => !hidden.has(s.key))
 
   if (horizontal) {
-    const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
+    const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
     return (
       <div>
-        <ResponsiveContainer width="100%" height={Math.max(200, sliced.length * 32)}>
-          <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 12, left: 80, bottom: 4 }}>
+        <ResponsiveContainer width="100%" height={Math.max(220, sliced.length * 36)}>
+          <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 16, left: 80, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 10 }} />
-            <YAxis type="category" dataKey={xKey} tick={{ fontSize: 10 }} width={76} />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 11 }} onClick={p => toggleSeries(p.dataKey as string)} />
+            <XAxis type="number" tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={76} />
+            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
             {visibleSeries.map((s, i) => (
-              <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[0, 2, 2, 0]} />
+              <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[0, 3, 3, 0]} />
             ))}
           </BarChart>
         </ResponsiveContainer>
         <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-        {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+        {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
       </div>
     )
   }
 
-  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
+  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
   return (
     <div>
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={sliced} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip />
-          <Legend wrapperStyle={{ fontSize: 11 }} onClick={p => toggleSeries(p.dataKey as string)} />
+          <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip contentStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
           {visibleSeries.map((s, i) => (
-            <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[2, 2, 0, 0]} />
+            <Bar
+              key={s.key}
+              dataKey={s.key}
+              name={s.label}
+              fill={s.color ?? PALETTE[i % PALETTE.length]}
+              stackId={stacked ? 'stack' : undefined}
+              radius={stacked ? undefined : [3, 3, 0, 0]}
+            />
           ))}
         </BarChart>
       </ResponsiveContainer>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+      {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1029,24 +1132,26 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const data  = content.data as Record<string, unknown>[] | null
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
   const series = normaliseSeries(content, xKey)
-  const [zoom, setZoom] = useState(100)
+  const [tf, setTf] = useState<TFLabel>('All')
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
+  const dataDate = useContext(DataDateContext)
 
   if (!data?.length) return <NoData />
 
   const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
-  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * zoom / 100)))
+  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
+  const ddLabelArea = findDataDateLabel(sliced, xKey, xKey, dataDate)
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={240}>
-        <AreaChart data={sliced} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <AreaChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 10 }} />
-          <Tooltip />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip contentStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
           {series.map((s, i) => (
             <Area
               key={s.key}
@@ -1060,10 +1165,19 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
               connectNulls={false}
             />
           ))}
+          {ddLabelArea && (
+            <ReferenceLine
+              x={ddLabelArea}
+              stroke="#ef4444"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {filtered.length > 1 && <ZoomSlider zoom={zoom} setZoom={setZoom} />}
+      {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1071,83 +1185,123 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
 // donut_chart — data items vary by widget but share common patterns:
 //   name:  status_label | label | name | status_code
 //   value: count | value
-//   pct:   display_percent | percentage | percent_of_categorized
-//   color: color (optional)
+//   pct:   share_percent | display_percent | percentage | percent_of_categorized | share_of_categorised_statuses_percent
+//   color: color (optional, falls back to STATUS_COLORS then PALETTE)
 //   zero:  zero_value | is_zero_count | (value === 0)
-// center_label: { label, value, unit, secondary_label?, secondary_value?, secondary_unit? }
+// center: center_metric | center_label — { label, value, unit, secondary_label?, secondary_value?, secondary_unit? }
+
+// Fixed colour map for engineering/QA status codes (A=green, B=blue, C=amber, D=red, UR=slate, OPN=red, CLS=green)
+const STATUS_COLORS: Record<string, string> = {
+  A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#ef4444', UR: '#94a3b8',
+  OPN: '#ef4444', CLS: '#10b981',
+}
+
 function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   type Slice = Record<string, unknown>
   const raw = (content.data ?? content.segments ?? content.slices) as Slice[] | null
 
+  // Resolve center metric — supports both center_metric and center_label shapes
+  type CenterMeta = { label?: string; value?: number; unit?: string; secondary_label?: string; secondary_value?: number; secondary_unit?: string }
+  const centerMeta = (content.center_metric ?? content.center_label) as CenterMeta | null
+
   if (!raw?.length) return <NoData />
 
-  type NormSlice = { name: string; value: number; pct: number; color?: string }
+  type NormSlice = { name: string; code: string; value: number; pct: number; color: string }
   const normalised: NormSlice[] = raw
     .map(d => {
-      const name  = String(d.status_label ?? d.label ?? d.name ?? d.status_code ?? '?')
+      const code  = String(d.status_code ?? d.code ?? '')
+      const name  = String(d.status_label ?? d.label ?? d.name ?? code ?? '?')
       const value = (d.count ?? d.value ?? 0) as number
-      const pct   = (d.display_percent ?? d.percentage ?? d.percent_of_categorized ?? 0) as number
-      return { name, value, pct, color: d.color as string | undefined }
+      // Accept any of the percentage field names used across widgets
+      const pct   = (
+        d.share_percent ??
+        d.share_of_categorised_statuses_percent ??
+        d.display_percent ??
+        d.percentage ??
+        d.percent_of_categorized ??
+        0
+      ) as number
+      const color = (d.color as string | undefined) ?? STATUS_COLORS[code] ?? PALETTE[0]
+      return { name, code, value, pct, color }
     })
-    // Filter zero-count slices (explicit flag or derived)
     .filter(d => d.value > 0)
-
-  const centerLabel = content.center_label as { label?: string; value?: number; unit?: string; secondary_label?: string; secondary_value?: number; secondary_unit?: string } | null
 
   if (!normalised.length) {
     return (
       <div className="flex flex-col items-center justify-center py-4 text-center gap-1">
         <p className="text-xs font-semibold text-gray-400">All categories are zero</p>
-        {centerLabel && (
-          <p className="text-[10px] text-gray-300">{centerLabel.label}: {centerLabel.value ?? 0} {centerLabel.unit ?? ''}</p>
+        {centerMeta && (
+          <p className="text-[10px] text-gray-300">{centerMeta.label}: {centerMeta.value ?? 0} {centerMeta.unit ?? ''}</p>
         )}
       </div>
     )
   }
 
+  const total = normalised.reduce((s, d) => s + d.value, 0)
+
   return (
-    <div>
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie
-            data={normalised}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={55}
-            outerRadius={85}
-            label={({ name, index }: { name?: string; index?: number }) => {
-              const entry = normalised[index ?? 0]
-              const p = entry?.pct ?? 0
-              return `${name ?? ''} ${p.toFixed(0)}%`
-            }}
-            labelLine={false}
-          >
-            {normalised.map((entry, idx) => (
-              <Cell key={idx} fill={entry.color ?? PALETTE[idx % PALETTE.length]} />
-            ))}
-          </Pie>
-          <Tooltip />
-        </PieChart>
-      </ResponsiveContainer>
-      {centerLabel && (
-        <div className="text-center mt-1">
-          <p className="text-[10px] text-gray-400 leading-tight">
-            <span className="font-semibold text-gray-700">{centerLabel.value ?? 0}</span>{' '}
-            {centerLabel.unit && <span>{centerLabel.unit}</span>}
-            {' · '}{centerLabel.label}
-          </p>
-          {centerLabel.secondary_label && (
-            <p className="text-[10px] text-gray-400 leading-tight">
-              <span className="font-semibold text-gray-700">{centerLabel.secondary_value ?? 0}</span>{' '}
-              {centerLabel.secondary_unit && <span>{centerLabel.secondary_unit}</span>}
-              {' · '}{centerLabel.secondary_label}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Donut + center metric */}
+      <div style={{ position: 'relative', flexShrink: 0, width: 180 }}>
+        <ResponsiveContainer width={180} height={180}>
+          <PieChart>
+            <Pie
+              data={normalised}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={52}
+              outerRadius={78}
+              paddingAngle={2}
+              strokeWidth={0}
+            >
+              {normalised.map((entry, idx) => (
+                <Cell key={idx} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(val, name) => {
+                const n = typeof val === 'number' ? val : Number(val ?? 0)
+                return [`${n} (${((n / total) * 100).toFixed(2)}%)`, name]
+              }}
+              contentStyle={{ fontSize: 11, borderRadius: 6 }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        {/* Center label overlay */}
+        {centerMeta && (
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            textAlign: 'center', pointerEvents: 'none', width: 90,
+          }}>
+            <p style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>
+              {centerMeta.value ?? total}
             </p>
-          )}
-        </div>
-      )}
+            <p style={{ fontSize: 9, color: '#94a3b8', margin: '3px 0 0', lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {centerMeta.unit ?? 'total'}
+            </p>
+          </div>
+        )}
+      </div>
+      {/* Right-side legend */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {normalised.map((entry, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: entry.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: '#64748b', flex: 1, lineHeight: 1.3 }}>{entry.name}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{entry.value}</span>
+            <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 36, textAlign: 'right' }}>
+              {entry.pct > 0 ? `${entry.pct.toFixed(0)}%` : `${((entry.value / total) * 100).toFixed(0)}%`}
+            </span>
+          </div>
+        ))}
+        {centerMeta?.label && (
+          <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, lineHeight: 1.4 }}>{centerMeta.label}</p>
+        )}
+      </div>
     </div>
   )
 }
@@ -1318,6 +1472,7 @@ function colSpan(type: string | null): string {
     case 'line_chart':
     case 'bar_chart':
     case 'grouped_bar_chart':
+    case 'stacked_bar_chart':
     case 'horizontal_bar_chart':
     case 'area_chart':
       return 'col-span-2'
@@ -1352,6 +1507,7 @@ function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
       case 'line_chart':         return <LineChartWidget ast={ast} />
       case 'bar_chart':
       case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
+      case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
       case 'horizontal_bar_chart':return <BarChartWidget ast={ast} horizontal />
       case 'area_chart':         return <AreaChartWidget ast={ast} />
       case 'pie_chart':          return <DonutChartWidget ast={ast} />
@@ -1381,6 +1537,1641 @@ function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
         </p>
       )}
       <div className={isTable ? 'flex-1 flex flex-col min-h-0' : ''}>{inner}</div>
+    </div>
+  )
+}
+
+// ── Executive Overview — full redesign ────────────────────────────────────────
+
+type ExecPageProps = {
+  page: StructurePlanPage
+  pageIdx: number
+  pageWidgets: DashboardWidget[]
+  structure: DashboardStructure
+  structures: DashboardStructure[]
+  selectedStructureId: string
+  onStructureChange: (e: React.ChangeEvent<HTMLSelectElement>) => void
+}
+
+function ExecutiveOverviewPage({
+  page: _page,
+  pageWidgets,
+  structure,
+  structures,
+  selectedStructureId,
+  onStructureChange,
+}: ExecPageProps) {
+  type KR = Record<string, unknown>
+
+  // widget lookup
+  const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
+  const wgt001 = w('WGT-001')
+  const wgt002 = w('WGT-002')
+  const wgt003 = w('WGT-003')
+  const wgt005 = w('WGT-005')
+  const wgt006 = w('WGT-006')
+  const wgt007 = w('WGT-007')
+
+  // ── WGT-001 header ───────────────────────────────────────────────────────────
+  const metaC = wgt001 ? getContent(wgt001.widget_ast ?? {}) : null
+  const metaItems = ((metaC?.fields ?? metaC?.items) as { key?: string; label?: string; value: unknown }[] | null) ?? []
+  const m = (key: string) => metaItems.find(f => f.key === key)?.value
+  const projectName = String(m('project_name') ?? structure.dashboard_title ?? 'Project Report')
+  const period      = String(m('reporting_period_label') ?? '')
+  const dataDate    = String(m('data_date') ?? structure.data_date ?? '')
+  const weekNum     = m('week_num') ?? structure.week_num
+
+  // ── KPI helpers ───────────────────────────────────────────────────────────────
+  const itemsOf = (wgt: typeof wgt001) => {
+    if (!wgt) return [] as KR[]
+    const c = getContent(wgt.widget_ast ?? {})
+    return ((c.items ?? c.kpis ?? []) as KR[])
+  }
+  const v = (item: KR, dec = 2) => {
+    const val = item.value
+    if (val == null) return '—'
+    const n = Number(val)
+    return isNaN(n) ? String(val) : n % 1 === 0 ? String(n) : n.toFixed(dec)
+  }
+  const chip = (item: KR, posGood = true) => {
+    const n = Number(item.variance)
+    if (isNaN(n) || item.variance == null) return null
+    const unit = String(item.variance_unit ?? item.unit ?? '')
+    const txt = `${n >= 0 ? '+' : ''}${n % 1 === 0 ? n : n.toFixed(2)}${unit ? ' ' + unit : ''}`
+    return { txt, good: posGood ? n >= 0 : n <= 0 }
+  }
+
+  // ── WGT-002 progress ─────────────────────────────────────────────────────────
+  const progItems = itemsOf(wgt002)
+  const pPlanned  = progItems.find(x => x.key === 'overall_planned_progress')  ?? progItems[0] ?? {}
+  const pActual   = progItems.find(x => x.key === 'overall_actual_progress')   ?? progItems[1] ?? {}
+  const pVar      = progItems.find(x => x.key === 'progress_variance')         ?? progItems[2] ?? {}
+
+  // ── WGT-003 schedule ─────────────────────────────────────────────────────────
+  const schItems  = itemsOf(wgt003)
+  const sForecast = schItems.find(x => x.key === 'forecast_completion_date')   ?? schItems[0] ?? {}
+  const sDelay    = schItems.find(x => x.key === 'current_project_delay_days') ?? schItems[1] ?? {}
+  const sCrit     = schItems.find(x => x.key === 'critical_activity_count')    ?? schItems[2] ?? {}
+  const sStatus   = schItems.find(x => x.key === 'schedule_status')            ?? schItems[3] ?? {}
+
+  // ── WGT-005 engineering ───────────────────────────────────────────────────────
+  const engC     = wgt005 ? getContent(wgt005.widget_ast ?? {}) : null
+  const engPrim  = ((engC?.primary_metrics  ?? []) as KR[])
+  const engCtx   = ((engC?.context_metrics  ?? []) as KR[])
+  const engDist  = ((engC?.status_distribution as KR | null)?.segments ?? []) as KR[]
+  const engTotM  = ((engC?.context_metrics as KR[] | null)?.find(x => x.key === 'total_transmittals'))
+  const engTotal = Number(engTotM?.value ?? 0)
+  const ePlanned = engPrim.find(x => x.key === 'planned_submissions_to_date')
+  const eSubmit  = engPrim.find(x => x.key === 'submitted_to_date')
+  const eOverdue = engPrim.find(x => x.key === 'overdue_not_submitted')
+  const eUR      = engCtx.find(x => x.key === 'under_review_over_14_days')
+  const eSTC     = engCtx.find(x => x.key === 'status_c_not_resubmitted_over_14_days')
+  const ENG_COLORS: Record<string, string> = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#9ca3af', UR: '#ef4444' }
+
+  // ── WGT-006 QA/QC ────────────────────────────────────────────────────────────
+  const qaC    = wgt006 ? getContent(wgt006.widget_ast ?? {}) : null
+  const qaMet  = ((qaC?.metrics  ?? []) as KR[])
+  const qaSeg  = ((qaC?.segments ?? []) as KR[])
+  const qaAge  = ((qaC?.aging_exceptions ?? []) as KR[])
+  const qaT    = qaMet.find(x => x.key === 'total_documents')
+  const qaCls  = qaMet.find(x => x.key === 'closed')
+  const qaOpn  = qaMet.find(x => x.key === 'open')
+  const qa14   = qaMet.find(x => x.key === 'open_over_14_days')
+  const QA_COLORS: Record<string, string> = { CLS: '#10b981', OPN: '#f59e0b' }
+
+  // ── WGT-007 exceptions ────────────────────────────────────────────────────────
+  const excC      = wgt007 ? getContent(wgt007.widget_ast ?? {}) : null
+  const excGroups = ((excC?.groups     ?? []) as KR[])
+  const excItems  = ((excC?.exceptions ?? []) as KR[])
+  const excHd     = excC?.headline as string | undefined
+  const excCnts   = excC?.counts  as KR | undefined
+
+  // ── WGT-002 previous-week comparison data ─────────────────────────────────────
+  const compBasis = (() => {
+    if (!wgt002) return null
+    const c = getContent(wgt002.widget_ast ?? {})
+    return c.comparison_basis as KR | null
+  })()
+  const prevWeekNum   = compBasis?.previous_reporting_week_num
+  const prevCutoff    = compBasis?.previous_reporting_cutoff as string | undefined
+  const prevPlanned   = (compBasis?.baseline_period_for_previous_cutoff as KR | undefined)?.cumulative_planned_percent
+  const prevActual    = (compBasis?.actual_period_for_previous_cutoff   as KR | undefined)?.cumulative_actual_percent
+  const currPlanned   = Number(pPlanned.value ?? 0)
+  const currActual    = Number(pActual.value  ?? 0)
+
+  // ── colour helpers ────────────────────────────────────────────────────────────
+  const tokBg = (t: string | undefined) => {
+    if (t === 'critical') return { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' }
+    if (t === 'overdue')  return { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' }
+    if (t === 'warning')  return { bg: '#fffbeb', border: '#fde68a', text: '#b45309' }
+    if (t === 'success')  return { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' }
+    return { bg: '#f9fafb', border: '#e5e7eb', text: '#6b7280' }
+  }
+  const tokBorderL = (t: string | undefined) => {
+    if (t === 'critical') return '#ef4444'
+    if (t === 'overdue')  return '#f97316'
+    if (t === 'warning')  return '#f59e0b'
+    return '#d1d5db'
+  }
+
+  // ── shared style tokens ───────────────────────────────────────────────────────
+  const CARD: React.CSSProperties = {
+    background: '#ffffff',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    padding: '16px 18px',
+  }
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    marginBottom: 10,
+  }
+  const ROW_LABEL: React.CSSProperties = { fontSize: 13, color: '#64748b' }
+  const ROW_VAL: React.CSSProperties   = { fontSize: 13, fontWeight: 700, color: '#1e293b' }
+
+  return (
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          TOP NAV BAR
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Branding */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3h18M3 9h18M3 15h12M3 21h8" />
+            </svg>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.01em' }}>P6 Control</span>
+          <span style={{ fontSize: 13, color: '#94a3b8' }}>/</span>
+          <span style={{ fontSize: 13, color: '#64748b' }}>{projectName}</span>
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Metadata pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {weekNum != null && (
+            <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 99, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+              Week {String(weekNum)}
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+            Data Date: <strong style={{ color: '#1e293b' }}>{fmtDate(dataDate)}</strong>
+          </span>
+          {structure.is_approved && (
+            <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 99, background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+              Approved
+            </span>
+          )}
+          {/* Report selector */}
+          <select
+            value={selectedStructureId}
+            onChange={onStructureChange}
+            style={{ fontSize: 11, color: '#374151', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', outline: 'none' }}
+          >
+            {structures.map(s => (
+              <option key={s.structure_id} value={s.structure_id}>
+                {s.week_num != null ? `Week ${s.week_num}` : 'Week —'} · {fmtDate(s.data_date)}
+              </option>
+            ))}
+          </select>
+          {/* Print button */}
+          <button
+            onClick={() => window.print()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, background: '#1e293b', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" rx="1" />
+            </svg>
+            Print / PDF
+          </button>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          PAGE TITLE BLOCK
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'linear-gradient(180deg, #1e40af, #3b82f6)' }} />
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>Executive Overview</h1>
+            </div>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>
+              Current project posture, schedule and executive exceptions.
+            </p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>Reporting Period</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{period || `Week ${String(weekNum ?? '—')}`}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          BODY CONTENT
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── Project & Reporting Identification ─────────────────────────────── */}
+        <div style={{ ...CARD }}>
+          <p style={{ ...SECTION_LABEL }}>{wgt001?.widget_title ?? 'Project and Reporting Identification'}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px 20px' }}>
+            {metaItems.map((f, i) => (
+              <div key={i}>
+                <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{String(f.label ?? f.key ?? '')}</p>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', margin: 0, wordBreak: 'break-word' }}>{String(f.value ?? '—')}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Overall Progress Position ──────────────────────────────────────── */}
+        <div style={{ ...CARD }}>
+          <p style={{ ...SECTION_LABEL }}>{wgt002?.widget_title ?? 'Overall Progress Position'}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+
+            {/* Planned */}
+            {(() => {
+              const d = chip(pPlanned)
+              return (
+                <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '14px 16px', borderTop: '3px solid #3b82f6' }}>
+                  <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>Planned Progress (Cumulative)</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+                    <span style={{ fontSize: 32, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{v(pPlanned)}</span>
+                    <span style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500 }}>%</span>
+                    {d && <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: d.good ? '#f0fdf4' : '#fef2f2', color: d.good ? '#15803d' : '#b91c1c' }}>{d.txt}</span>}
+                  </div>
+                  {pPlanned.comparison_value != null && (
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ ...ROW_LABEL }}>Previous Week</span>
+                        <span style={{ ...ROW_VAL }}>{fmtNum(pPlanned.comparison_value)} %</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ ...ROW_LABEL }}>Weekly Increment</span>
+                        <span style={{ ...ROW_VAL, color: '#3b82f6' }}>+{fmtNum(pPlanned.variance)} pp</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Actual */}
+            {(() => {
+              const d = chip(pActual)
+              return (
+                <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '14px 16px', borderTop: '3px solid #10b981' }}>
+                  <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>Actual Progress (Cumulative)</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+                    <span style={{ fontSize: 32, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{v(pActual)}</span>
+                    <span style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500 }}>%</span>
+                    {d && <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: d.good ? '#f0fdf4' : '#fef2f2', color: d.good ? '#15803d' : '#b91c1c' }}>{d.txt}</span>}
+                  </div>
+                  {pActual.comparison_value != null && (
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ ...ROW_LABEL }}>Previous Week</span>
+                        <span style={{ ...ROW_VAL }}>{fmtNum(pActual.comparison_value)} %</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ ...ROW_LABEL }}>Weekly Increment</span>
+                        <span style={{ ...ROW_VAL, color: '#10b981' }}>+{fmtNum(pActual.variance)} pp</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Variance */}
+            {(() => {
+              const varNeg = Number(pVar.value) < 0
+              return (
+                <div style={{ background: varNeg ? '#fef2f2' : '#f0fdf4', borderRadius: 8, border: `1px solid ${varNeg ? '#fecaca' : '#bbf7d0'}`, padding: '14px 16px', borderTop: `3px solid ${varNeg ? '#ef4444' : '#10b981'}` }}>
+                  <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>Progress Variance (Actual − Planned)</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
+                    <span style={{ fontSize: 32, fontWeight: 800, color: varNeg ? '#dc2626' : '#15803d', lineHeight: 1 }}>{v(pVar)}</span>
+                    <span style={{ fontSize: 14, color: '#94a3b8', fontWeight: 500 }}>pp</span>
+                  </div>
+                  {!!pVar.status_label && (
+                    <span style={{ display: 'inline-block', fontSize: 12, fontWeight: 700, padding: '3px 9px', borderRadius: 99, background: varNeg ? '#fef2f2' : '#f0fdf4', border: `1px solid ${varNeg ? '#fecaca' : '#bbf7d0'}`, color: varNeg ? '#b91c1c' : '#15803d', marginBottom: 8 }}>
+                      {String(pVar.status_label)}
+                    </span>
+                  )}
+                  <div style={{ borderTop: `1px solid ${varNeg ? '#fecaca' : '#bbf7d0'}`, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ ...ROW_LABEL }}>Planned</span>
+                      <span style={{ ...ROW_VAL }}>{v(pPlanned)} %</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ ...ROW_LABEL }}>Actual</span>
+                      <span style={{ ...ROW_VAL }}>{v(pActual)} %</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+
+        {/* ── Executive Schedule Position ────────────────────────────────────── */}
+        <div style={{ ...CARD }}>
+          <p style={{ ...SECTION_LABEL }}>{wgt003?.widget_title ?? 'Executive Schedule Position'}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 }}>
+
+            {/* Forecast Completion */}
+            <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '14px 16px', borderTop: '3px solid #6366f1' }}>
+              <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>{String(sForecast.label ?? 'Forecast Completion Date')}</p>
+              <p style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', lineHeight: 1.2 }}>{String(sForecast.value ?? '—')}</p>
+            </div>
+
+            {/* Project Delay */}
+            <div style={{ background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', padding: '14px 16px', borderTop: '3px solid #f59e0b' }}>
+              <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>{String(sDelay.label ?? 'Current Project Delay')}</p>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: 32, fontWeight: 800, color: '#d97706', lineHeight: 1 }}>{v(sDelay, 0)}</span>
+                <span style={{ fontSize: 13, color: '#94a3b8' }}>days</span>
+              </div>
+            </div>
+
+            {/* Critical Activities */}
+            {(() => {
+              const critD = chip(sCrit, false)
+              return (
+                <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '14px 16px', borderTop: '3px solid #64748b' }}>
+                  <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>{String(sCrit.label ?? 'Critical Activities')}</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 32, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{v(sCrit, 0)}</span>
+                    <span style={{ fontSize: 13, color: '#94a3b8' }}>activities</span>
+                    {critD && <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: critD.good ? '#f0fdf4' : '#fef2f2', color: critD.good ? '#15803d' : '#b91c1c' }}>{critD.txt}</span>}
+                  </div>
+                  {sCrit.comparison_value != null && (
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>Previous week: {String(sCrit.comparison_value)}</p>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Schedule Status */}
+            <div style={{ background: '#fff7ed', borderRadius: 8, border: '1px solid #fed7aa', padding: '14px 16px', borderTop: '3px solid #ea580c' }}>
+              <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>{String(sStatus.label ?? 'Schedule Status')}</p>
+              <span style={{ display: 'inline-block', fontSize: 16, fontWeight: 800, padding: '5px 14px', borderRadius: 6, background: '#fff', border: '1px solid #fed7aa', color: '#c2410c' }}>
+                {String(sStatus.value ?? '—')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Previous Reporting Week Comparison ────────────────────────────── */}
+        {compBasis && (
+          <div style={{ ...CARD }}>
+            <p style={{ ...SECTION_LABEL }}>Previous Reporting Week Comparison</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+
+              {/* Planned comparison */}
+              <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '14px 16px' }}>
+                <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 10 }}>
+                  Planned Progress — W{String(prevWeekNum ?? '')} vs W{String(weekNum ?? '')}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>W{String(prevWeekNum ?? '')} · {fmtDate(prevCutoff)}</p>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{fmtNum(prevPlanned)} %</p>
+                  </div>
+                  <div style={{ flex: 1, height: 2, background: '#e2e8f0', position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', fontSize: 11, fontWeight: 700, color: '#3b82f6', background: '#fff', padding: '2px 6px', borderRadius: 4, border: '1px solid #bfdbfe', whiteSpace: 'nowrap' }}>
+                      +{fmtNum(currPlanned - Number(prevPlanned ?? 0))} pp
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>W{String(weekNum ?? '')} · {fmtDate(dataDate)}</p>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{fmtNum(currPlanned)} %</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actual comparison */}
+              <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '14px 16px' }}>
+                <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 10 }}>
+                  Actual Progress — W{String(prevWeekNum ?? '')} vs W{String(weekNum ?? '')}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>W{String(prevWeekNum ?? '')} · {fmtDate(prevCutoff)}</p>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{fmtNum(prevActual)} %</p>
+                  </div>
+                  <div style={{ flex: 1, height: 2, background: '#e2e8f0', position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', fontSize: 11, fontWeight: 700, color: '#10b981', background: '#fff', padding: '2px 6px', borderRadius: 4, border: '1px solid #bbf7d0', whiteSpace: 'nowrap' }}>
+                      +{fmtNum(currActual - Number(prevActual ?? 0))} pp
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>W{String(weekNum ?? '')} · {fmtDate(dataDate)}</p>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{fmtNum(currActual)} %</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Overall Engineering Submissions ────────────────────────────────── */}
+        <div style={{ ...CARD }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{wgt005?.widget_title ?? 'Overall Engineering Submissions'}</p>
+            {engTotal > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>
+                Total Register: <strong style={{ color: '#1e293b', fontSize: 14 }}>{engTotal}</strong> transmittals
+              </span>
+            )}
+          </div>
+
+          {/* 3 primary KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+            {[ePlanned, eSubmit, eOverdue].map((mm, i) => {
+              if (!mm) return <div key={i} />
+              const isOvd = mm.key === 'overdue_not_submitted'
+              const isAct = mm.key === 'submitted_to_date'
+              const supporting = mm.supporting_metric as KR | undefined
+              return (
+                <div key={i} style={{
+                  borderRadius: 8, padding: '14px 16px',
+                  background: isOvd ? '#fef2f2' : '#f8fafc',
+                  border: `1px solid ${isOvd ? '#fecaca' : '#e2e8f0'}`,
+                  borderTop: `3px solid ${isOvd ? '#ef4444' : isAct ? '#10b981' : '#3b82f6'}`,
+                }}>
+                  <p style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>{String(mm.label ?? '')}</p>
+                  <p style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: isOvd ? '#dc2626' : '#1e293b', marginBottom: supporting ? 6 : 0 }}>{String(mm.value ?? '—')}</p>
+                  {supporting && (
+                    <p style={{ fontSize: 12, color: '#64748b' }}>{fmtNum(supporting.value as number, 1)}% of planned</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Status distribution bar */}
+          {engDist.length > 0 && (() => {
+            const total = engDist.reduce((s, sg) => s + Number(sg.count ?? 0), 0)
+            const allSegs = engDist
+            return (
+              <div style={{ marginBottom: 14 }}>
+                <p style={{ fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 6 }}>Status Distribution (by recorded status code)</p>
+                <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 8 }}>
+                  {allSegs.map((sg, i) => (
+                    <div key={i} style={{
+                      flex: total > 0 ? Number(sg.count) / total : 0,
+                      background: ENG_COLORS[String(sg.code ?? '')] ?? '#9ca3af',
+                      minWidth: Number(sg.count) > 0 ? 2 : 0,
+                    }} />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {allSegs.map((sg, i) => (
+                    <span key={i} style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, display: 'inline-block', background: ENG_COLORS[String(sg.code ?? '')] ?? '#9ca3af', flexShrink: 0 }} />
+                      <strong style={{ color: '#1e293b', fontWeight: 700 }}>{String(sg.code ?? '')}</strong>
+                      {' — '}{String(sg.count ?? 0)}
+                      {Number(sg.share_of_categorised_percent ?? 0) > 0 && (
+                        <span style={{ color: '#94a3b8' }}>({fmtNum(sg.share_of_categorised_percent as number, 1)}%)</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Threshold alerts */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {[eUR, eSTC].filter(Boolean).map((mm, i) => {
+              const isOvd = mm!.semantic === 'overdue'
+              return (
+                <div key={i} style={{ flex: '1 1 200px', background: isOvd ? '#fff7ed' : '#fffbeb', border: `1px solid ${isOvd ? '#fed7aa' : '#fde68a'}`, borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: '#64748b', flex: 1 }}>{String(mm!.label ?? '')}</span>
+                  <span style={{ fontSize: 22, fontWeight: 800, color: isOvd ? '#ea580c' : '#d97706', marginLeft: 12 }}>{String(mm!.value ?? '—')}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── QA/QC + Exceptions row ─────────────────────────────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.8fr', gap: 16, alignItems: 'stretch' }}>
+
+          {/* QA/QC */}
+          <div style={{ ...CARD, padding: '14px 16px', alignSelf: 'start' }}>
+            <p style={{ ...SECTION_LABEL, marginBottom: 8 }}>{wgt006?.widget_title ?? 'Overall QA/QC Open vs Closed'}</p>
+
+            {/* Segment bar */}
+            {qaSeg.length > 0 && (() => {
+              const total = qaSeg.reduce((s, sg) => s + Number(sg.count ?? 0), 0)
+              return (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 6 }}>
+                    {qaSeg.map((sg, i) => (
+                      <div key={i} style={{ flex: Number(sg.count) / total, background: QA_COLORS[String(sg.status_code ?? '')] ?? '#9ca3af' }} />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    {qaSeg.map((sg, i) => (
+                      <span key={i} style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 2, display: 'inline-block', flexShrink: 0, background: QA_COLORS[String(sg.status_code ?? '')] ?? '#9ca3af' }} />
+                        <strong style={{ color: '#1e293b', fontWeight: 700 }}>{String(sg.status_label ?? sg.status_code ?? '')}</strong>
+                        {' '}{String(sg.count ?? 0)}{' '}
+                        <span style={{ color: '#94a3b8' }}>({String(sg.share_percent ?? 0)}%)</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Metric boxes — 2×2 compact grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+              {[qaT, qaCls, qaOpn, qa14].filter(Boolean).map((mm, i) => {
+                const is14  = mm!.key === 'open_over_14_days'
+                const isCls = mm!.key === 'closed'
+                return (
+                  <div key={i} style={{
+                    borderRadius: 6, padding: '9px 12px',
+                    background: is14 ? '#fff7ed' : isCls ? '#f0fdf4' : '#f8fafc',
+                    border: `1px solid ${is14 ? '#fed7aa' : isCls ? '#bbf7d0' : '#e2e8f0'}`,
+                  }}>
+                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{String(mm!.label ?? '')}</p>
+                    <p style={{ fontSize: 22, fontWeight: 800, color: is14 ? '#ea580c' : isCls ? '#15803d' : '#1e293b', margin: 0, lineHeight: 1 }}>{String(mm!.value ?? '—')}</p>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Aging exceptions — scrollable if many items */}
+            {qaAge.length > 0 && (
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Open &gt; 14 Days</p>
+                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5, paddingRight: 2 }}>
+                  {qaAge.map((ex, i) => (
+                    <div key={i} style={{ borderRadius: 6, background: '#fff7ed', border: '1px solid #fed7aa', borderLeft: '3px solid #f97316', padding: '7px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{String(ex.doc_ref ?? ex.reference ?? '')}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#ea580c', marginLeft: 8, flexShrink: 0 }}>{String(ex.days_open ?? '')} days</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4, margin: '0 0 4px' }}>{String(ex.document_subject ?? ex.description ?? '')}</p>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {!!ex.discipline_code && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.discipline_code)}</span>}
+                        {!!ex.document_type   && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.document_type)}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Major Exceptions */}
+          {wgt007 && (
+            <div style={{ ...CARD }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{wgt007.widget_title}</p>
+                {excCnts && (
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}>
+                    {String(excCnts.combined_category_exception_total ?? '')} total
+                  </span>
+                )}
+              </div>
+
+              {excHd && (
+                <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #e2e8f0' }}>{excHd}</p>
+              )}
+
+              {/* Category summary pills */}
+              {excGroups.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                  {excGroups.map((g, i) => {
+                    const tok = String(g.status_token ?? '')
+                    const col = tokBg(tok)
+                    const bd  = g.breakdown as KR | undefined
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 8, background: col.bg, border: `1px solid ${col.border}`, minWidth: 130 }}>
+                        <span style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, color: col.text }}>{String(g.count ?? '—')}</span>
+                        <div>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: col.text, lineHeight: 1.2, marginBottom: 2 }}>{String(g.category_label ?? '')}</p>
+                          {bd && (
+                            <p style={{ fontSize: 11, color: col.text, opacity: 0.8 }}>
+                              {Object.entries(bd).map(([k, val]) => `${String(val)} ${k.replace(/_/g, ' ')}`).join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Exception rows */}
+              {excItems.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {excItems.map((ex, i) => {
+                    const tok = String(ex.status_token ?? 'warning')
+                    const bdrColor = tokBorderL(tok)
+                    const isSched  = ex.category === 'schedule'
+                    const ageLabel = ex.age_basis === 'overdue_days'      ? 'days overdue'
+                                   : ex.age_basis === 'days_under_review'  ? 'days u/review'
+                                   : ex.age_basis === 'days_since_return'  ? 'days since return'
+                                   : ex.age_basis === 'days_open'          ? 'days open'
+                                   : 'days'
+                    const col = tokBg(tok)
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: `4px solid ${bdrColor}`, padding: '10px 14px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{String(ex.reference ?? '')}</span>
+                            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: col.bg, border: `1px solid ${col.border}`, color: col.text }}>
+                              {String(ex.category_label ?? ex.category ?? '')}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: 13, color: '#475569', margin: '0 0 5px', lineHeight: 1.5 }}>{String(ex.description ?? '')}</p>
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {!!ex.transmittal_type_label && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.transmittal_type_label)}</span>}
+                            {!!ex.document_type          && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.document_type)}</span>}
+                            {!!ex.discipline_code        && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.discipline_code)}</span>}
+                          </div>
+                          {isSched && ex.total_float_days != null && (
+                            <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>
+                              Float: {Number(ex.total_float_days).toFixed(1)} days{ex.location ? ` · ${String(ex.location)}` : ''}
+                            </p>
+                          )}
+                        </div>
+                        {ex.age_days != null && (
+                          <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 52 }}>
+                            <p style={{ fontSize: 22, fontWeight: 900, lineHeight: 1, color: tok === 'critical' ? '#dc2626' : tok === 'overdue' ? '#ea580c' : '#d97706', margin: 0 }}>
+                              {String(ex.age_days)}
+                            </p>
+                            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>{ageLabel}</p>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+      </div>{/* /body */}
+    </div>
+  )
+}
+
+// ── Progress Analysis Page — 5-row custom layout ──────────────────────────────
+
+type ProgressPageProps = {
+  page: StructurePlanPage
+  pageIdx: number
+  pageWidgets: DashboardWidget[]
+}
+
+function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps) {
+  const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
+  const wgt008 = w('WGT-008')
+  const wgt009 = w('WGT-009')
+  const wgt010 = w('WGT-010')
+  const wgt011 = w('WGT-011')
+  const wgt012 = w('WGT-012')
+  const wgt013 = w('WGT-013')
+  const wgt014 = w('WGT-014')
+
+  // Extract annotation text from WGT-010 content
+  const wgt010Content = wgt010 ? getContent(wgt010.widget_ast ?? {}) : null
+  const unitsNote  = wgt010Content?.units_note  as string | undefined
+  const windowNote = wgt010Content?.window_note as string | undefined
+
+  // Extract management assessment text from WGT-011 content
+  const wgt011Content = wgt011 ? getContent(wgt011.widget_ast ?? {}) : null
+  const mgmtAssess    = wgt011Content?.management_assessment as Record<string, unknown> | undefined
+  const schedCtx      = wgt011Content?.schedule_context     as Record<string, unknown> | undefined
+
+  // ── shared style tokens — identical to ExecutiveOverviewPage ─────────────────
+  const CARD: React.CSSProperties = {
+    background: '#ffffff',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    padding: '16px 18px',
+    display: 'flex',
+    flexDirection: 'column',
+  }
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    marginBottom: 10,
+    flexShrink: 0,
+  }
+
+  // Helper — renders a widget's chart content inside a sized card
+  const ChartCard = ({
+    widget,
+    height = 260,
+    style,
+    noteSlot,
+  }: {
+    widget: DashboardWidget | undefined
+    height?: number
+    style?: React.CSSProperties
+    noteSlot?: React.ReactNode
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'line_chart':          return <LineChartWidget ast={ast} />
+        case 'bar_chart':
+        case 'grouped_bar_chart':   return <BarChartWidget ast={ast} />
+        case 'horizontal_bar_chart':return <BarChartWidget ast={ast} horizontal />
+        case 'area_chart':          return <AreaChartWidget ast={ast} />
+        default:                    return <JsonFallback ast={ast} type={type} />
+      }
+    })()
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <div style={{ flex: 1, height, minHeight: height }}>{inner}</div>
+        {noteSlot}
+      </div>
+    )
+  }
+
+  // Helper — renders a data table widget
+  const TableCard = ({
+    widget,
+    style,
+    headerSlot,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+    headerSlot?: React.ReactNode
+  }) => {
+    if (!widget) return null
+    const ast = widget.widget_ast ?? {}
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12, flexShrink: 0 }}>
+          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          {headerSlot}
+        </div>
+        <div style={{ flex: 1 }}>
+          <DataTableWidget ast={ast} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+
+      {/* ── Page title block — matches Executive Overview style ──────────────── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'linear-gradient(180deg, #1e40af, #3b82f6)', flexShrink: 0 }} />
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{page.title}</h2>
+            </div>
+            {page.subtitle ? (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>{page.subtitle}</p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>
+                Progress tracking, recovery planning and trade-level analysis.
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>Page</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{pageIdx + 1}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────────── */}
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* ── ROW 1: Cumulative progress chart (full-width) ───────────────────── */}
+      <ChartCard widget={wgt008} height={280} />
+
+      {/* ── ROW 2: Weekly progress (left) + Weekly variance (right) ────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+
+        {/* Weekly planned vs actual */}
+        <ChartCard widget={wgt009} height={240} />
+
+        {/* Weekly variance + explanatory text below */}
+        <ChartCard
+          widget={wgt010}
+          height={200}
+          noteSlot={
+            (unitsNote || windowNote) ? (
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {windowNote && (
+                  <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.55, margin: 0 }}>{windowNote}</p>
+                )}
+                {unitsNote && (
+                  <p style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5, margin: 0, fontStyle: 'italic' }}>{unitsNote}</p>
+                )}
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
+
+      {/* ── ROW 3: Delay Recovery Scenario Planner (full-width) ─────────────── */}
+      <TableCard
+        widget={wgt011}
+        headerSlot={
+          !!mgmtAssess ? (
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              {/* Schedule context pills */}
+              {!!schedCtx && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {schedCtx.reported_schedule_delay_days != null && (
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99, background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c' }}>
+                      {String(schedCtx.reported_schedule_delay_days)} days delay
+                    </span>
+                  )}
+                  {!!schedCtx.forecast_completion_date && (
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 99, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569' }}>
+                      FCT: {String(schedCtx.forecast_completion_date)}
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Management assessment badge */}
+              {!!mgmtAssess.overall_status && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 99,
+                  background: String(mgmtAssess.overall_status).includes('feasible') ? '#f0fdf4' : '#fff7ed',
+                  border: `1px solid ${String(mgmtAssess.overall_status).includes('feasible') ? '#bbf7d0' : '#fed7aa'}`,
+                  color: String(mgmtAssess.overall_status).includes('feasible') ? '#15803d' : '#c2410c',
+                }}>
+                  {String(mgmtAssess.overall_status).replace(/_/g, ' ')}
+                </span>
+              )}
+            </div>
+          ) : undefined
+        }
+      />
+
+      {/* Management assessment text block */}
+      {!!mgmtAssess && (!!mgmtAssess.headline || !!mgmtAssess.summary || !!mgmtAssess.recommended_action) && (
+        <div style={{
+          background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
+          padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          {!!mgmtAssess.headline && (
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{String(mgmtAssess.headline)}</p>
+          )}
+          {!!mgmtAssess.summary && (
+            <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.55, margin: 0 }}>{String(mgmtAssess.summary)}</p>
+          )}
+          {!!mgmtAssess.recommended_action && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 2 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', flexShrink: 0, marginTop: 1 }}>ACTION</span>
+              <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.55, margin: 0 }}>{String(mgmtAssess.recommended_action)}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ROW 4: Recovery scenario comparison (left) + Progress by phase (right) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <ChartCard widget={wgt012} height={260} />
+        <ChartCard widget={wgt013} height={260} />
+      </div>
+
+      {/* ── ROW 5: Construction progress by trade (full-width) ─────────────── */}
+      <ChartCard widget={wgt014} height={300} />
+
+      </div>{/* /body */}
+    </div>
+  )
+}
+
+// ── Schedule Intelligence Page — 5-row custom layout ──────────────────────────
+
+type SchedulePageProps = {
+  page: StructurePlanPage
+  pageIdx: number
+  pageWidgets: DashboardWidget[]
+}
+
+function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePageProps) {
+  const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
+  const wgt015 = w('WGT-015')   // Forecast Completion and Project Delay   — kpi_group
+  const wgt016 = w('WGT-016')   // Critical and Longest-Path Summary       — kpi_group
+  const wgt017 = w('WGT-017')   // Driving Activities                      — data_table
+  const wgt018 = w('WGT-018')   // Key Milestones — Planned vs Forecast    — milestone_table
+  const wgt020 = w('WGT-020')   // Two-Week Lookahead                      — lookahead_table
+
+  // ── shared style tokens — identical to ExecutiveOverviewPage ──────────────
+  const CARD: React.CSSProperties = {
+    background: '#ffffff',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    padding: '16px 18px',
+    display: 'flex',
+    flexDirection: 'column',
+  }
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    marginBottom: 10,
+    flexShrink: 0,
+  }
+
+  // Helper — renders a kpi_group widget inside a card
+  const KpiCard = ({
+    widget,
+    style,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+  }) => {
+    if (!widget) return null
+    const ast = widget.widget_ast ?? {}
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <div style={{ flex: 1 }}>
+          <KpiGroupWidget ast={ast} />
+        </div>
+      </div>
+    )
+  }
+
+  // Helper — renders a table widget (data_table / milestone_table / lookahead_table)
+  const TableCard = ({
+    widget,
+    style,
+    summarySlot,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+    summarySlot?: React.ReactNode
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'data_table':                 return <DataTableWidget ast={ast} />
+        case 'milestone_table':
+        case 'lookahead_table':            return <MilestoneTableWidget ast={ast} />
+        default:                           return <DataTableWidget ast={ast} />
+      }
+    })()
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12, flexShrink: 0 }}>
+          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          {summarySlot}
+        </div>
+        <div style={{ flex: 1 }}>{inner}</div>
+      </div>
+    )
+  }
+
+  // Extract lookahead summary counts from WGT-020 content
+  const lookaheadContent = wgt020 ? getContent(wgt020.widget_ast ?? {}) : null
+  const lookaheadSummary = lookaheadContent?.summary as Record<string, unknown> | undefined
+
+  return (
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+
+      {/* ── Page title block — matches Executive Overview style ──────────────── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'linear-gradient(180deg, #1e40af, #3b82f6)', flexShrink: 0 }} />
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{page.title}</h2>
+            </div>
+            {page.subtitle ? (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>{page.subtitle}</p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>
+                Critical path, milestones, driving activities and two-week lookahead.
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>Page</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{pageIdx + 1}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────────── */}
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── ROW 1: Forecast Completion (left) + Critical Path Summary (right) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <KpiCard widget={wgt015} />
+          <KpiCard widget={wgt016} />
+        </div>
+
+        {/* ── ROW 2: Driving Activities table (full-width) ──────────────────── */}
+        <TableCard widget={wgt017} />
+
+        {/* ── ROW 3: Key Milestones — Planned vs Forecast (full-width) ─────── */}
+        <TableCard widget={wgt018} />
+
+        {/* ── ROW 4: Schedule Exceptions — rendered only when widget present ── */}
+        {pageWidgets
+          .filter(pw => pw.widget_id != null && !['WGT-015','WGT-016','WGT-017','WGT-018','WGT-020'].includes(pw.widget_id))
+          .map(pw => {
+            const ast  = pw.widget_ast ?? {}
+            const type = pw.widget_type
+            const inner = (() => {
+              switch (type) {
+                case 'alert_panel':     return <AlertPanelWidget ast={ast} />
+                case 'exception_table': return <ExceptionTableWidget ast={ast} />
+                case 'data_table':      return <DataTableWidget ast={ast} />
+                default:                return <JsonFallback ast={ast} type={type} />
+              }
+            })()
+            return (
+              <div key={pw.widget_record_id} style={{ ...CARD }}>
+                <p style={{ ...SECTION_LABEL }}>{pw.widget_title ?? ''}</p>
+                <div style={{ flex: 1 }}>{inner}</div>
+              </div>
+            )
+          })}
+
+        {/* ── ROW 5: Two-Week Lookahead (full-width) ────────────────────────── */}
+        <TableCard
+          widget={wgt020}
+          summarySlot={
+            !!lookaheadSummary && (
+              <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {[
+                  { label: 'Activities',   value: lookaheadSummary.total_activities },
+                  { label: 'Starting',     value: lookaheadSummary.starting },
+                  { label: 'Critical',     value: lookaheadSummary.critical },
+                  { label: 'Longest Path', value: lookaheadSummary.longest_path },
+                  { label: 'Milestones',   value: lookaheadSummary.milestones },
+                ].filter(s => s.value != null).map((s, i) => (
+                  <div key={i} style={{ textAlign: 'center', minWidth: 52 }}>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', margin: 0 }}>{String(s.value)}</p>
+                    <p style={{ fontSize: 10, color: '#94a3b8', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        />
+
+      </div>{/* /body */}
+    </div>
+  )
+}
+
+// ── Engineering, QA/QC and HSE Page — 7-row custom layout ─────────────────────
+
+type EngineeringPageProps = {
+  page: StructurePlanPage
+  pageIdx: number
+  pageWidgets: DashboardWidget[]
+}
+
+function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps) {
+  const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
+  const wgt021 = w('WGT-021')   // Engineering Submission Summary           — kpi_group
+  const wgt022 = w('WGT-022')   // Eng Status Distribution — DWG            — donut_chart
+  const wgt023 = w('WGT-023')   // Eng Status Distribution — MAT            — donut_chart
+  const wgt024 = w('WGT-024')   // Eng Status Distribution — PRQ            — donut_chart
+  const wgt025 = w('WGT-025')   // Eng Status Counts by Type & Discipline   — hierarchical_table
+  const wgt026 = w('WGT-026')   // Eng Submissions — Last 4 Weeks           — line_chart
+  const wgt027 = w('WGT-027')   // QA/QC Status Counts by Discipline & Type — stacked_bar_chart
+  const wgt028 = w('WGT-028')   // QA/QC Document Status Summary            — kpi_group
+  const wgt029 = w('WGT-029')   // Material Submission Exceptions            — exception_table
+  const wgt030 = w('WGT-030')   // QA/QC Open Exceptions                    — exception_table
+
+  // ── shared style tokens — identical to ExecutiveOverviewPage ──────────────
+  const CARD: React.CSSProperties = {
+    background: '#ffffff',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    padding: '16px 18px',
+    display: 'flex',
+    flexDirection: 'column',
+  }
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    marginBottom: 10,
+    flexShrink: 0,
+  }
+
+  // Helper — generic card wrapper that dispatches to the right widget renderer
+  const WidgetCard = ({
+    widget,
+    style,
+    height,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+    height?: number
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'kpi_group':          return <KpiGroupWidget ast={ast} />
+        case 'donut_chart':
+        case 'pie_chart':          return <DonutChartWidget ast={ast} />
+        case 'line_chart':         return <LineChartWidget ast={ast} />
+        case 'bar_chart':
+        case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
+        case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
+        case 'hierarchical_table': return <HierarchicalTableWidget ast={ast} />
+        case 'data_table':         return <DataTableWidget ast={ast} />
+        case 'exception_table':    return <ExceptionTableWidget ast={ast} />
+        default:                   return <JsonFallback ast={ast} type={type} />
+      }
+    })()
+    const needsHeight = ['donut_chart','pie_chart','line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <div style={{ flex: 1, ...(needsHeight && height ? { minHeight: height } : {}) }}>
+          {inner}
+        </div>
+      </div>
+    )
+  }
+
+  // Helper — table card with optional row-count badge in header
+  const TableCard = ({
+    widget,
+    style,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'hierarchical_table': return <HierarchicalTableWidget ast={ast} />
+        case 'exception_table':    return <ExceptionTableWidget ast={ast} />
+        case 'data_table':         return <DataTableWidget ast={ast} />
+        default:                   return <AutoTable rows={(getContent(ast).rows ?? []) as Record<string, unknown>[]} />
+      }
+    })()
+    // Extract row count from content for badge
+    const cnt = getContent(ast)
+    const rowCount = (cnt.total_exception_rows ?? cnt.row_count ?? (cnt.rows as unknown[] | null)?.length) as number | undefined
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0, gap: 12 }}>
+          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          {rowCount != null && (
+            <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', border: '1px solid #e2e8f0', flexShrink: 0 }}>
+              {rowCount} {rowCount === 1 ? 'row' : 'rows'}
+            </span>
+          )}
+        </div>
+        <div style={{ flex: 1 }}>{inner}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+
+      {/* ── Page title block — matches Executive Overview style ──────────────── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'linear-gradient(180deg, #1e40af, #3b82f6)', flexShrink: 0 }} />
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{page.title}</h2>
+            </div>
+            {page.subtitle ? (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>{page.subtitle}</p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>
+                Transmittal status, QA/QC document tracking and exception management.
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>Page</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{pageIdx + 1}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────────── */}
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── ROW 1: Submission Summary (left) + DWG donut (right) ─────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <WidgetCard widget={wgt021} />
+          <WidgetCard widget={wgt022} height={220} />
+        </div>
+
+        {/* ── ROW 2: MAT donut (left) + PRQ donut (right) ──────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <WidgetCard widget={wgt023} height={220} />
+          <WidgetCard widget={wgt024} height={220} />
+        </div>
+
+        {/* ── ROW 3: Eng Status Counts by Type & Discipline (full-width) ───── */}
+        <TableCard widget={wgt025} />
+
+        {/* ── ROW 4: Last 4-week submissions trend (left) + QA/QC stacked bar (right) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <WidgetCard widget={wgt026} height={240} />
+          <WidgetCard widget={wgt027} height={240} />
+        </div>
+
+        {/* ── ROW 5: QA/QC Document Status Summary (left half) ─────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <WidgetCard widget={wgt028} />
+          {/* Right slot intentionally empty — balance the grid */}
+          <div />
+        </div>
+
+        {/* ── ROW 6: Material Submission Exceptions (full-width) ────────────── */}
+        <TableCard widget={wgt029} />
+
+        {/* ── ROW 7: QA/QC Open Exceptions (full-width) ────────────────────── */}
+        <TableCard widget={wgt030} />
+
+      </div>{/* /body */}
+    </div>
+  )
+}
+
+// ── Resources and Manpower Page — 4-row custom layout ─────────────────────────
+
+type ResourcesPageProps = {
+  page: StructurePlanPage
+  pageIdx: number
+  pageWidgets: DashboardWidget[]
+}
+
+function ResourcesManpowerPage({ page, pageIdx, pageWidgets }: ResourcesPageProps) {
+  const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
+  const wgt031 = w('WGT-031')   // Current Manpower Summary                       — kpi_group
+  const wgt032 = w('WGT-032')   // Weekly Manpower Trend — Planned vs Actual       — line_chart
+  const wgt033 = w('WGT-033')   // Current Planned vs Actual Manpower by Resource  — grouped_bar_chart
+  const wgt034 = w('WGT-034')   // Resource Manpower and Manhour Breakdown         — resource_table
+  const wgt035 = w('WGT-035')   // Manhour Summary — Planned vs Estimated Actual   — kpi_group
+  const wgt036 = w('WGT-036')   // Weekly Manhour Trend — Planned vs Est. Actual   — line_chart
+
+  // Extract notes from WGT-035 for display beneath its KPI cards
+  const wgt035Notes = (getContent(wgt035?.widget_ast ?? {}).notes) as string[] | undefined
+
+  // ── shared style tokens ────────────────────────────────────────────────────
+  const CARD: React.CSSProperties = {
+    background: '#ffffff',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    padding: '16px 18px',
+    display: 'flex',
+    flexDirection: 'column',
+  }
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    marginBottom: 10,
+    flexShrink: 0,
+  }
+
+  // Helper — renders any widget into a styled card with title
+  const WidgetCard = ({
+    widget,
+    style,
+    height,
+    footerSlot,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+    height?: number
+    footerSlot?: React.ReactNode
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'kpi_group':          return <KpiGroupWidget ast={ast} />
+        case 'line_chart':         return <LineChartWidget ast={ast} />
+        case 'bar_chart':
+        case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
+        case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
+        case 'resource_table':     return <ResourceTableWidget ast={ast} />
+        case 'data_table':         return <DataTableWidget ast={ast} />
+        default:                   return <JsonFallback ast={ast} type={type} />
+      }
+    })()
+    const needsHeight = ['line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <div style={{ flex: 1, ...(needsHeight && height ? { minHeight: height } : {}) }}>
+          {inner}
+        </div>
+        {footerSlot}
+      </div>
+    )
+  }
+
+  // Helper — table card (resource_table / data_table) with row-count badge
+  const TableCard = ({
+    widget,
+    style,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'resource_table': return <ResourceTableWidget ast={ast} />
+        case 'data_table':     return <DataTableWidget ast={ast} />
+        default:               return <AutoTable rows={(getContent(ast).rows ?? []) as Record<string, unknown>[]} />
+      }
+    })()
+    const cnt = getContent(ast)
+    const rowCount = (cnt.row_count ?? (cnt.rows as unknown[] | null)?.length) as number | undefined
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0, gap: 12 }}>
+          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          {rowCount != null && (
+            <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', border: '1px solid #e2e8f0', flexShrink: 0 }}>
+              {rowCount} {rowCount === 1 ? 'row' : 'rows'}
+            </span>
+          )}
+        </div>
+        <div style={{ flex: 1 }}>{inner}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+
+      {/* ── Page title block ─────────────────────────────────────────────────── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'linear-gradient(180deg, #1e40af, #3b82f6)', flexShrink: 0 }} />
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{page.title}</h2>
+            </div>
+            {page.subtitle ? (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>{page.subtitle}</p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>
+                Workforce deployment, manpower trends and manhour performance.
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>Page</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{pageIdx + 1}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────────── */}
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── ROW 1: Manpower Summary KPIs (left) + Weekly Trend chart (right) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16 }}>
+          <WidgetCard widget={wgt031} />
+          <WidgetCard widget={wgt032} height={260} />
+        </div>
+
+        {/* ── ROW 2: Planned vs Actual by Resource — grouped bar (full-width) */}
+        <WidgetCard widget={wgt033} height={260} />
+
+        {/* ── ROW 3: Resource Manpower & Manhour Breakdown table (full-width) */}
+        <TableCard widget={wgt034} />
+
+        {/* ── ROW 4: Manhour Summary KPIs (left) + Weekly Manhour Trend (right) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16 }}>
+          {/* Left: KPI card + notes footnote */}
+          <WidgetCard
+            widget={wgt035}
+            footerSlot={
+              !!wgt035Notes?.length && (
+                <div style={{ marginTop: 12, borderTop: '1px solid #f1f5f9', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {wgt035Notes.map((note, i) => (
+                    <p key={i} style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5, margin: 0 }}>{note}</p>
+                  ))}
+                </div>
+              )
+            }
+          />
+          <WidgetCard widget={wgt036} height={260} />
+        </div>
+
+      </div>{/* /body */}
+    </div>
+  )
+}
+
+// ── KPI Performance Page — 5-row custom layout ────────────────────────────────
+
+type KpiPageProps = {
+  page: StructurePlanPage
+  pageIdx: number
+  pageWidgets: DashboardWidget[]
+}
+
+function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
+  const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
+  const wgt037 = w('WGT-037')   // KPI Coverage Summary                                   — kpi_group
+  const wgt038 = w('WGT-038')   // Total vs Actual KPI Quantities to Date                 — data_table
+  const wgt039 = w('WGT-039')   // Planned vs Actual KPI Quantities Cumulative to Date    — data_table
+  const wgt040 = w('WGT-040')   // Weekly Planned vs Actual KPI Quantities — Current Week — grouped_bar_chart
+  const wgt041 = w('WGT-041')   // KPI Current-Week and Cumulative Variances               — exception_table
+
+  // ── shared style tokens ────────────────────────────────────────────────────
+  const CARD: React.CSSProperties = {
+    background: '#ffffff',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    padding: '16px 18px',
+    display: 'flex',
+    flexDirection: 'column',
+  }
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    marginBottom: 10,
+    flexShrink: 0,
+  }
+
+  // Helper — generic widget card
+  const WidgetCard = ({
+    widget,
+    style,
+    height,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+    height?: number
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'kpi_group':          return <KpiGroupWidget ast={ast} />
+        case 'line_chart':         return <LineChartWidget ast={ast} />
+        case 'bar_chart':
+        case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
+        case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
+        case 'data_table':         return <DataTableWidget ast={ast} />
+        case 'exception_table':    return <ExceptionTableWidget ast={ast} />
+        default:                   return <JsonFallback ast={ast} type={type} />
+      }
+    })()
+    const needsHeight = ['line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <div style={{ flex: 1, ...(needsHeight && height ? { minHeight: height } : {}) }}>
+          {inner}
+        </div>
+      </div>
+    )
+  }
+
+  // Helper — table / exception card with row-count badge
+  const TableCard = ({
+    widget,
+    style,
+  }: {
+    widget: DashboardWidget | undefined
+    style?: React.CSSProperties
+  }) => {
+    if (!widget) return null
+    const ast  = widget.widget_ast ?? {}
+    const type = widget.widget_type
+    const inner = (() => {
+      switch (type) {
+        case 'data_table':      return <DataTableWidget ast={ast} />
+        case 'exception_table': return <ExceptionTableWidget ast={ast} />
+        default:                return <DataTableWidget ast={ast} />
+      }
+    })()
+    const cnt = getContent(ast)
+    const rowCount = (cnt.row_count ?? (cnt.rows as unknown[] | null)?.length) as number | undefined
+    return (
+      <div style={{ ...CARD, ...style }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0, gap: 12 }}>
+          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          {rowCount != null && (
+            <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', border: '1px solid #e2e8f0', flexShrink: 0 }}>
+              {rowCount} {rowCount === 1 ? 'row' : 'rows'}
+            </span>
+          )}
+        </div>
+        <div style={{ flex: 1 }}>{inner}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+
+      {/* ── Page title block ─────────────────────────────────────────────────── */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: 'linear-gradient(180deg, #1e40af, #3b82f6)', flexShrink: 0 }} />
+              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{page.title}</h2>
+            </div>
+            {page.subtitle ? (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>{page.subtitle}</p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 0 12px', fontStyle: 'italic' }}>
+                Key performance indicator coverage, quantities and variance tracking.
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 2px' }}>Page</p>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', margin: 0 }}>{pageIdx + 1}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────────── */}
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* ── ROW 1: KPI Coverage Summary — full-width KPI group ───────────── */}
+        <WidgetCard widget={wgt037} />
+
+        {/* ── ROW 2: Total vs Actual KPI Quantities to Date — full-width table */}
+        <TableCard widget={wgt038} />
+
+        {/* ── ROW 3: Planned vs Actual KPI Quantities Cumulative — full-width */}
+        <TableCard widget={wgt039} />
+
+        {/* ── ROW 4: Weekly KPI bar chart (left half) + balanced right slot ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <WidgetCard widget={wgt040} height={280} />
+          <div />
+        </div>
+
+        {/* ── ROW 5: KPI Variances exception table — full-width ─────────────── */}
+        <TableCard widget={wgt041} />
+
+      </div>{/* /body */}
     </div>
   )
 }
@@ -1530,59 +3321,43 @@ export function ReportDashboardForm({
     )
   }
 
+  const reportDataDate = selectedStructure?.data_date ?? ''
+
   return (
+    <DataDateContext.Provider value={reportDataDate}>
     <div className="flex gap-4 items-start" style={{ maxWidth: '100%' }}>
 
       {/* ── Left nav ─────────────────────────────────────────────────────── */}
       {pages.length > 0 && (
-        <nav className="hidden lg:flex flex-col w-48 flex-shrink-0" style={{ position: 'sticky', top: '0', maxHeight: 'calc(100vh - 5rem)' }}>
-          {/* Report selector */}
-          <div className="mb-2">
-            <select
-              value={selectedStructureId}
-              onChange={handleStructureChange}
-              className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white text-gray-700"
-            >
-              {structures.map(s => (
-                <option key={s.structure_id} value={s.structure_id}>
-                  {s.week_num != null ? `Week ${s.week_num}` : 'Week —'}{' · '}{fmtDate(s.data_date)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden flex flex-col" style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.07)' }}>
+        <nav className="no-print hidden lg:flex flex-col w-56 flex-shrink-0" style={{ position: 'sticky', top: '0', maxHeight: 'calc(100vh - 5rem)' }}>
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden flex flex-col" style={{ boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
             {/* Header */}
-            <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-shrink-0">
-              <svg className="w-3 h-3 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2.5 flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h7" />
               </svg>
-              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Pages</p>
-              {selectedStructure?.is_approved && (
-                <span className="ml-auto inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-green-100 text-green-700">
-                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Approved
-                </span>
-              )}
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pages</p>
             </div>
             {/* Items */}
-            <ul className="py-1 overflow-y-auto flex-1" style={{ scrollbarWidth: 'none' }}>
+            <ul className="py-2 overflow-y-auto flex-1" style={{ scrollbarWidth: 'none' }}>
               {pages.map((page, idx) => {
                 const isActive = activePageId === page.page_id
                 return (
-                  <li key={page.page_id} className="px-1.5 py-0.5">
+                  <li key={page.page_id} className="px-2 py-0.5">
                     <button
                       onClick={() => scrollToPage(page.page_id)}
-                      className={`report-nav-item w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left${isActive ? ' active' : ''}`}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-2 border-transparent'
+                      }`}
                     >
-                      <span className={`w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center flex-shrink-0 transition-colors ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'
+                      <span className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isActive ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-500'
                       }`}>
                         {idx + 1}
                       </span>
-                      <span className="text-[11px] font-medium leading-tight line-clamp-2">{page.title}</span>
+                      <span className="leading-snug line-clamp-2 tracking-tight">{page.title}</span>
                     </button>
                   </li>
                 )
@@ -1606,34 +3381,91 @@ export function ReportDashboardForm({
         ) : (
           pages.map((page, pageIdx) => {
             const pageWidgets = widgets.filter(w => w.page_id === page.page_id)
+            const isExecutivePage         = pageIdx === 0
+            const isProgressAnalysis      = page.page_id === 'PAGE-002'
+            const isScheduleIntelligence  = page.page_id === 'PAGE-003'
+            const isEngineeringQA         = page.page_id === 'PAGE-004'
+            const isResourcesManpower     = page.page_id === 'PAGE-005'
+            const isKpiPerformance        = page.page_id === 'PAGE-006'
+
             return (
               <div
                 key={page.page_id}
                 id={`section-${page.page_id}`}
-                className={pageIdx > 0 ? 'mt-6' : ''}
+                className={`print-page${pageIdx > 0 ? ' mt-6' : ''}`}
               >
-                {/* Section header — compact bar */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-5 h-5 rounded-md text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}
-                  >
-                    {pageIdx + 1}
-                  </span>
-                  <h2 className="text-sm font-bold text-gray-700 tracking-wide">{page.title}</h2>
-                  {page.subtitle && (
-                    <span className="text-xs text-gray-400 font-normal">— {page.subtitle}</span>
-                  )}
-                </div>
-
-                {/* Widget grid — 4 cols on large screens */}
-                {pageWidgets.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic mb-4">No content on this page.</p>
+                {isExecutivePage ? (
+                  // Special rich layout for the Executive Overview page
+                  <ExecutiveOverviewPage
+                    page={page}
+                    pageIdx={pageIdx}
+                    pageWidgets={pageWidgets}
+                    structure={selectedStructure!}
+                    structures={structures}
+                    selectedStructureId={selectedStructureId}
+                    onStructureChange={handleStructureChange}
+                  />
+                ) : isProgressAnalysis ? (
+                  // 5-row custom layout for Progress Analysis page
+                  <ProgressAnalysisPage
+                    page={page}
+                    pageIdx={pageIdx}
+                    pageWidgets={pageWidgets}
+                  />
+                ) : isScheduleIntelligence ? (
+                  // 5-row custom layout for Schedule Intelligence page
+                  <ScheduleIntelligencePage
+                    page={page}
+                    pageIdx={pageIdx}
+                    pageWidgets={pageWidgets}
+                  />
+                ) : isEngineeringQA ? (
+                  // 7-row custom layout for Engineering, QA/QC and HSE page
+                  <EngineeringQAPage
+                    page={page}
+                    pageIdx={pageIdx}
+                    pageWidgets={pageWidgets}
+                  />
+                ) : isResourcesManpower ? (
+                  // 4-row custom layout for Resources and Manpower page
+                  <ResourcesManpowerPage
+                    page={page}
+                    pageIdx={pageIdx}
+                    pageWidgets={pageWidgets}
+                  />
+                ) : isKpiPerformance ? (
+                  // 5-row custom layout for KPI Performance page
+                  <KpiPerformancePage
+                    page={page}
+                    pageIdx={pageIdx}
+                    pageWidgets={pageWidgets}
+                  />
                 ) : (
-                  <div className="grid grid-cols-4 gap-3 mb-2">
-                    {pageWidgets.map(w => (
-                      <WidgetRenderer key={w.widget_record_id} widget={w} />
-                    ))}
-                  </div>
+                  <>
+                    {/* Section header — compact bar */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-5 h-5 rounded-md text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}
+                      >
+                        {pageIdx + 1}
+                      </span>
+                      <h2 className="text-sm font-bold text-gray-700 tracking-wide">{page.title}</h2>
+                      {page.subtitle && (
+                        <span className="text-xs text-gray-400 font-normal">— {page.subtitle}</span>
+                      )}
+                    </div>
+
+                    {/* Widget grid — 4 cols on large screens */}
+                    {pageWidgets.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic mb-4">No content on this page.</p>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-3 mb-2">
+                        {pageWidgets.map(w => (
+                          <WidgetRenderer key={w.widget_record_id} widget={w} />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )
@@ -1641,5 +3473,6 @@ export function ReportDashboardForm({
         )}
       </div>
     </div>
+    </DataDateContext.Provider>
   )
 }

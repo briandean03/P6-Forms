@@ -53,25 +53,128 @@ tbody tr:hover {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-/* Print styles */
+/* ── Print / PDF styles ────────────────────────────────────────────────────── */
 @media print {
-  .no-print {
+  /* Hide non-content UI */
+  .no-print,
+  nav,
+  button,
+  select,
+  input[type="range"] {
     display: none !important;
+  }
+
+  /* Reset page layout — full bleed, no margin chrome */
+  @page {
+    size: A4 landscape;
+    margin: 12mm 10mm;
+  }
+
+  html, body {
+    width: 100%;
+    height: auto;
+    overflow: visible !important;
+    background: #ffffff !important;
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Each report page section becomes a PDF page */
+  .print-page {
+    page-break-after: always;
+    break-after: page;
+    margin-top: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Last page — don't add a trailing blank page */
+  .print-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Remove sticky positioning — everything must render in flow */
+  * {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Ensure flex/grid containers don't clip children */
+  .flex-1,
+  .min-w-0 {
+    flex: unset !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Grid and flex layouts — force full width, no wrapping */
+  [style*="display: grid"],
+  [style*="display:grid"] {
+    break-inside: avoid;
+  }
+
+  /* Cards must not split across pages */
+  [style*="border-radius: 8px"],
+  [style*="borderRadius: 8"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Recharts containers — force explicit dimensions so SVGs render */
+  .recharts-responsive-container {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Tables — no clipping, full-width, header repeats */
+  table {
+    width: 100% !important;
+    border-collapse: collapse;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Scrollable list containers — expand fully for print */
+  [style*="overflow-y: auto"],
+  [style*="overflowY: auto"],
+  [style*="overflow: auto"] {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* Background colours must print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
 }
 
-/* Report dashboard nav — active pill */
+/* Report dashboard nav — left-accent active state (enterprise style) */
 .report-nav-item {
-  color: #6b7280;
-  transition: background 0.15s, color 0.15s;
+  color: #4b5563;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .report-nav-item:hover {
-  background: #f3f4f6;
+  background: #f9fafb;
   color: #111827;
 }
 .report-nav-item.active {
-  background: #2563eb;
-  color: white;
+  background: #eff6ff;
+  color: #1d4ed8;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  border-left-color: #2563eb;
 }
