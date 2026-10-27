@@ -1574,7 +1574,8 @@ function ExecutiveOverviewPage({
 
   // ── WGT-001 header ───────────────────────────────────────────────────────────
   const metaC = wgt001 ? getContent(wgt001.widget_ast ?? {}) : null
-  const metaItems = ((metaC?.fields ?? metaC?.items) as { key?: string; label?: string; value: unknown }[] | null) ?? []
+  const _metaRaw = metaC?.fields ?? metaC?.items
+  const metaItems: { key?: string; label?: string; value: unknown }[] = Array.isArray(_metaRaw) ? _metaRaw : []
   const m = (key: string) => metaItems.find(f => f.key === key)?.value
   const projectName = String(m('project_name') ?? structure.dashboard_title ?? 'Project Report')
   const period      = String(m('reporting_period_label') ?? '')
@@ -1582,10 +1583,11 @@ function ExecutiveOverviewPage({
   const weekNum     = m('week_num') ?? structure.week_num
 
   // ── KPI helpers ───────────────────────────────────────────────────────────────
-  const itemsOf = (wgt: typeof wgt001) => {
-    if (!wgt) return [] as KR[]
+  const itemsOf = (wgt: typeof wgt001): KR[] => {
+    if (!wgt) return []
     const c = getContent(wgt.widget_ast ?? {})
-    return ((c.items ?? c.kpis ?? []) as KR[])
+    const raw = c.items ?? c.kpis ?? c.metrics
+    return Array.isArray(raw) ? (raw as KR[]) : []
   }
   const v = (item: KR, dec = 2) => {
     const val = item.value
@@ -1616,10 +1618,11 @@ function ExecutiveOverviewPage({
 
   // ── WGT-005 engineering ───────────────────────────────────────────────────────
   const engC     = wgt005 ? getContent(wgt005.widget_ast ?? {}) : null
-  const engPrim  = ((engC?.primary_metrics  ?? []) as KR[])
-  const engCtx   = ((engC?.context_metrics  ?? []) as KR[])
-  const engDist  = ((engC?.status_distribution as KR | null)?.segments ?? []) as KR[]
-  const engTotM  = ((engC?.context_metrics as KR[] | null)?.find(x => x.key === 'total_transmittals'))
+  const engPrim  = Array.isArray(engC?.primary_metrics) ? (engC!.primary_metrics as KR[]) : []
+  const engCtx   = Array.isArray(engC?.context_metrics) ? (engC!.context_metrics as KR[]) : []
+  const engDistRaw = (engC?.status_distribution as KR | null)?.segments
+  const engDist  = Array.isArray(engDistRaw) ? (engDistRaw as KR[]) : []
+  const engTotM  = engCtx.find(x => x.key === 'total_transmittals')
   const engTotal = Number(engTotM?.value ?? 0)
   const ePlanned = engPrim.find(x => x.key === 'planned_submissions_to_date')
   const eSubmit  = engPrim.find(x => x.key === 'submitted_to_date')
@@ -1630,9 +1633,9 @@ function ExecutiveOverviewPage({
 
   // ── WGT-006 QA/QC ────────────────────────────────────────────────────────────
   const qaC    = wgt006 ? getContent(wgt006.widget_ast ?? {}) : null
-  const qaMet  = ((qaC?.metrics  ?? []) as KR[])
-  const qaSeg  = ((qaC?.segments ?? []) as KR[])
-  const qaAge  = ((qaC?.aging_exceptions ?? []) as KR[])
+  const qaMet  = Array.isArray(qaC?.metrics)           ? (qaC!.metrics           as KR[]) : []
+  const qaSeg  = Array.isArray(qaC?.segments)          ? (qaC!.segments          as KR[]) : []
+  const qaAge  = Array.isArray(qaC?.aging_exceptions)  ? (qaC!.aging_exceptions  as KR[]) : []
   const qaT    = qaMet.find(x => x.key === 'total_documents')
   const qaCls  = qaMet.find(x => x.key === 'closed')
   const qaOpn  = qaMet.find(x => x.key === 'open')
@@ -1641,8 +1644,8 @@ function ExecutiveOverviewPage({
 
   // ── WGT-007 exceptions ────────────────────────────────────────────────────────
   const excC      = wgt007 ? getContent(wgt007.widget_ast ?? {}) : null
-  const excGroups = ((excC?.groups     ?? []) as KR[])
-  const excItems  = ((excC?.exceptions ?? []) as KR[])
+  const excGroups = Array.isArray(excC?.groups)     ? (excC!.groups     as KR[]) : []
+  const excItems  = Array.isArray(excC?.exceptions) ? (excC!.exceptions as KR[]) : []
   const excHd     = excC?.headline as string | undefined
   const excCnts   = excC?.counts  as KR | undefined
 
@@ -3216,8 +3219,10 @@ export function ReportDashboardForm({
           .order('data_date', { ascending: false })
         if (error) throw error
         const rows = (data ?? []) as DashboardStructure[]
+        console.debug('[ReportDashboard] structures fetched:', rows.length, rows)
         setStructures(rows)
         if (rows.length > 0) {
+          console.debug('[ReportDashboard] first structure pages:', rows[0].structure_plan?.pages)
           setSelectedStructureId(rows[0].structure_id)
           setSelectedStructure(rows[0])
         }
@@ -3244,6 +3249,7 @@ export function ReportDashboardForm({
           .eq('structure_id', selectedStructureId)
           .order('widget_order', { ascending: true })
         if (error) throw error
+        console.debug('[ReportDashboard] widgets fetched:', (data ?? []).length, data)
         setWidgets((data ?? []) as DashboardWidget[])
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Failed to load widgets')
