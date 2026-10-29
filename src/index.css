@@ -61,11 +61,9 @@ tbody tr:hover {
   margin: 10mm 12mm;
 }
 
-/* A3 landscape for the weekly dashboard single-page export */
-@page a3-page {
-  size: A3 landscape;
-  margin: 8mm;
-}
+/* A3 landscape override is injected dynamically via JS before window.print()
+   with size: 420mm 297mm landscape and margin: 4mm — supersedes the rule above.
+   See ReportDashboardForm.tsx print button onClick. */
 
 @media print {
   /* ── 1. Hide all App chrome — sidebar, header, footer, toolbars, interactive controls ── */
@@ -130,12 +128,28 @@ tbody tr:hover {
 
   /* ── 4. A3 single-page export ── */
   .a3-print-root {
-    page: a3-page;
     width: 100% !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     display: block !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    height: 100% !important;
+  }
+
+  /* Scale the entire A3 dashboard to fit one physical A3 sheet.
+     Scale = 0.82 fills the page well without being too small.
+     width: 122% (= 100/0.82) pre-expands the element so the scaled result
+     still spans the full page width.
+     The negative margin collapses the whitespace the browser reserves for
+     the original unscaled height — (1 - 0.82) / 0.82 ≈ 22% of the height. */
+  .a3-page {
+    transform: scale(0.82) !important;
+    transform-origin: top left !important;
+    width: 122% !important;
+    margin-bottom: -22% !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    overflow: visible !important;
   }
 
   /* ── 5. Colours and backgrounds must render ── */

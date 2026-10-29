@@ -182,6 +182,10 @@ function isWorkerUnit(unit: string | null | undefined): boolean {
 // Context that carries the current report's Data Date (ISO string) to all chart widgets
 const DataDateContext = createContext<string>('')
 
+// Compact context — true when widgets are rendering inside the A3 single-page layout
+// Chart widgets reduce their height to fit the dense A3 grid
+const CompactContext = createContext<boolean>(false)
+
 // Find the x-axis label value in chart data whose date is closest to the given dataDate ISO string
 function findDataDateLabel(
   data: Record<string, unknown>[],
@@ -1109,6 +1113,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
   const isPrinting = usePrintMode()
+  const isCompact  = useContext(CompactContext)
   const palette  = useChartPalette()
 
   if (!data?.length) return <NoData />
@@ -1118,11 +1123,12 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
+  const chartH = isCompact ? 140 : 280
 
   return (
     <div>
       <div className="print-chart">
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={chartH}>
           <LineChart data={chartData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
@@ -1178,6 +1184,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const yUnit     = ((content.y_axis as Record<string, unknown> | null)?.unit ?? '') as string
   const dataDate  = useContext(DataDateContext)
   const isPrinting = usePrintMode()
+  const isCompact  = useContext(CompactContext)
 
   const totalLen = data.length
   const [rangeStart, setRangeStart] = useState(0)
@@ -1264,11 +1271,13 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const ddLabelSC = findDataDateLabel(slicedData, xKey, labelKey, dataDate)
 
+  const sCurveH = isCompact ? 150 : 300
+
   return (
     <div className="flex flex-col gap-3">
       {/* Chart */}
       <div className="print-chart">
-        <ResponsiveContainer width="100%" height={300}>
+        <ResponsiveContainer width="100%" height={sCurveH}>
           <LineChart data={slicedData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
@@ -1306,8 +1315,8 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
         </ResponsiveContainer>
       </div>
 
-      {/* Slicer — hidden on print */}
-      <div className={`no-print px-1 pt-1 pb-2 bg-gray-50 rounded-lg border border-gray-200`}>
+      {/* Slicer — hidden on print and in compact A3 mode */}
+      {!isCompact && <div className={`no-print px-1 pt-1 pb-2 bg-gray-50 rounded-lg border border-gray-200`}>
         <div className="flex items-center justify-between mb-1.5 px-1">
           <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
           <div className="flex items-center gap-1 text-[10px] text-gray-500">
@@ -1359,7 +1368,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
             </span>
           ))}
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -1377,6 +1386,8 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const palette = useChartPalette()
+  const isPrintingBar = usePrintMode()
+  const isCompactBar  = useContext(CompactContext)
 
   if (!data?.length) {
     const emptyState = (content.empty_state ?? chartObj.empty_state) as { heading?: string; message?: string } | null
@@ -1393,7 +1404,8 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
-  const isPrinting = usePrintMode()
+  const isPrinting = isPrintingBar
+  const isCompact  = isCompactBar
 
   const toggleSeries = (key: string) =>
     setHidden(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
@@ -1402,7 +1414,9 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   if (horizontal) {
     const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
-    const hHeight = Math.max(220, sliced.length * 36)
+    const hHeight = isCompact
+      ? Math.max(100, sliced.length * 22)
+      : Math.max(220, sliced.length * 36)
     return (
       <div>
         <div className="print-chart">
@@ -1421,14 +1435,16 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
           </ResponsiveContainer>
         </div>
         <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-        {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+        {!isPrinting && !isCompact && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
       </div>
     )
   }
 
   const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
-  // Scale height to data: 48px per bar group, min 160, max 340
-  const vHeight = Math.min(340, Math.max(160, sliced.length * 48))
+  // Scale height to data: compact uses 28px/bar (min 100, max 180), normal uses 48px/bar (min 160, max 340)
+  const vHeight = isCompact
+    ? Math.min(180, Math.max(100, sliced.length * 28))
+    : Math.min(340, Math.max(160, sliced.length * 48))
   return (
     <div>
       <div className="print-chart">
@@ -1457,7 +1473,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
         </ResponsiveContainer>
       </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+      {!isPrinting && !isCompact && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1473,6 +1489,7 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const dataDate = useContext(DataDateContext)
   const palette  = useChartPalette()
   const isPrinting = usePrintMode()
+  const isCompact  = useContext(CompactContext)
 
   if (!data?.length) return <NoData />
 
@@ -1480,11 +1497,12 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
   const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
   const ddLabelArea = findDataDateLabel(sliced, xKey, xKey, dataDate)
+  const areaH = isCompact ? 140 : 280
 
   return (
     <div>
       <div className="print-chart">
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={areaH}>
           <AreaChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
@@ -1518,7 +1536,7 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
         </ResponsiveContainer>
       </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+      {!isPrinting && !isCompact && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1583,12 +1601,16 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const total = normalised.reduce((s, d) => s + d.value, 0)
 
   const isPrinting = usePrintMode()
+  const isCompact  = useContext(CompactContext)
+  const donutSize  = isCompact ? 120 : 180
+  const innerR     = isCompact ? 34  : 52
+  const outerR     = isCompact ? 52  : 78
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {/* Donut + center metric */}
-      <div className="print-chart" style={{ position: 'relative', flexShrink: 0, width: 180 }}>
-        <ResponsiveContainer width={180} height={180}>
+      <div className="print-chart" style={{ position: 'relative', flexShrink: 0, width: donutSize }}>
+        <ResponsiveContainer width={donutSize} height={donutSize}>
           <PieChart>
             <Pie
               data={normalised}
@@ -1596,8 +1618,8 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
               nameKey="name"
               cx="50%"
               cy="50%"
-              innerRadius={52}
-              outerRadius={78}
+              innerRadius={innerR}
+              outerRadius={outerR}
               paddingAngle={2}
               strokeWidth={0}
               isAnimationActive={!isPrinting}
@@ -1624,31 +1646,31 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
           <div style={{
             position: 'absolute', top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            textAlign: 'center', pointerEvents: 'none', width: 90, zIndex: 1,
+            textAlign: 'center', pointerEvents: 'none', width: isCompact ? 60 : 90, zIndex: 1,
           }}>
-            <p style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>
+            <p style={{ fontSize: isCompact ? 14 : 20, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>
               {centerMeta.value ?? total}
             </p>
-            <p style={{ fontSize: 9, color: '#94a3b8', margin: '3px 0 0', lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <p style={{ fontSize: isCompact ? 8 : 9, color: '#94a3b8', margin: '2px 0 0', lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {centerMeta.unit ?? 'total'}
             </p>
           </div>
         )}
       </div>
       {/* Right-side legend */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isCompact ? 3 : 5 }}>
         {normalised.map((entry, idx) => (
           <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: entry.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: '#64748b', flex: 1, lineHeight: 1.3 }}>{entry.name}</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{entry.value}</span>
-            <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 36, textAlign: 'right' }}>
+            <div style={{ width: isCompact ? 7 : 10, height: isCompact ? 7 : 10, borderRadius: 2, background: entry.color, flexShrink: 0 }} />
+            <span style={{ fontSize: isCompact ? 9 : 12, color: '#64748b', flex: 1, lineHeight: 1.3 }}>{entry.name}</span>
+            <span style={{ fontSize: isCompact ? 9 : 12, fontWeight: 700, color: '#1e293b' }}>{entry.value}</span>
+            <span style={{ fontSize: isCompact ? 9 : 11, color: '#94a3b8', minWidth: 30, textAlign: 'right' }}>
               {entry.pct > 0 ? `${entry.pct.toFixed(0)}%` : `${((entry.value / total) * 100).toFixed(0)}%`}
             </span>
           </div>
         ))}
         {centerMeta?.label && (
-          <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, lineHeight: 1.4 }}>{centerMeta.label}</p>
+          <p style={{ fontSize: isCompact ? 8 : 10, color: '#94a3b8', marginTop: 4, lineHeight: 1.4 }}>{centerMeta.label}</p>
         )}
       </div>
     </div>
@@ -3655,114 +3677,119 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
   }
 
   return (
-    <div
-      className="a3-page"
-      style={{ background: tok('canvas', '#f1f5f9'), minHeight: '100%', padding: '0 0 24px 0' }}
-    >
-      {/* ── Header bar ──────────────────────────────────────────────────────── */}
+    <CompactContext.Provider value={true}>
+      {/*
+        No CSS transform — the browser already sets the print viewport to the
+        injected @page size (420mm × 297mm A3 landscape).  We just need the
+        content to flow inside 100% of that width at compact heights.
+        On screen this renders as a normal scrollable preview.
+      */}
       <div
-        className="flex items-center justify-between px-6 py-3 mb-4 no-print-break"
-        style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff') }}
+        className="a3-page"
+        style={{ background: tok('canvas', '#f1f5f9'), padding: '0 0 8px 0' }}
       >
-        <div className="flex items-center gap-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-          </svg>
-          <div>
-            <p className="text-sm font-bold tracking-wide">{title}</p>
-            <p className="text-[10px] opacity-75">{reportType} — A3 Executive Summary</p>
+        {/* ── Header bar ──────────────────────────────────────────────────────── */}
+        <div
+          className="flex items-center justify-between px-5 py-2 mb-2"
+          style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff') }}
+        >
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            <div>
+              <p className="text-xs font-bold tracking-wide">{title}</p>
+              <p className="text-[9px] opacity-75">{reportType} — A3 Executive Summary</p>
+            </div>
+          </div>
+          <div className="text-right">
+            {dataDate && <p className="text-[11px] font-semibold">Data Date: {dataDate}</p>}
+            {weekNum   && <p className="text-[9px] opacity-75">Week {weekNum}</p>}
           </div>
         </div>
-        <div className="text-right">
-          {dataDate && <p className="text-xs font-semibold">Data Date: {dataDate}</p>}
-          {weekNum   && <p className="text-[10px] opacity-75">Week {weekNum}</p>}
-        </div>
-      </div>
 
-      {/* ── Widget grid — driven entirely by a3_layout.layout.regions ───────── */}
-      <div className="px-4">
-        {!a3 ? (
-          <p className="text-xs text-gray-400 italic p-4">
-            No A3 layout configured for this report. Please ensure the a3_layout column is populated.
-          </p>
-        ) : regions.length === 0 ? (
-          <p className="text-xs text-gray-400 italic p-4">
-            No widget regions found in the A3 layout.
-          </p>
-        ) : (
-          <div className="grid grid-cols-12 gap-3">
-            {regions.map((region, ri) => {
-              // A region may contain multiple widget_ids (e.g. REG-005 has WGT-009 + WGT-010)
-              const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
+        {/* ── Widget grid — driven entirely by a3_layout.layout.regions ───────── */}
+        <div className="px-3">
+          {!a3 ? (
+            <p className="text-xs text-gray-400 italic p-4">
+              No A3 layout configured for this report. Please ensure the a3_layout column is populated.
+            </p>
+          ) : regions.length === 0 ? (
+            <p className="text-xs text-gray-400 italic p-4">
+              No widget regions found in the A3 layout.
+            </p>
+          ) : (
+            <div className="grid grid-cols-12 gap-2">
+              {regions.map((region, ri) => {
+                const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
 
-              return (
-                <div
-                  key={region.region_id ?? ri}
-                  className={`${spanClass(region.column_span)} bg-white rounded-xl border shadow-sm p-4 flex flex-col`}
-                  style={{ borderColor: tok('subtle_border', '#e2e8f0') }}
-                >
-                  {/* Region title */}
-                  <p
-                    className="text-[10px] font-bold uppercase tracking-widest mb-3 leading-tight flex-shrink-0"
-                    style={{ color: tok('muted_text', '#94a3b8') }}
+                return (
+                  <div
+                    key={region.region_id ?? ri}
+                    className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
+                    style={{ borderColor: tok('subtle_border', '#e2e8f0'), padding: '6px 8px' }}
                   >
-                    {region.title}
-                  </p>
+                    {/* Region title */}
+                    <p
+                      className="text-[8px] font-bold uppercase tracking-widest mb-1.5 leading-tight flex-shrink-0"
+                      style={{ color: tok('muted_text', '#94a3b8') }}
+                    >
+                      {region.title}
+                    </p>
 
-                  {/* Render each widget in the region */}
-                  {regionWidgets.length === 0 ? (
-                    <div className="flex items-center justify-center h-16 text-gray-300">
-                      <span className="text-[10px] italic">
-                        Widget{region.widget_ids.length > 1 ? 's' : ''} not loaded
-                        {region.widget_ids.length > 0 && ` (${region.widget_ids.join(', ')})`}
-                      </span>
-                    </div>
-                  ) : regionWidgets.length === 1 ? (
-                    <WidgetInner widget={regionWidgets[0]} />
-                  ) : (
-                    // Multiple widgets in one region — stack them with a divider
-                    <div className="flex flex-col gap-3">
-                      {regionWidgets.map((w, wi) => (
-                        <div key={w.widget_id ?? wi}>
-                          {wi > 0 && (
-                            <div className="border-t my-2" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
-                          )}
-                          {w.widget_title && (
-                            <p className="text-[9px] font-semibold uppercase tracking-wider mb-1"
-                               style={{ color: tok('muted_text', '#94a3b8') }}>
-                              {w.widget_title}
-                            </p>
-                          )}
-                          <WidgetInner widget={w} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                    {/* Render each widget in the region */}
+                    {regionWidgets.length === 0 ? (
+                      <div className="flex items-center justify-center h-10 text-gray-300">
+                        <span className="text-[9px] italic">
+                          Widget{region.widget_ids.length > 1 ? 's' : ''} not loaded
+                        </span>
+                      </div>
+                    ) : regionWidgets.length === 1 ? (
+                      <WidgetInner widget={regionWidgets[0]} />
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {regionWidgets.map((w, wi) => (
+                          <div key={w.widget_id ?? wi}>
+                            {wi > 0 && (
+                              <div className="border-t my-1" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
+                            )}
+                            {w.widget_title && (
+                              <p className="text-[8px] font-semibold uppercase tracking-wider mb-1"
+                                 style={{ color: tok('muted_text', '#94a3b8') }}>
+                                {w.widget_title}
+                              </p>
+                            )}
+                            <WidgetInner widget={w} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer bar ──────────────────────────────────────────────────────── */}
+        {(footerCfg?.show_data_date || footerCfg?.show_report_id || footerCfg?.show_project_id || footerCfg?.show_design_version) && (
+          <div
+            className="flex items-center justify-between px-5 py-1.5 mt-2 mx-3 rounded-lg"
+            style={{ background: tok('subtle_border', '#e2e8f0'), color: tok('text_secondary', '#64748b') }}
+          >
+            <div className="flex gap-4 text-[8px]">
+              {footerCfg?.show_project_id  && ctx?.project_id    && <span>Project: {ctx.project_id}</span>}
+              {footerCfg?.show_report_id   && ctx?.report_id     && <span>Report: {ctx.report_id}</span>}
+            </div>
+            <div className="flex gap-4 text-[8px]">
+              {footerCfg?.show_data_date      && dataDate        && <span>Data Date: {dataDate}</span>}
+              {footerCfg?.show_design_version && ctx?.design_version && <span>Design v{ctx.design_version}</span>}
+            </div>
           </div>
         )}
       </div>
-
-      {/* ── Footer bar ──────────────────────────────────────────────────────── */}
-      {(footerCfg?.show_data_date || footerCfg?.show_report_id || footerCfg?.show_project_id || footerCfg?.show_design_version) && (
-        <div
-          className="flex items-center justify-between px-6 py-2 mt-4 mx-4 rounded-lg"
-          style={{ background: tok('subtle_border', '#e2e8f0'), color: tok('text_secondary', '#64748b') }}
-        >
-          <div className="flex gap-4 text-[9px]">
-            {footerCfg?.show_project_id  && ctx?.project_id    && <span>Project: {ctx.project_id}</span>}
-            {footerCfg?.show_report_id   && ctx?.report_id     && <span>Report: {ctx.report_id}</span>}
-          </div>
-          <div className="flex gap-4 text-[9px]">
-            {footerCfg?.show_data_date      && dataDate        && <span>Data Date: {dataDate}</span>}
-            {footerCfg?.show_design_version && ctx?.design_version && <span>Design v{ctx.design_version}</span>}
-          </div>
-        </div>
-      )}
-    </div>
+    </CompactContext.Provider>
   )
 }
 
@@ -4006,7 +4033,18 @@ export function ReportDashboardForm({
             <span className="text-[10px] text-gray-400">Weekly Project Dashboard — A3 Executive Summary</span>
           </div>
           <button
-            onClick={() => { requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => window.print(), 300))) }}
+            onClick={() => {
+              // Inject @page override: A3 landscape, 4mm margin (matches .a3-page scale(0.68) in CSS)
+              const style = document.createElement('style')
+              style.id = '__a3-print-override'
+              style.textContent = '@page { size: A3 landscape; margin: 4mm; }'
+              document.head.appendChild(style)
+              requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
+                window.print()
+                const cleanup = () => { style.remove(); window.removeEventListener('afterprint', cleanup) }
+                window.addEventListener('afterprint', cleanup)
+              }, 300)))
+            }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               fontSize: 11, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
