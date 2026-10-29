@@ -1427,10 +1427,12 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   }
 
   const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
+  // Scale height to data: 48px per bar group, min 160, max 340
+  const vHeight = Math.min(340, Math.max(160, sliced.length * 48))
   return (
     <div>
       <div className="print-chart">
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={vHeight}>
           <BarChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
