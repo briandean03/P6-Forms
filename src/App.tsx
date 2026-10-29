@@ -24,6 +24,7 @@ import { ReportDashboardForm } from '@/forms/ReportDashboardForm'
 
 type TabKey =
   | 'dashboard'
+  | 'weekly_dashboard'
   | 'engineering'
   | 'qaqc'
   | 'resources'
@@ -327,19 +328,24 @@ function App() {
   const handleRunUpdate = async () => {
     setShowRunUpdateConfirm(false)
     setRunUpdateLoading(true)
+    const projectTextId = selectedProject?.textProjectId || ''
+    const params = new URLSearchParams({ project_id: projectTextId, schema: selectedSchemaName, t: Date.now().toString() })
     try {
-      const params = new URLSearchParams({ project_id: selectedProject?.textProjectId || '', schema: selectedSchemaName, t: Date.now().toString() })
-      const results = await Promise.allSettled([
-        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/b430a656-d979-42ec-bb6c-d9af0d6acfb9?${params}`, { method: 'GET' }),
-        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' }),
-        fetch(`https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d?${params}`, { method: 'POST' }),
-      ])
-      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok))
-      if (failed.length > 0) {
-        showError(`Update triggered but ${failed.length} webhook(s) returned an error`)
-      } else {
-        showSuccess('Update triggered successfully')
-      }
+      // Step 1 — Webhook 51
+      const res51 = await fetch(`https://pmc2p2c.app.n8n.cloud/webhook/70203aa4-fa3c-4a68-a9c4-5454b3ea8dec?${params}`, { method: 'GET' })
+      if (!res51.ok) throw new Error(`Webhook 51 failed (${res51.status})`)
+
+      // Step 2 — Webhook 53
+      const res53 = await fetch(`https://pmc2p2c.app.n8n.cloud/webhook/ec7b88dc-e7f3-44df-8fde-4c9beaa14ba8?${params}`, { method: 'GET' })
+      if (!res53.ok) throw new Error(`Webhook 53 failed (${res53.status})`)
+
+      // Step 3 — insert into p6_update_queue (same as Activity Updates form)
+      const { error } = await schemaClient(selectedSchemaName)
+        .from('p6_update_queue')
+        .insert({ project_code: projectTextId, status: 'pending' } as never)
+      if (error) throw new Error(error.message)
+
+      showSuccess('P6 update triggered successfully')
     } catch (err) {
       showError('Failed to run update: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
@@ -361,6 +367,15 @@ function App() {
             onNavigate={(tab) => setActiveTab(tab as TabKey)}
             onRunUpdate={() => setShowRunUpdateConfirm(true)}
             runUpdateLoading={runUpdateLoading}
+          />
+        )
+      case 'weekly_dashboard':
+        return (
+          <ReportDashboardForm
+            projectId={selectedProjectId}
+            projectTextId={projectTextId}
+            schemaName={selectedSchemaName}
+            a3Mode={true}
           />
         )
       case 'engineering':
@@ -398,7 +413,7 @@ function App() {
     }
   }
 
-  const activeLabel = activeTab === 'dashboard' ? 'Dashboard' : (allNavItems.find(t => t.key === activeTab)?.label ?? '')
+  const activeLabel = activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'weekly_dashboard' ? 'Weekly Project Dashboard' : (allNavItems.find(t => t.key === activeTab)?.label ?? '')
 
   const formatDate = (d: string | null) => {
     if (!d) return null
@@ -539,14 +554,14 @@ function App() {
       <ConfirmDialog
         isOpen={showRunUpdateConfirm}
         title="Run Update"
-        message="This will trigger all sync webhooks and the P6 run-update workflow for the current project. Are you sure you want to proceed?"
+        message="This will run Webhook 51, then Webhook 53, then queue a P6 update for the current project. Are you sure you want to proceed?"
         confirmLabel="Run Update"
         onConfirm={handleRunUpdate}
         onCancel={() => setShowRunUpdateConfirm(false)}
       />
       {/* Sidebar */}
       <aside
-        className={`flex flex-col bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0 ${
+        className={`no-print flex flex-col bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0 ${
           sidebarExpanded ? 'w-56' : 'w-14'
         }`}
       >
@@ -585,6 +600,26 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
               {sidebarExpanded && <span>Dashboard</span>}
+            </button>
+          </div>
+
+          {/* Weekly Project Dashboard */}
+          <div className={`px-2 mb-1`}>
+            <button
+              onClick={() => setActiveTab('weekly_dashboard')}
+              title={!sidebarExpanded ? 'Weekly Dashboard' : undefined}
+              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                sidebarExpanded ? '' : 'justify-center'
+              } ${
+                activeTab === 'weekly_dashboard'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              {sidebarExpanded && <span>Weekly Dashboard</span>}
             </button>
           </div>
 
@@ -698,7 +733,7 @@ function App() {
       {/* Main area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 flex-shrink-0">
+        <header className="no-print bg-white border-b border-gray-200 flex-shrink-0">
           <div className="px-6 py-2 border-b border-gray-100 overflow-x-auto">
             <div className="flex items-center gap-4 whitespace-nowrap">
               <button
@@ -763,12 +798,12 @@ function App() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-6 py-6">
+        <main className="print-main flex-1 overflow-y-auto px-6 py-6">
           {renderTabContent()}
         </main>
 
         {/* Footer */}
-        <footer className="bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0">
+        <footer className="no-print bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0">
           <p className="text-center text-xs text-gray-400">P6 Project Controls Data Management</p>
         </footer>
       </div>

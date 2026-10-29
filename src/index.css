@@ -54,112 +54,193 @@ tbody tr:hover {
 }
 
 /* ── Print / PDF styles ────────────────────────────────────────────────────── */
+
+/* Default: A4 landscape for multi-page report view */
+@page {
+  size: A4 landscape;
+  margin: 10mm 12mm;
+}
+
+/* A3 landscape for the weekly dashboard single-page export */
+@page a3-page {
+  size: A3 landscape;
+  margin: 8mm;
+}
+
 @media print {
-  /* Hide non-content UI */
+  /* ── 1. Hide all App chrome — sidebar, header, footer, toolbars, interactive controls ── */
   .no-print,
-  nav,
   button,
   select,
-  input[type="range"] {
+  input[type="range"],
+  input[type="text"],
+  input[type="search"] {
     display: none !important;
   }
 
-  /* Reset page layout — full bleed, no margin chrome */
-  @page {
-    size: A4 landscape;
-    margin: 12mm 10mm;
-  }
-
+  /* ── 2. Reset the page shell so content starts on page 1 with no blank ── */
   html, body {
-    width: 100%;
-    height: auto;
+    width: 100% !important;
+    height: auto !important;
     overflow: visible !important;
-    background: #ffffff !important;
-    font-size: 11pt;
+    background: #f1f5f9 !important;
+    margin: 0 !important;
+    padding: 0 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Each report page section becomes a PDF page */
-  .print-page {
-    page-break-after: always;
-    break-after: page;
-    margin-top: 0 !important;
+  /* App root — remove flex/overflow constraints */
+  #root,
+  .flex.h-screen,
+  .flex.flex-col.flex-1 {
+    display: block !important;
+    height: auto !important;
     overflow: visible !important;
     width: 100% !important;
-    max-width: 100% !important;
   }
 
-  /* Last page — don't add a trailing blank page */
+  /* Main content area — remove screen padding */
+  .print-main {
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* ── 3. Each dashboard page = one PDF page ── */
+  .print-page {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
   .print-page:last-child {
     page-break-after: avoid;
     break-after: avoid;
   }
 
-  /* Remove sticky positioning — everything must render in flow */
-  * {
-    position: static !important;
+  /* ── 4. A3 single-page export ── */
+  .a3-print-root {
+    page: a3-page;
+    width: 100% !important;
     overflow: visible !important;
-    max-height: none !important;
-  }
-
-  /* Ensure flex/grid containers don't clip children */
-  .flex-1,
-  .min-w-0 {
-    flex: unset !important;
-    min-width: 0 !important;
-    width: 100% !important;
-  }
-
-  /* Grid and flex layouts — force full width, no wrapping */
-  [style*="display: grid"],
-  [style*="display:grid"] {
-    break-inside: avoid;
-  }
-
-  /* Cards must not split across pages */
-  [style*="border-radius: 8px"],
-  [style*="borderRadius: 8"] {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  /* Recharts containers — force explicit dimensions so SVGs render */
-  .recharts-responsive-container {
-    width: 100% !important;
-    height: auto !important;
-  }
-
-  /* Tables — no clipping, full-width, header repeats */
-  table {
-    width: 100% !important;
-    border-collapse: collapse;
-    page-break-inside: auto;
-  }
-
-  thead {
-    display: table-header-group;
-  }
-
-  tr {
+    display: block !important;
     page-break-inside: avoid;
     break-inside: avoid;
   }
 
-  /* Scrollable list containers — expand fully for print */
-  [style*="overflow-y: auto"],
-  [style*="overflowY: auto"],
-  [style*="overflow: auto"] {
-    overflow: visible !important;
-    max-height: none !important;
-    height: auto !important;
-  }
-
-  /* Background colours must print */
+  /* ── 5. Colours and backgrounds must render ── */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
+  }
+
+  /* ── 6. Fix scrollable containers — expand to show all content ── */
+  [style*="overflow-y: auto"],
+  [style*="overflow-y:auto"],
+  [style*="overflowY: auto"],
+  [style*="overflow: auto"],
+  [style*="max-height"] {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* ── 7. Sticky elements become static so they don't repeat on every page ── */
+  [style*="position: sticky"],
+  [style*="position:sticky"] {
+    position: static !important;
+  }
+
+  /* ── 8. Individual widget cards — don't split across pages ── */
+  .print-page .rounded-xl,
+  .print-page .rounded-lg,
+  .a3-print-root .rounded-xl,
+  .a3-print-root .rounded-lg {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ── 9. Recharts — stable chart rendering ── */
+
+  /* .print-chart wraps every ResponsiveContainer.
+     - Never split a chart across a page break
+     - ResponsiveContainer receives a numeric height prop directly in JSX
+       so we must NOT set height here — only guard overflow and breaks */
+  .print-chart {
+    overflow: visible !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    display: block !important;
+  }
+
+  /* recharts-wrapper MUST keep position:relative — the SVG surface and
+     tooltip layer are absolutely positioned relative to it */
+  .recharts-wrapper {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  /* Recharts sets explicit pixel width/height on the wrapper and SVG via JS.
+     We must not override those — just ensure they stay visible */
+  .recharts-wrapper > svg {
+    overflow: visible !important;
+  }
+
+  /* Tooltip — useless on print, hide it to avoid ghost boxes */
+  .recharts-tooltip-wrapper {
+    display: none !important;
+  }
+
+  /* Legend and surface — keep visible */
+  .recharts-surface,
+  .recharts-legend-wrapper {
+    overflow: visible !important;
+  }
+
+  /* Active dot markers — hide on print (no hover interaction, and they
+     can render huge if Recharts captures them mid-animation) */
+  .recharts-active-dot {
+    display: none !important;
+  }
+
+  /* All SVG elements — no clipping */
+  svg {
+    overflow: visible !important;
+  }
+
+  /* ── 10. Tables — full width, headers repeat, rows don't split ── */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ── 11. Flex/grid layouts — keep width without breaking children ── */
+  .flex-1 {
+    flex: 1 1 auto !important;
+  }
+
+  .min-w-0 {
+    min-width: 0 !important;
   }
 }
 

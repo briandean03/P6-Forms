@@ -11,6 +11,67 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface StructurePlanWidget {
+  widget_id: string
+  widget_type: string
+  title?: string
+  display_order?: number
+  include_in_a3_export?: boolean
+  grid?: { column_span?: number; row_span?: number; preferred_width?: string }
+}
+
+// Region from a3_layout.layout.regions
+interface A3Region {
+  region_id: string
+  title: string
+  region_order: number
+  column_span: number
+  row_span: number
+  widget_ids: string[]
+  presentation_mode: string
+}
+
+// Top-level a3_layout column
+interface A3Layout {
+  document_type?: string
+  layout_version?: string
+  paper?: {
+    size?: string
+    width_mm?: number
+    height_mm?: number
+    orientation?: string
+    margins_mm?: { top?: number; left?: number; right?: number; bottom?: number }
+  }
+  footer?: {
+    show_data_date?: boolean
+    show_report_id?: boolean
+    show_project_id?: boolean
+    show_design_version?: boolean
+  }
+  layout?: {
+    columns?: number
+    regions?: A3Region[]
+  }
+  dashboard_context?: {
+    schema?: string
+    week_num?: number
+    data_date?: string
+    design_id?: string
+    report_id?: string
+    project_id?: string
+    report_type?: string
+    structure_id?: string
+    design_version?: string
+    dashboard_title?: string
+    structure_version?: string
+  }
+  planning_metadata?: {
+    selected_widget_ids?: string[]
+    omitted_widget_ids?: string[]
+    non_widget_region_ids?: string[]
+  }
+}
+
 interface DashboardStructure {
   structure_id: string
   report_id: string | null
@@ -20,15 +81,18 @@ interface DashboardStructure {
   dashboard_title: string | null
   // pages use { page_id, title, page_order, ... } — note "title" not "page_title"
   structure_plan: { pages?: StructurePlanPage[] } | null
+  a3_layout: A3Layout | null
   processing_status: string | null
   is_approved: boolean | null
 }
 
 interface StructurePlanPage {
   page_id: string
+  page_key?: string
   title: string        // the JSON field is "title", not "page_title"
   page_order: number
   subtitle?: string
+  widgets?: StructurePlanWidget[]
 }
 
 interface DashboardWidget {
@@ -41,6 +105,47 @@ interface DashboardWidget {
   widget_type: string | null
   widget_ast: Record<string, unknown> | null
 }
+
+interface DashboardDesign {
+  design_id: string
+  design_name: string
+  design_version: string
+  design_specification: Record<string, unknown>
+  is_approved: boolean
+  is_default: boolean
+}
+
+// ── Design token resolver ─────────────────────────────────────────────────────
+
+// Builds a token→hex lookup from design_specification.color_tokens
+// e.g. tok('primary') → '#5741DF', tok('surface_primary') → '#FFFFFF'
+function buildTokenResolver(spec: Record<string, unknown>) {
+  const tokens = (spec.color_tokens ?? {}) as Record<string, { hex?: string }>
+  return function tok(name: string, fallback = '#6b7280'): string {
+    return tokens[name]?.hex ?? fallback
+  }
+}
+
+// Default fallback resolver used before design loads (matches current hardcoded values)
+const DEFAULT_TOK = buildTokenResolver({
+  color_tokens: {
+    surface_primary:  { hex: '#ffffff' },
+    canvas:           { hex: '#f1f5f9' },
+    subtle_border:    { hex: '#e2e8f0' },
+    text_primary:     { hex: '#1e293b' },
+    text_secondary:   { hex: '#64748b' },
+    muted_text:       { hex: '#94a3b8' },
+    primary:          { hex: '#3b82f6' },
+    mint:             { hex: '#10b981' },
+    warning:          { hex: '#f59e0b' },
+    critical:         { hex: '#ef4444' },
+    success:          { hex: '#10b981' },
+    shadow_card:      { hex: 'transparent' },
+  },
+})
+
+// Context that carries the active token resolver to all sub-components
+const DesignContext = createContext<ReturnType<typeof buildTokenResolver>>(DEFAULT_TOK)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -576,8 +681,12 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
 //   content.metrics[]:      { key, label, value, unit, status, status_label, share_of_total_percent }   (widget [31] Aging)
 //   content.status_counts[]: fallback
 // Also renders content.breakdown.rows[] as a compact table when present.
+// Extended to handle engineering transmittal shape:
+//   content.headline_metrics[], content.status_distribution.statuses[], content.aging_metrics[]
 function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
+  const tok = useContext(DesignContext)
+
   type StatusItem = {
     key?: string
     label: string
@@ -594,11 +703,97 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
     percentage_of_total?: number | null
   }
 
-  // Normalise from any of the known array fields
+  // ── Engineering transmittal variant ───────────────────────────────────────
+  const headlineMet = content.headline_metrics as StatusItem[] | null
+  const statusDist  = content.status_distribution as Record<string, unknown> | null
+  const agingMet    = content.aging_metrics as StatusItem[] | null
+
+  if (Array.isArray(headlineMet) && headlineMet.length) {
+    const distStatuses = Array.isArray(statusDist?.statuses)
+      ? (statusDist!.statuses as { status_code: string; status_label: string; count: number; share_percent: number }[])
+      : []
+
+    // Color map for engineering status codes
+    const statusCodeColor: Record<string, string> = {
+      A: tok('mint',     '#10b981'),
+      B: tok('primary',  '#3b82f6'),
+      C: tok('warning',  '#f59e0b'),
+      D: tok('critical', '#ef4444'),
+      UR: '#94a3b8',
+    }
+    const totalWithStatus = (statusDist?.total_with_recorded_status as number | null) ?? 1
+
+    return (
+      <div className="space-y-3">
+        {/* Headline metrics — 3-col grid */}
+        <div className="grid grid-cols-3 gap-2">
+          {headlineMet.map((item, i) => {
+            const val    = item.value ?? item.count
+            const sColor = severityColor(item.semantic_status ?? item.semantic_status)
+            return (
+              <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-100 px-2 py-2">
+                <span className={`text-xl font-bold ${sColor}`}>{val != null ? fmtInt(val) : '—'}</span>
+                <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide leading-tight mt-0.5">{item.label}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Status distribution stacked bar */}
+        {distStatuses.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Status Distribution</p>
+            <div className="flex h-3 rounded-full overflow-hidden w-full gap-px">
+              {distStatuses.map((s, i) => (
+                <div
+                  key={i}
+                  title={`${s.status_label}: ${s.count} (${fmtNum(s.share_percent, 1)}%)`}
+                  style={{
+                    width: `${(s.count / totalWithStatus) * 100}%`,
+                    background: statusCodeColor[s.status_code] ?? '#cbd5e1',
+                    minWidth: s.count > 0 ? 2 : 0,
+                  }}
+                />
+              ))}
+            </div>
+            {/* Legend */}
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+              {distStatuses.map((s, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: statusCodeColor[s.status_code] ?? '#cbd5e1' }} />
+                  <span className="text-[9px] text-gray-500">{s.status_label} <span className="font-semibold text-gray-700">{s.count}</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Aging metrics */}
+        {Array.isArray(agingMet) && agingMet.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Aging Alerts</p>
+            <div className="space-y-1">
+              {agingMet.map((item, i) => {
+                const val    = item.value ?? item.count
+                const sColor = severityColor(item.semantic_status)
+                return (
+                  <div key={i} className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+                    <span className="text-[10px] text-gray-600">{item.label}</span>
+                    <span className={`text-sm font-bold ${sColor}`}>{val != null ? fmtInt(val) : '—'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Generic / original variant ─────────────────────────────────────────────
   const raw = (content.items ?? content.statuses ?? content.metrics ?? content.status_counts) as StatusItem[] | null
   if (!raw?.length) return <NoData />
 
-  // breakdown.rows gives a supplementary table (e.g. per-transmittal-type for Aging widget)
   const breakdownRows = ((content.breakdown as Record<string, unknown> | null)?.rows) as Record<string, unknown>[] | null
   const breakdownCols = ((content.breakdown as Record<string, unknown> | null)?.columns) as { key: string; label: string }[] | null
 
@@ -609,7 +804,7 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
           const displayValue = item.value ?? item.count
           const statusKey    = item.status ?? item.semantic_status ?? item.status_semantic
           const sColor       = severityColor(statusKey)
-          const subLabel     = item.status_label ?? (item.share_of_total_percent != null ? `${item.share_of_total_percent}% of total` : null) ?? (item.percentage_of_total != null ? `${item.percentage_of_total}%` : null)
+          const subLabel     = item.status_label ?? (item.share_of_total_percent != null ? `${fmtNum(item.share_of_total_percent, 1)}% of total` : null) ?? (item.percentage_of_total != null ? `${fmtNum(item.percentage_of_total, 1)}%` : null)
           return (
             <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-200 px-3 py-2">
               <span className={`text-2xl font-bold ${sColor}`}>{displayValue != null ? String(displayValue) : '—'}</span>
@@ -629,6 +824,81 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
           rows={breakdownRows}
         />
       ) : null}
+    </div>
+  )
+}
+
+// ── trade_schedule_gantt ───────────────────────────────────────────────────────
+// content.trades[]: { trade_code, trade_label, planned.{cumulative_percent_complete},
+//                     actual.{cumulative_percent_complete, status}, variance.{...} }
+function TradeScheduleGanttWidget({ ast }: { ast: Record<string, unknown> }) {
+  const content = getContent(ast)
+  const tok = useContext(DesignContext)
+
+  type Trade = {
+    trade_code: string
+    trade_label: string
+    trade_name?: string | null
+    planned: { cumulative_percent_complete: number; start?: string | null; finish?: string | null }
+    actual:  { cumulative_percent_complete: number; status?: string; start?: string | null; finish?: string | null }
+    variance: { start_variance_days?: number | null; finish_variance_days?: number | null }
+  }
+
+  const trades = Array.isArray(content.trades) ? (content.trades as Trade[]) : []
+  if (!trades.length) return <NoData />
+
+  const plannedColor = tok('primary',      '#9B8ADC')
+  const actualColor  = tok('mint',         '#4FAE91')
+  const bgTrack      = tok('canvas',       '#f1f5f9')
+
+  return (
+    <div className="space-y-1.5 overflow-y-auto max-h-96">
+      {/* Legend */}
+      <div className="flex items-center gap-4 mb-2">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-2.5 rounded-sm" style={{ background: plannedColor }} />
+          <span className="text-[10px] text-gray-500">Planned %</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-2.5 rounded-sm" style={{ background: actualColor }} />
+          <span className="text-[10px] text-gray-500">Actual %</span>
+        </div>
+      </div>
+
+      {/* Row per trade */}
+      {trades.map((trade, i) => {
+        const plannedPct = Math.min(trade.planned?.cumulative_percent_complete ?? 0, 100)
+        const actualPct  = Math.min(trade.actual?.cumulative_percent_complete  ?? 0, 100)
+        const label      = trade.trade_name ?? trade.trade_label ?? trade.trade_code
+        const finVar     = trade.variance?.finish_variance_days
+        const varColor   = finVar == null ? 'text-gray-400' : finVar > 0 ? 'text-red-500' : finVar < 0 ? 'text-green-600' : 'text-gray-500'
+
+        return (
+          <div key={i} className="grid items-center gap-x-2" style={{ gridTemplateColumns: '56px 1fr 40px' }}>
+            {/* Trade label */}
+            <span className="text-[10px] font-semibold text-gray-600 truncate text-right pr-1">{label}</span>
+
+            {/* Dual progress bars */}
+            <div className="space-y-0.5">
+              {/* Planned */}
+              <div className="w-full rounded-sm overflow-hidden" style={{ height: 6, background: bgTrack }}>
+                <div className="h-full rounded-sm transition-all" style={{ width: `${plannedPct}%`, background: plannedColor, opacity: 0.7 }} />
+              </div>
+              {/* Actual */}
+              <div className="w-full rounded-sm overflow-hidden" style={{ height: 6, background: bgTrack }}>
+                <div className="h-full rounded-sm transition-all" style={{ width: `${actualPct}%`, background: actualColor }} />
+              </div>
+            </div>
+
+            {/* Percentages */}
+            <div className="text-right">
+              <div className="text-[9px] text-gray-400">{fmtNum(plannedPct, 1)}%</div>
+              <div className="text-[9px] font-semibold text-gray-700">{fmtNum(actualPct, 1)}%</div>
+              {finVar != null && <div className={`text-[9px] ${varColor}`}>{finVar > 0 ? `+${finVar}d` : `${finVar}d`}</div>}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -656,7 +926,25 @@ function ProgressBarWidget({ ast }: { ast: Record<string, unknown> }) {
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 
-const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
+// Static fallback palette — used when no series color is specified and design hasn't loaded
+const PALETTE_FALLBACK = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
+
+// Returns a design-aware chart palette from the DesignContext
+function useChartPalette(): string[] {
+  const tok = useContext(DesignContext)
+  return [
+    tok('primary',    PALETTE_FALLBACK[0]),
+    tok('mint',       PALETTE_FALLBACK[1]),
+    tok('warning',    PALETTE_FALLBACK[2]),
+    tok('critical',   PALETTE_FALLBACK[3]),
+    tok('primary_light', PALETTE_FALLBACK[4]),
+    tok('chart_neutral', PALETTE_FALLBACK[5]),
+    tok('chart_highlight', PALETTE_FALLBACK[6]),
+  ]
+}
+
+// Keep PALETTE as alias for backwards-compat in places that can't use hooks
+const PALETTE = PALETTE_FALLBACK
 
 // Compact timeframe picker — pill buttons that control how many data points to show.
 // frames: array of { label, pct } where pct is the tail-% of the full data set to keep.
@@ -727,7 +1015,7 @@ function ChartFilters({
 }) {
   if (!fields.length) return null
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+    <div className="no-print flex flex-wrap items-center gap-1.5 mt-2">
       {fields.map(f => (
         <div key={f.key} className="flex items-center gap-1">
           <span className="text-[9px] text-gray-400 capitalize">{f.key.replace(/_/g, ' ')}:</span>
@@ -786,6 +1074,24 @@ function normaliseSeries(content: Record<string, unknown>, xKey: string): Series
     .map((k, i) => ({ key: k, label: k.replace(/_/g, ' '), color: PALETTE[i % PALETTE.length] }))
 }
 
+// ── Print mode hook — fires before print dialog opens ─────────────────────────
+// Returns true while the browser is in print layout. Used to disable animations
+// and switch ResponsiveContainer to a fixed-height wrapper.
+function usePrintMode(): boolean {
+  const [printing, setPrinting] = useState(false)
+  useEffect(() => {
+    const onBefore = () => setPrinting(true)
+    const onAfter  = () => setPrinting(false)
+    window.addEventListener('beforeprint', onBefore)
+    window.addEventListener('afterprint',  onAfter)
+    return () => {
+      window.removeEventListener('beforeprint', onBefore)
+      window.removeEventListener('afterprint',  onAfter)
+    }
+  }, [])
+  return printing
+}
+
 // line_chart — content.data[], content.series[].value_field, content.category_field
 // Routes to SCurveLineChartWidget when semantic_role === 's_curve'
 function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
@@ -802,6 +1108,8 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const [tf, setTf] = useState<TFLabel>('All')
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
+  const isPrinting = usePrintMode()
+  const palette  = useChartPalette()
 
   if (!data?.length) return <NoData />
 
@@ -813,40 +1121,46 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={chartData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip contentStyle={{ fontSize: 12 }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {series.map((s, i) => (
-            <Line
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color ?? PALETTE[i % PALETTE.length]}
-              strokeDasharray={s.dashed ? '6 3' : undefined}
-              dot={false}
-              activeDot={{ r: 4 }}
-              strokeWidth={2}
-              connectNulls={false}
-            />
-          ))}
-          {ddLabel && (
-            <ReferenceLine
-              x={ddLabel}
-              stroke="#ef4444"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="print-chart">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={chartData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {series.map((s, i) => (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.color ?? palette[i % palette.length]}
+                strokeDasharray={s.dashed ? '6 3' : undefined}
+                dot={false}
+                activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
+                strokeWidth={2}
+                connectNulls={false}
+                isAnimationActive={!isPrinting}
+                animationBegin={i * 150}
+                animationDuration={1000}
+                animationEasing="ease-out"
+              />
+            ))}
+            {ddLabel && (
+              <ReferenceLine
+                x={ddLabel}
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+      {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -855,6 +1169,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const data = content.data as Record<string, unknown>[] | null
+  const palette = useChartPalette()
   if (!data?.length) return <NoData />
 
   const xKey      = (content.category_field      ?? 'period_end')   as string
@@ -862,6 +1177,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const series    = normaliseSeries(content, xKey)
   const yUnit     = ((content.y_axis as Record<string, unknown> | null)?.unit ?? '') as string
   const dataDate  = useContext(DataDateContext)
+  const isPrinting = usePrintMode()
 
   const totalLen = data.length
   const [rangeStart, setRangeStart] = useState(0)
@@ -951,41 +1267,47 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   return (
     <div className="flex flex-col gap-3">
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={slicedData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 11 }} unit={yUnit} domain={[0, 'auto']} />
-          <Tooltip content={customTooltip} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {series.map((s, i) => (
-            <Line
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color ?? PALETTE[i % PALETTE.length]}
-              strokeDasharray={s.dashed ? '6 3' : undefined}
-              dot={false}
-              activeDot={{ r: 4 }}
-              strokeWidth={2}
-              connectNulls={false}
-            />
-          ))}
-          {ddLabelSC && (
-            <ReferenceLine
-              x={ddLabelSC}
-              stroke="#ef4444"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
-            />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="print-chart">
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={slicedData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11 }} unit={yUnit} domain={[0, 'auto']} />
+            <Tooltip content={customTooltip} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {series.map((s, i) => (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.color ?? palette[i % palette.length]}
+                strokeDasharray={s.dashed ? '6 3' : undefined}
+                dot={false}
+                activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
+                strokeWidth={2}
+                connectNulls={false}
+                isAnimationActive={!isPrinting}
+                animationBegin={i * 150}
+                animationDuration={1000}
+                animationEasing="ease-out"
+              />
+            ))}
+            {ddLabelSC && (
+              <ReferenceLine
+                x={ddLabelSC}
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
 
-      {/* Slicer */}
-      <div className="px-1 pt-1 pb-2 bg-gray-50 rounded-lg border border-gray-200">
+      {/* Slicer — hidden on print */}
+      <div className={`no-print px-1 pt-1 pb-2 bg-gray-50 rounded-lg border border-gray-200`}>
         <div className="flex items-center justify-between mb-1.5 px-1">
           <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
           <div className="flex items-center gap-1 text-[10px] text-gray-500">
@@ -1054,6 +1376,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const [tf, setTf] = useState<TFLabel>('All')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
+  const palette = useChartPalette()
 
   if (!data?.length) {
     const emptyState = (content.empty_state ?? chartObj.empty_state) as { heading?: string; message?: string } | null
@@ -1070,6 +1393,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
+  const isPrinting = usePrintMode()
 
   const toggleSeries = (key: string) =>
     setHidden(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
@@ -1078,22 +1402,26 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   if (horizontal) {
     const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
+    const hHeight = Math.max(220, sliced.length * 36)
     return (
       <div>
-        <ResponsiveContainer width="100%" height={Math.max(220, sliced.length * 36)}>
-          <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 16, left: 80, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-            <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={76} />
-            <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
-            {visibleSeries.map((s, i) => (
-              <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? PALETTE[i % PALETTE.length]} radius={[0, 3, 3, 0]} />
-            ))}
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="print-chart">
+          <ResponsiveContainer width="100%" height={hHeight}>
+            <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 16, left: 80, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={76} />
+              <Tooltip contentStyle={{ fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
+              {visibleSeries.map((s, i) => (
+                <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? palette[i % palette.length]} radius={[0, 3, 3, 0]}
+                  isAnimationActive={!isPrinting} animationBegin={i * 100} animationDuration={800} animationEasing="ease-out" />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
         <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-        {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+        {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
       </div>
     )
   }
@@ -1101,27 +1429,33 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
   return (
     <div>
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip contentStyle={{ fontSize: 12 }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
-          {visibleSeries.map((s, i) => (
-            <Bar
-              key={s.key}
-              dataKey={s.key}
-              name={s.label}
-              fill={s.color ?? PALETTE[i % PALETTE.length]}
-              stackId={stacked ? 'stack' : undefined}
-              radius={stacked ? undefined : [3, 3, 0, 0]}
-            />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+      <div className="print-chart">
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
+            {visibleSeries.map((s, i) => (
+              <Bar
+                key={s.key}
+                dataKey={s.key}
+                name={s.label}
+                fill={s.color ?? palette[i % palette.length]}
+                stackId={stacked ? 'stack' : undefined}
+                radius={stacked ? undefined : [3, 3, 0, 0]}
+                isAnimationActive={!isPrinting}
+                animationBegin={i * 100}
+                animationDuration={800}
+                animationEasing="ease-out"
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+      {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1135,6 +1469,8 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const [tf, setTf] = useState<TFLabel>('All')
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
+  const palette  = useChartPalette()
+  const isPrinting = usePrintMode()
 
   if (!data?.length) return <NoData />
 
@@ -1145,39 +1481,42 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={280}>
-        <AreaChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-          <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip contentStyle={{ fontSize: 12 }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {series.map((s, i) => (
-            <Area
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color ?? PALETTE[i % PALETTE.length]}
-              fill={s.color ?? PALETTE[i % PALETTE.length]}
-              fillOpacity={0.15}
-              strokeWidth={2}
-              connectNulls={false}
-            />
-          ))}
-          {ddLabelArea && (
-            <ReferenceLine
-              x={ddLabelArea}
-              stroke="#ef4444"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
-            />
-          )}
-        </AreaChart>
-      </ResponsiveContainer>
+      <div className="print-chart">
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {series.map((s, i) => (
+              <Area
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.color ?? palette[i % palette.length]}
+                fill={s.color ?? palette[i % palette.length]}
+                fillOpacity={0.15}
+                strokeWidth={2}
+                connectNulls={false}
+                isAnimationActive={!isPrinting}
+              />
+            ))}
+            {ddLabelArea && (
+              <ReferenceLine
+                x={ddLabelArea}
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
+      {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1199,7 +1538,8 @@ const STATUS_COLORS: Record<string, string> = {
 function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   type Slice = Record<string, unknown>
-  const raw = (content.data ?? content.segments ?? content.slices) as Slice[] | null
+  const chartObj = (content.chart ?? {}) as Record<string, unknown>
+  const raw = (content.data ?? chartObj.data ?? content.segments ?? content.slices) as Slice[] | null
 
   // Resolve center metric — supports both center_metric and center_label shapes
   type CenterMeta = { label?: string; value?: number; unit?: string; secondary_label?: string; secondary_value?: number; secondary_unit?: string }
@@ -1240,10 +1580,12 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const total = normalised.reduce((s, d) => s + d.value, 0)
 
+  const isPrinting = usePrintMode()
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {/* Donut + center metric */}
-      <div style={{ position: 'relative', flexShrink: 0, width: 180 }}>
+      <div className="print-chart" style={{ position: 'relative', flexShrink: 0, width: 180 }}>
         <ResponsiveContainer width={180} height={180}>
           <PieChart>
             <Pie
@@ -1256,6 +1598,10 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
               outerRadius={78}
               paddingAngle={2}
               strokeWidth={0}
+              isAnimationActive={!isPrinting}
+              animationBegin={0}
+              animationDuration={900}
+              animationEasing="ease-out"
             >
               {normalised.map((entry, idx) => (
                 <Cell key={idx} fill={entry.color} />
@@ -1266,7 +1612,8 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
                 const n = typeof val === 'number' ? val : Number(val ?? 0)
                 return [`${n} (${((n / total) * 100).toFixed(2)}%)`, name]
               }}
-              contentStyle={{ fontSize: 11, borderRadius: 6 }}
+              contentStyle={{ fontSize: 11, borderRadius: 6, zIndex: 9999, position: 'relative' }}
+              wrapperStyle={{ zIndex: 9999 }}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -1275,7 +1622,7 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
           <div style={{
             position: 'absolute', top: '50%', left: '50%',
             transform: 'translate(-50%, -50%)',
-            textAlign: 'center', pointerEvents: 'none', width: 90,
+            textAlign: 'center', pointerEvents: 'none', width: 90, zIndex: 1,
           }}>
             <p style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>
               {centerMeta.value ?? total}
@@ -1370,13 +1717,78 @@ function TextBlockWidget({ ast }: { ast: Record<string, unknown> }) {
 }
 
 // JSON fallback for unknown widget types
-function JsonFallback({ ast, type }: { ast: Record<string, unknown>; type: string | null }) {
+// ── Smart fallback renderer ────────────────────────────────────────────────────
+// Inspects the widget_ast shape and delegates to the best-matching existing
+// component so that new widget types added by n8n render without a code change.
+// Falls back to a clean "unavailable" placeholder only when no match is found.
+
+function inferWidgetType(ast: Record<string, unknown>): string | null {
+  const content = (ast.content ?? ast) as Record<string, unknown>
+  // Chart signals
+  if (Array.isArray(content.series) && Array.isArray(content.data)) {
+    const typeHint = String(ast.chart_type ?? ast.type ?? '').toLowerCase()
+    if (typeHint.includes('area'))                    return 'area_chart'
+    if (typeHint.includes('bar'))                     return 'bar_chart'
+    if (typeHint.includes('stacked'))                 return 'stacked_bar_chart'
+    if (typeHint.includes('horizontal'))              return 'horizontal_bar_chart'
+    return 'line_chart'
+  }
+  if (Array.isArray(content.slices) || Array.isArray(content.segments))
+                                                      return 'donut_chart'
+  // Table signals
+  if (Array.isArray(content.rows) || Array.isArray(content.columns))
+                                                      return 'data_table'
+  if (Array.isArray(content.milestones))              return 'milestone_table'
+  if (Array.isArray(content.exceptions))              return 'exception_table'
+  // KPI / metric signals
+  if (content.value !== undefined || Array.isArray(content.metrics) ||
+      Array.isArray(content.primary_metrics))         return 'kpi_card'
+  if (Array.isArray(content.items) &&
+      (content.items as Record<string,unknown>[])[0]?.status !== undefined)
+                                                      return 'status_summary'
+  if (Array.isArray(content.items) &&
+      (content.items as Record<string,unknown>[])[0]?.narrative !== undefined)
+                                                      return 'narrative_summary'
+  if (Array.isArray(content.alerts))                  return 'alert_panel'
+  if (typeof content.text === 'string' ||
+      typeof content.body === 'string')               return 'text_block'
+  if (typeof content.percent !== 'undefined' ||
+      typeof content.progress !== 'undefined')        return 'progress_bar'
+  return null
+}
+
+function SmartFallback({ ast, type }: { ast: Record<string, unknown>; type: string | null }) {
+  const inferred = inferWidgetType(ast)
+  if (inferred) {
+    switch (inferred) {
+      case 'line_chart':           return <LineChartWidget ast={ast} />
+      case 'area_chart':           return <AreaChartWidget ast={ast} />
+      case 'bar_chart':            return <BarChartWidget ast={ast} />
+      case 'stacked_bar_chart':    return <BarChartWidget ast={ast} stacked />
+      case 'horizontal_bar_chart': return <BarChartWidget ast={ast} horizontal />
+      case 'donut_chart':          return <DonutChartWidget ast={ast} />
+      case 'data_table':           return <DataTableWidget ast={ast} />
+      case 'milestone_table':      return <MilestoneTableWidget ast={ast} />
+      case 'exception_table':      return <ExceptionTableWidget ast={ast} />
+      case 'kpi_card':             return <KpiCardWidget ast={ast} />
+      case 'status_summary':       return <StatusSummaryWidget ast={ast} />
+      case 'narrative_summary':    return <NarrativeSummaryWidget ast={ast} />
+      case 'alert_panel':          return <AlertPanelWidget ast={ast} />
+      case 'text_block':           return <TextBlockWidget ast={ast} />
+      case 'progress_bar':         return <ProgressBarWidget ast={ast} />
+      case 'trade_schedule_gantt': return <TradeScheduleGanttWidget ast={ast} />
+    }
+  }
+  // No match — clean placeholder (never shows raw JSON in production)
   return (
-    <div>
-      <p className="text-[10px] text-gray-400 mb-1 italic">Widget type: {type ?? 'unknown'}</p>
-      <pre className="text-xs text-gray-500 bg-gray-50 rounded p-2 overflow-x-auto max-h-48">
-        {JSON.stringify(ast, null, 2)}
-      </pre>
+    <div className="flex flex-col items-center justify-center h-24 gap-1 text-gray-300">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M9 9h.01M15 9h.01M9 15h6" />
+      </svg>
+      <span className="text-[10px] text-gray-400 italic">
+        {type ? `Widget type "${type}" not yet supported` : 'Unknown widget'}
+      </span>
     </div>
   )
 }
@@ -1492,37 +1904,40 @@ function colSpan(type: string | null): string {
 
 // ── Widget dispatcher ─────────────────────────────────────────────────────────
 
-function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
+// Renders just the widget content (no card wrapper) — used by both WidgetRenderer and A3WeeklyDashboardPage
+function WidgetInner({ widget }: { widget: DashboardWidget }) {
   const ast  = widget.widget_ast ?? {}
   const type = widget.widget_type
+  switch (type) {
+    case 'kpi_card':           return <KpiCardWidget ast={ast} />
+    case 'kpi_group':          return <KpiGroupWidget ast={ast} />
+    case 'metadata_panel':     return <MetadataPanelWidget ast={ast} />
+    case 'alert_panel':        return <AlertPanelWidget ast={ast} />
+    case 'status_summary':     return <StatusSummaryWidget ast={ast} />
+    case 'progress_bar':       return <ProgressBarWidget ast={ast} />
+    case 'line_chart':         return <LineChartWidget ast={ast} />
+    case 'bar_chart':
+    case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
+    case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
+    case 'horizontal_bar_chart':return <BarChartWidget ast={ast} horizontal />
+    case 'area_chart':         return <AreaChartWidget ast={ast} />
+    case 'pie_chart':          return <DonutChartWidget ast={ast} />
+    case 'donut_chart':        return <DonutChartWidget ast={ast} />
+    case 'data_table':         return <DataTableWidget ast={ast} />
+    case 'exception_table':    return <ExceptionTableWidget ast={ast} />
+    case 'milestone_table':
+    case 'lookahead_table':    return <MilestoneTableWidget ast={ast} />
+    case 'hierarchical_table': return <HierarchicalTableWidget ast={ast} />
+    case 'resource_table':     return <ResourceTableWidget ast={ast} />
+    case 'narrative_summary':  return <NarrativeSummaryWidget ast={ast} />
+    case 'text_block':         return <TextBlockWidget ast={ast} />
+    case 'trade_schedule_gantt':return <TradeScheduleGanttWidget ast={ast} />
+    default:                   return <SmartFallback ast={ast} type={type} />
+  }
+}
 
-  const inner = (() => {
-    switch (type) {
-      case 'kpi_card':           return <KpiCardWidget ast={ast} />
-      case 'kpi_group':          return <KpiGroupWidget ast={ast} />
-      case 'metadata_panel':     return <MetadataPanelWidget ast={ast} />
-      case 'alert_panel':        return <AlertPanelWidget ast={ast} />
-      case 'status_summary':     return <StatusSummaryWidget ast={ast} />
-      case 'progress_bar':       return <ProgressBarWidget ast={ast} />
-      case 'line_chart':         return <LineChartWidget ast={ast} />
-      case 'bar_chart':
-      case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
-      case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
-      case 'horizontal_bar_chart':return <BarChartWidget ast={ast} horizontal />
-      case 'area_chart':         return <AreaChartWidget ast={ast} />
-      case 'pie_chart':          return <DonutChartWidget ast={ast} />
-      case 'donut_chart':        return <DonutChartWidget ast={ast} />
-      case 'data_table':         return <DataTableWidget ast={ast} />
-      case 'exception_table':    return <ExceptionTableWidget ast={ast} />
-      case 'milestone_table':
-      case 'lookahead_table':    return <MilestoneTableWidget ast={ast} />
-      case 'hierarchical_table': return <HierarchicalTableWidget ast={ast} />
-      case 'resource_table':     return <ResourceTableWidget ast={ast} />
-      case 'narrative_summary':  return <NarrativeSummaryWidget ast={ast} />
-      case 'text_block':         return <TextBlockWidget ast={ast} />
-      default:                   return <JsonFallback ast={ast} type={type} />
-    }
-  })()
+function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
+  const type = widget.widget_type
 
   const isTable = [
     'data_table','exception_table','milestone_table','lookahead_table',
@@ -1536,7 +1951,9 @@ function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
           {widget.widget_title}
         </p>
       )}
-      <div className={isTable ? 'flex-1 flex flex-col min-h-0' : ''}>{inner}</div>
+      <div className={isTable ? 'flex-1 flex flex-col min-h-0' : ''}>
+        <WidgetInner widget={widget} />
+      </div>
     </div>
   )
 }
@@ -1562,6 +1979,7 @@ function ExecutiveOverviewPage({
   onStructureChange,
 }: ExecPageProps) {
   type KR = Record<string, unknown>
+  const tok = useContext(DesignContext)
 
   // widget lookup
   const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
@@ -1574,7 +1992,8 @@ function ExecutiveOverviewPage({
 
   // ── WGT-001 header ───────────────────────────────────────────────────────────
   const metaC = wgt001 ? getContent(wgt001.widget_ast ?? {}) : null
-  const _metaRaw = metaC?.fields ?? metaC?.items
+  // content.items is the array of display fields; content.fields is a flat key-value object — always prefer items
+  const _metaRaw = metaC?.items ?? metaC?.fields
   const metaItems: { key?: string; label?: string; value: unknown }[] = Array.isArray(_metaRaw) ? _metaRaw : []
   const m = (key: string) => metaItems.find(f => f.key === key)?.value
   const projectName = String(m('project_name') ?? structure.dashboard_title ?? 'Project Report')
@@ -1677,42 +2096,42 @@ function ExecutiveOverviewPage({
     return '#d1d5db'
   }
 
-  // ── shared style tokens ───────────────────────────────────────────────────────
+  // ── shared style tokens — driven by design specification ─────────────────────
   const CARD: React.CSSProperties = {
-    background: '#ffffff',
+    background: tok('surface_primary', '#ffffff'),
     borderRadius: 8,
-    border: '1px solid #e2e8f0',
+    border: `1px solid ${tok('subtle_border', '#e2e8f0')}`,
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
   }
   const SECTION_LABEL: React.CSSProperties = {
     fontSize: 11,
     fontWeight: 700,
-    color: '#64748b',
+    color: tok('text_secondary', '#64748b'),
     textTransform: 'uppercase',
     letterSpacing: '0.07em',
     marginBottom: 10,
   }
-  const ROW_LABEL: React.CSSProperties = { fontSize: 13, color: '#64748b' }
-  const ROW_VAL: React.CSSProperties   = { fontSize: 13, fontWeight: 700, color: '#1e293b' }
+  const ROW_LABEL: React.CSSProperties = { fontSize: 13, color: tok('text_secondary', '#64748b') }
+  const ROW_VAL: React.CSSProperties   = { fontSize: 13, fontWeight: 700, color: tok('text_primary', '#1e293b') }
 
   return (
-    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
+    <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: tok('text_primary', '#1e293b'), background: tok('canvas', '#f1f5f9'), minHeight: '100%' }}>
 
       {/* ══════════════════════════════════════════════════════════════════════
           TOP NAV BAR
       ══════════════════════════════════════════════════════════════════════ */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ background: tok('app_header_bg', '#fff'), borderBottom: `1px solid ${tok('subtle_border', '#e2e8f0')}`, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
         {/* Branding */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: `linear-gradient(135deg, ${tok('charcoal', '#1e40af')}, ${tok('primary', '#3b82f6')})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 3h18M3 9h18M3 15h12M3 21h8" />
             </svg>
           </div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', letterSpacing: '-0.01em' }}>P6 Control</span>
-          <span style={{ fontSize: 13, color: '#94a3b8' }}>/</span>
-          <span style={{ fontSize: 13, color: '#64748b' }}>{projectName}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: tok('text_primary', '#1e293b'), letterSpacing: '-0.01em' }}>P6 Control</span>
+          <span style={{ fontSize: 13, color: tok('muted_text', '#94a3b8') }}>/</span>
+          <span style={{ fontSize: 13, color: tok('text_secondary', '#64748b') }}>{projectName}</span>
         </div>
 
         <div style={{ flex: 1 }} />
@@ -1747,7 +2166,7 @@ function ExecutiveOverviewPage({
           </select>
           {/* Print button */}
           <button
-            onClick={() => window.print()}
+            onClick={() => { requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => window.print(), 300))) }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, background: '#1e293b', color: '#fff', border: 'none', cursor: 'pointer' }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2308,7 +2727,7 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
         case 'grouped_bar_chart':   return <BarChartWidget ast={ast} />
         case 'horizontal_bar_chart':return <BarChartWidget ast={ast} horizontal />
         case 'area_chart':          return <AreaChartWidget ast={ast} />
-        default:                    return <JsonFallback ast={ast} type={type} />
+        default:                    return <SmartFallback ast={ast} type={type} />
       }
     })()
     return (
@@ -2618,7 +3037,7 @@ function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePagePr
                 case 'alert_panel':     return <AlertPanelWidget ast={ast} />
                 case 'exception_table': return <ExceptionTableWidget ast={ast} />
                 case 'data_table':      return <DataTableWidget ast={ast} />
-                default:                return <JsonFallback ast={ast} type={type} />
+                default:                return <SmartFallback ast={ast} type={type} />
               }
             })()
             return (
@@ -2723,7 +3142,7 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
         case 'hierarchical_table': return <HierarchicalTableWidget ast={ast} />
         case 'data_table':         return <DataTableWidget ast={ast} />
         case 'exception_table':    return <ExceptionTableWidget ast={ast} />
-        default:                   return <JsonFallback ast={ast} type={type} />
+        default:                   return <SmartFallback ast={ast} type={type} />
       }
     })()
     const needsHeight = ['donut_chart','pie_chart','line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
@@ -2906,7 +3325,7 @@ function ResourcesManpowerPage({ page, pageIdx, pageWidgets }: ResourcesPageProp
         case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
         case 'resource_table':     return <ResourceTableWidget ast={ast} />
         case 'data_table':         return <DataTableWidget ast={ast} />
-        default:                   return <JsonFallback ast={ast} type={type} />
+        default:                   return <SmartFallback ast={ast} type={type} />
       }
     })()
     const needsHeight = ['line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
@@ -3078,7 +3497,7 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
         case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
         case 'data_table':         return <DataTableWidget ast={ast} />
         case 'exception_table':    return <ExceptionTableWidget ast={ast} />
-        default:                   return <JsonFallback ast={ast} type={type} />
+        default:                   return <SmartFallback ast={ast} type={type} />
       }
     })()
     const needsHeight = ['line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
@@ -3179,16 +3598,184 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
   )
 }
 
+// ── A3 Weekly Dashboard Page ──────────────────────────────────────────────────
+// Renders a print-optimised A3 single-page summary using only the widgets
+// flagged include_in_a3_export=true in the structure plan, laid out on a
+// 12-column grid matching the grid.column_span values from the plan.
+
+type A3PageProps = {
+  structure: DashboardStructure
+  widgets: DashboardWidget[]
+}
+
+function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
+  const tok = useContext(DesignContext)
+
+  const a3 = structure.a3_layout
+  const ctx = a3?.dashboard_context
+  const footerCfg = a3?.footer
+
+  // Read regions from a3_layout, skip header/footer metadata regions (no widget_ids)
+  const nonWidgetIds = new Set(a3?.planning_metadata?.non_widget_region_ids ?? [])
+  const regions: A3Region[] = [...(a3?.layout?.regions ?? [])]
+    .sort((a, b) => (a.region_order ?? 0) - (b.region_order ?? 0))
+    .filter(r => !nonWidgetIds.has(r.region_id) && r.widget_ids.length > 0)
+
+  // Map widget_id → DashboardWidget (fetched row)
+  const widgetById = useMemo(() => {
+    const m: Record<string, DashboardWidget> = {}
+    for (const w of widgets) { if (w.widget_id) m[w.widget_id] = w }
+    return m
+  }, [widgets])
+
+  const dataDate = ctx?.data_date ?? structure.data_date ?? ''
+  const weekNum  = ctx?.week_num  ?? structure.week_num  ?? ''
+  const title    = ctx?.dashboard_title ?? structure.dashboard_title ?? 'Weekly Project Dashboard'
+  const reportType = ctx?.report_type ?? 'Weekly Progress Report'
+
+  // Column span → Tailwind grid-cols-12 span class
+  const spanClass = (span: number | undefined): string => {
+    switch (span) {
+      case 1:  return 'col-span-1'
+      case 2:  return 'col-span-2'
+      case 3:  return 'col-span-3'
+      case 4:  return 'col-span-4'
+      case 5:  return 'col-span-5'
+      case 6:  return 'col-span-6'
+      case 7:  return 'col-span-7'
+      case 8:  return 'col-span-8'
+      case 9:  return 'col-span-9'
+      case 10: return 'col-span-10'
+      case 11: return 'col-span-11'
+      case 12: return 'col-span-12'
+      default: return 'col-span-4'
+    }
+  }
+
+  return (
+    <div
+      className="a3-page"
+      style={{ background: tok('canvas', '#f1f5f9'), minHeight: '100%', padding: '0 0 24px 0' }}
+    >
+      {/* ── Header bar ──────────────────────────────────────────────────────── */}
+      <div
+        className="flex items-center justify-between px-6 py-3 mb-4 no-print-break"
+        style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff') }}
+      >
+        <div className="flex items-center gap-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <div>
+            <p className="text-sm font-bold tracking-wide">{title}</p>
+            <p className="text-[10px] opacity-75">{reportType} — A3 Executive Summary</p>
+          </div>
+        </div>
+        <div className="text-right">
+          {dataDate && <p className="text-xs font-semibold">Data Date: {dataDate}</p>}
+          {weekNum   && <p className="text-[10px] opacity-75">Week {weekNum}</p>}
+        </div>
+      </div>
+
+      {/* ── Widget grid — driven entirely by a3_layout.layout.regions ───────── */}
+      <div className="px-4">
+        {!a3 ? (
+          <p className="text-xs text-gray-400 italic p-4">
+            No A3 layout configured for this report. Please ensure the a3_layout column is populated.
+          </p>
+        ) : regions.length === 0 ? (
+          <p className="text-xs text-gray-400 italic p-4">
+            No widget regions found in the A3 layout.
+          </p>
+        ) : (
+          <div className="grid grid-cols-12 gap-3">
+            {regions.map((region, ri) => {
+              // A region may contain multiple widget_ids (e.g. REG-005 has WGT-009 + WGT-010)
+              const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
+
+              return (
+                <div
+                  key={region.region_id ?? ri}
+                  className={`${spanClass(region.column_span)} bg-white rounded-xl border shadow-sm p-4 flex flex-col`}
+                  style={{ borderColor: tok('subtle_border', '#e2e8f0') }}
+                >
+                  {/* Region title */}
+                  <p
+                    className="text-[10px] font-bold uppercase tracking-widest mb-3 leading-tight flex-shrink-0"
+                    style={{ color: tok('muted_text', '#94a3b8') }}
+                  >
+                    {region.title}
+                  </p>
+
+                  {/* Render each widget in the region */}
+                  {regionWidgets.length === 0 ? (
+                    <div className="flex items-center justify-center h-16 text-gray-300">
+                      <span className="text-[10px] italic">
+                        Widget{region.widget_ids.length > 1 ? 's' : ''} not loaded
+                        {region.widget_ids.length > 0 && ` (${region.widget_ids.join(', ')})`}
+                      </span>
+                    </div>
+                  ) : regionWidgets.length === 1 ? (
+                    <WidgetInner widget={regionWidgets[0]} />
+                  ) : (
+                    // Multiple widgets in one region — stack them with a divider
+                    <div className="flex flex-col gap-3">
+                      {regionWidgets.map((w, wi) => (
+                        <div key={w.widget_id ?? wi}>
+                          {wi > 0 && (
+                            <div className="border-t my-2" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
+                          )}
+                          {w.widget_title && (
+                            <p className="text-[9px] font-semibold uppercase tracking-wider mb-1"
+                               style={{ color: tok('muted_text', '#94a3b8') }}>
+                              {w.widget_title}
+                            </p>
+                          )}
+                          <WidgetInner widget={w} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Footer bar ──────────────────────────────────────────────────────── */}
+      {(footerCfg?.show_data_date || footerCfg?.show_report_id || footerCfg?.show_project_id || footerCfg?.show_design_version) && (
+        <div
+          className="flex items-center justify-between px-6 py-2 mt-4 mx-4 rounded-lg"
+          style={{ background: tok('subtle_border', '#e2e8f0'), color: tok('text_secondary', '#64748b') }}
+        >
+          <div className="flex gap-4 text-[9px]">
+            {footerCfg?.show_project_id  && ctx?.project_id    && <span>Project: {ctx.project_id}</span>}
+            {footerCfg?.show_report_id   && ctx?.report_id     && <span>Report: {ctx.report_id}</span>}
+          </div>
+          <div className="flex gap-4 text-[9px]">
+            {footerCfg?.show_data_date      && dataDate        && <span>Data Date: {dataDate}</span>}
+            {footerCfg?.show_design_version && ctx?.design_version && <span>Design v{ctx.design_version}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function ReportDashboardForm({
   projectId,
   projectTextId: _projectTextId,
   schemaName,
+  a3Mode = false,
 }: {
   projectId: string
   projectTextId: string
   schemaName: string
+  a3Mode?: boolean
 }) {
   void projectId
 
@@ -3199,8 +3786,37 @@ export function ReportDashboardForm({
   const [widgets, setWidgets] = useState<DashboardWidget[]>([])
   const [loadingWidgets, setLoadingWidgets] = useState(false)
   const [activePageId, setActivePageId] = useState<string>('')
+  const [tok, setTok] = useState<ReturnType<typeof buildTokenResolver>>(() => DEFAULT_TOK)
 
   const { notification, showError, hideNotification } = useNotification()
+
+  // Fetch the approved dashboard design and build a token resolver from it
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const db = schemaClient(schemaName)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (db as any)
+          .from('dbp6_0008_dashboard_designs')
+          .select('design_id, design_name, design_version, design_specification, is_approved, is_default')
+          .eq('is_approved', true)
+          .order('is_default', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (error) { console.warn('[ReportDashboard] design fetch error:', error.message); return }
+        if (data) {
+          const row = data as DashboardDesign
+          const spec = typeof row.design_specification === 'string'
+            ? (() => { try { return JSON.parse(row.design_specification as unknown as string) } catch { return {} } })()
+            : (row.design_specification ?? {})
+          setTok(() => buildTokenResolver(spec))
+        }
+      } catch (err) {
+        console.warn('[ReportDashboard] design fetch failed:', err)
+      }
+    }
+    load()
+  }, [schemaName])
 
   // Fetch all structures (no project_id filter — schema scoping handles isolation)
   useEffect(() => {
@@ -3215,14 +3831,29 @@ export function ReportDashboardForm({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (db as any)
           .from('dbp6_0008_dashboard_structures')
-          .select('structure_id, report_id, project_id, week_num, data_date, dashboard_title, structure_plan, processing_status, is_approved')
+          .select('structure_id, report_id, project_id, week_num, data_date, dashboard_title, structure_plan, a3_layout, processing_status, is_approved')
           .order('data_date', { ascending: false })
         if (error) throw error
-        const rows = (data ?? []) as DashboardStructure[]
-        console.debug('[ReportDashboard] structures fetched:', rows.length, rows)
+        // JSON columns may arrive as strings (or double-encoded) from Supabase — parse safely
+        const parseJsonCol = (raw: unknown) => {
+          if (raw == null) return null
+          if (typeof raw === 'object' && !Array.isArray(raw)) return raw
+          if (typeof raw === 'string') {
+            try {
+              const once = JSON.parse(raw)
+              if (typeof once === 'string') { try { return JSON.parse(once) } catch { return null } }
+              return once
+            } catch { return null }
+          }
+          return null
+        }
+        const rows = ((data ?? []) as DashboardStructure[]).map(s => ({
+          ...s,
+          structure_plan: parseJsonCol(s.structure_plan) as DashboardStructure['structure_plan'],
+          a3_layout: parseJsonCol(s.a3_layout) as A3Layout | null,
+        }))
         setStructures(rows)
         if (rows.length > 0) {
-          console.debug('[ReportDashboard] first structure pages:', rows[0].structure_plan?.pages)
           setSelectedStructureId(rows[0].structure_id)
           setSelectedStructure(rows[0])
         }
@@ -3249,8 +3880,27 @@ export function ReportDashboardForm({
           .eq('structure_id', selectedStructureId)
           .order('widget_order', { ascending: true })
         if (error) throw error
-        console.debug('[ReportDashboard] widgets fetched:', (data ?? []).length, data)
-        setWidgets((data ?? []) as DashboardWidget[])
+        // widget_ast may arrive as a JSON string (or even double-encoded) from Supabase
+        const parseAst = (raw: unknown): Record<string, unknown> => {
+          if (raw == null) return {}
+          if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
+          if (typeof raw === 'string') {
+            try {
+              const once = JSON.parse(raw)
+              // If it was double-encoded, parse again
+              if (typeof once === 'string') {
+                try { return JSON.parse(once) } catch { return {} }
+              }
+              if (typeof once === 'object' && once !== null && !Array.isArray(once)) return once
+            } catch { /* fall through */ }
+          }
+          return {}
+        }
+        const parsed = ((data ?? []) as DashboardWidget[]).map(w => ({
+          ...w,
+          widget_ast: parseAst(w.widget_ast),
+        }))
+        setWidgets(parsed)
       } catch (err) {
         showError(err instanceof Error ? err.message : 'Failed to load widgets')
       }
@@ -3329,20 +3979,76 @@ export function ReportDashboardForm({
 
   const reportDataDate = selectedStructure?.data_date ?? ''
 
+  // ── A3 mode — render the single-page summary layout ────────────────────────
+  if (a3Mode) {
+    const isLoading = loadingStructures || loadingWidgets
+    return (
+      <DesignContext.Provider value={tok}>
+      <DataDateContext.Provider value={reportDataDate}>
+        {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
+
+        {/* A3 toolbar — hidden on print */}
+        <div className="no-print flex items-center justify-between px-4 py-2 mb-2 border-b" style={{ borderColor: tok('subtle_border', '#e2e8f0') }}>
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedStructureId}
+              onChange={handleStructureChange}
+              style={{ fontSize: 11, color: '#374151', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 8px', outline: 'none' }}
+            >
+              {structures.map(s => (
+                <option key={s.structure_id} value={s.structure_id}>
+                  {s.week_num != null ? `Week ${s.week_num}` : 'Week —'} · {fmtDate(s.data_date)}
+                </option>
+              ))}
+            </select>
+            <span className="text-[10px] text-gray-400">Weekly Project Dashboard — A3 Executive Summary</span>
+          </div>
+          <button
+            onClick={() => { requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => window.print(), 300))) }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 11, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
+              background: tok('primary', '#1d4ed8'), color: '#fff', border: 'none', cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" rx="1" />
+            </svg>
+            Print / Export PDF
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16"><LoadingSpinner /></div>
+        ) : !selectedStructure ? (
+          <p className="text-xs text-gray-400 italic p-6">No dashboard structure available.</p>
+        ) : (
+          <div className="a3-print-root">
+            <A3WeeklyDashboardPage structure={selectedStructure} widgets={widgets} />
+          </div>
+        )}
+      </DataDateContext.Provider>
+      </DesignContext.Provider>
+    )
+  }
+
   return (
+    <DesignContext.Provider value={tok}>
     <DataDateContext.Provider value={reportDataDate}>
     <div className="flex gap-4 items-start" style={{ maxWidth: '100%' }}>
 
       {/* ── Left nav ─────────────────────────────────────────────────────── */}
       {pages.length > 0 && (
         <nav className="no-print hidden lg:flex flex-col w-56 flex-shrink-0" style={{ position: 'sticky', top: '0', maxHeight: 'calc(100vh - 5rem)' }}>
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden flex flex-col" style={{ boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
+          <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: tok('sidebar_bg', '#ffffff'), border: `1px solid ${tok('subtle_border', '#e2e8f0')}`, boxShadow: '0 2px 16px rgba(0,0,0,0.08)' }}>
             {/* Header */}
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2.5 flex-shrink-0">
-              <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="px-4 py-3 flex items-center gap-2.5 flex-shrink-0" style={{ borderBottom: `1px solid ${tok('subtle_border', '#e2e8f0')}` }}>
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: tok('primary', '#3b82f6') }}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h7" />
               </svg>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pages</p>
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: tok('muted_text', '#94a3b8') }}>Pages</p>
             </div>
             {/* Items */}
             <ul className="py-2 overflow-y-auto flex-1" style={{ scrollbarWidth: 'none' }}>
@@ -3352,15 +4058,18 @@ export function ReportDashboardForm({
                   <li key={page.page_id} className="px-2 py-0.5">
                     <button
                       onClick={() => scrollToPage(page.page_id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                        isActive
-                          ? 'bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border-l-2 border-transparent'
-                      }`}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors"
+                      style={{
+                        background:  isActive ? tok('sidebar_active_bg', '#eff6ff') : 'transparent',
+                        color:       isActive ? tok('primary', '#1d4ed8')            : tok('text_secondary', '#6b7280'),
+                        fontWeight:  isActive ? 600 : 400,
+                        borderLeft:  isActive ? `2px solid ${tok('primary', '#2563eb')}` : '2px solid transparent',
+                      }}
                     >
-                      <span className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center flex-shrink-0 transition-colors ${
-                        isActive ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-500'
-                      }`}>
+                      <span className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center flex-shrink-0 transition-colors" style={{
+                        background: isActive ? tok('primary', '#2563eb')    : tok('surface_secondary', '#eff6ff'),
+                        color:      isActive ? tok('text_on_primary', '#fff') : tok('primary', '#3b82f6'),
+                      }}>
                         {idx + 1}
                       </span>
                       <span className="leading-snug line-clamp-2 tracking-tight">{page.title}</span>
@@ -3480,5 +4189,6 @@ export function ReportDashboardForm({
       </div>
     </div>
     </DataDateContext.Provider>
+    </DesignContext.Provider>
   )
 }
