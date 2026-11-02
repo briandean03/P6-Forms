@@ -1214,7 +1214,7 @@ function usePrintMode(): boolean {
 
 // X-axis tick thinning: show at most ~maxTicks labels. Recharts' `interval` is the number of
 // ticks to SKIP between shown ones, so 0 = every tick, 4 = every 5th.
-function xTickInterval(count: number, maxTicks = 10): number {
+function xTickInterval(count: number, maxTicks = 7): number {
   return count <= maxTicks ? 0 : Math.ceil(count / maxTicks) - 1
 }
 
@@ -1258,7 +1258,15 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   console.log('[LineChartWidget] series:', series, '| first row:', sliced[0], '| xKey:', xKey)
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
-  const chartH = isCompact ? 140 : 280
+  const chartH = isCompact ? 200 : 280
+
+  // Compact mode uses tighter margins and smaller axis areas to preserve plot area height
+  const chartMargin = isCompact
+    ? { top: 16, right: 16, left: 8, bottom: 4 }
+    : { top: 28, right: 24, left: 28, bottom: 36 }
+  const xAxisHeight = isCompact ? 36 : 48
+  const yAxisWidth  = isCompact ? 36 : 48
+  const legendStyle = isCompact ? { fontSize: 10, paddingTop: 4 } : { fontSize: 12, paddingTop: 8 }
 
   // Thin labels for dense charts: only render every Nth label so text never overlaps.
   // At <=12 points every label shows; beyond that we skip proportionally.
@@ -1267,21 +1275,13 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   return (
     <div style={{ overflow: 'hidden' }}>
       <div className="print-chart" style={{ overflow: 'visible' }}>
-        {/* SVG filter for line drop-shadow — injected once, referenced by each Line */}
-        <svg width="0" height="0" style={{ position: 'absolute' }}>
-          <defs>
-            <filter id="lineShadow" x="-10%" y="-30%" width="120%" height="160%">
-              <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#94a3b8" floodOpacity="0.25" />
-            </filter>
-          </defs>
-        </svg>
         <ResponsiveContainer width="100%" height={chartH}>
-          <LineChart data={chartData} margin={{ top: 28, right: 24, left: 28, bottom: 36 }}>
+          <LineChart data={chartData} margin={chartMargin}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval={xTickInterval(chartData.length)} angle={-30} textAnchor="end" height={48} />
-            <YAxis tick={{ fontSize: 11 }} width={48} />
+            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval={xTickInterval(chartData.length)} angle={-30} textAnchor="end" height={xAxisHeight} />
+            <YAxis tick={{ fontSize: 11 }} width={yAxisWidth} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+            <Legend wrapperStyle={legendStyle} />
             {series.map((s, i) => {
               const color = s.color ?? palette[i % palette.length]
               return (
@@ -1292,10 +1292,9 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                   name={s.label}
                   stroke={color}
                   strokeDasharray={s.dashed ? '6 3' : undefined}
-                  dot={{ r: 3, fill: color, strokeWidth: 0, filter: 'url(#lineShadow)' }}
+                  dot={isCompact ? false : { r: 3, fill: color, strokeWidth: 0 }}
                   activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
                   strokeWidth={2.5}
-                  style={{ filter: 'url(#lineShadow)' }}
                   connectNulls={false}
                   isAnimationActive={false}
                 >
@@ -1445,14 +1444,6 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
     <div className="flex flex-col gap-3">
       {/* Chart */}
       <div className="print-chart">
-        {/* SVG filter for line drop-shadow */}
-        <svg width="0" height="0" style={{ position: 'absolute' }}>
-          <defs>
-            <filter id="sCurveShadow" x="-10%" y="-30%" width="120%" height="160%">
-              <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#94a3b8" floodOpacity="0.25" />
-            </filter>
-          </defs>
-        </svg>
         <ResponsiveContainer width="100%" height={sCurveH}>
           <LineChart data={slicedData} margin={{ top: 28, right: 16, left: 28, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -1470,10 +1461,9 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                   name={s.label}
                   stroke={color}
                   strokeDasharray={s.dashed ? '6 3' : undefined}
-                  dot={{ r: 3, fill: color, strokeWidth: 0, filter: 'url(#sCurveShadow)' }}
+                  dot={{ r: 3, fill: color, strokeWidth: 0 }}
                   activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
                   strokeWidth={2.5}
-                  style={{ filter: 'url(#sCurveShadow)' }}
                   connectNulls={false}
                   isAnimationActive={false}
                 >
@@ -1645,7 +1635,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   // The total box height already includes the legend (top) and the rotated x-axis labels
   // (bottom), so the plot area keeps a usable height regardless of the category count.
   const vHeight = isCompact
-    ? Math.min(200, Math.max(140, sliced.length * 28))
+    ? Math.min(240, Math.max(160, sliced.length * 28))
     : Math.min(400, Math.max(300, sliced.length * 36))
   return (
     <div style={{ width: '100%', minWidth: 0 }}>
@@ -1653,9 +1643,9 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
           (including its legend) can never spill outside the surrounding card */}
       <div className="print-chart" style={{ width: '100%', height: vHeight + 12 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sliced} margin={{ top: 4, right: 16, left: 28, bottom: 4 }}>
+          <BarChart data={sliced} margin={{ top: 4, right: 16, left: 28, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-30} textAnchor="end" height={isCompact ? 48 : 72} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-35} textAnchor="end" height={isCompact ? 60 : 80} />
             <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={fmtAxis} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: 11, whiteSpace: 'normal' }} onClick={p => toggleSeries(p.dataKey as string)} />
