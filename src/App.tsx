@@ -21,6 +21,7 @@ import { PdfUploadForm } from '@/forms/PdfUploadForm'
 import { ProjectDashboard } from '@/forms/ProjectDashboard'
 import { InspectionReportForm } from '@/forms/InspectionReportForm'
 import { ReportDashboardForm } from '@/forms/ReportDashboardForm'
+import { WeeklyReportForm } from '@/forms/WeeklyReportForm'
 
 type TabKey =
   | 'dashboard'
@@ -42,6 +43,7 @@ type TabKey =
   | 'photos'
   | 'pdfupload'
   | 'inspectionreports'
+  | 'weekly_report'
 
 interface NavItem {
   key: TabKey
@@ -204,6 +206,21 @@ const navSections: NavSection[] = [
         icon: (
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'reports',
+    label: 'REPORTS',
+    items: [
+      {
+        key: 'weekly_report',
+        label: 'Weekly Report',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         ),
       },
@@ -408,6 +425,14 @@ function App() {
         return <PdfUploadForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'inspectionreports':
         return <InspectionReportForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
+      case 'weekly_report':
+        return (
+          <WeeklyReportForm
+            projectId={selectedProjectId}
+            projectTextId={projectTextId}
+            schemaName={selectedSchemaName}
+          />
+        )
       default:
         return null
     }
