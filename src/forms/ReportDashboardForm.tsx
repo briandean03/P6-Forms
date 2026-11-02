@@ -1619,14 +1619,14 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
       <div style={{ width: '100%', minWidth: 0 }}>
         {/* Fixed-height box reserves the chart's space in the layout, so the chart
             (including its legend) can never spill outside the surrounding card */}
-        <div className="print-chart" style={{ width: '100%', height: hHeight + 32 }}>
+        <div className="print-chart" style={{ width: '100%', height: hHeight + 40 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmtAxis} />
               <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={96} />
               <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
+              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: 11, whiteSpace: 'normal' }} onClick={p => toggleSeries(p.dataKey as string)} />
               {visibleSeries.map((s, i) => (
                 <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? palette[i % palette.length]} radius={[0, 3, 3, 0]}
                   isAnimationActive={!isPrinting} animationBegin={i * 100} animationDuration={800} animationEasing="ease-out" />
@@ -1651,14 +1651,14 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
     <div style={{ width: '100%', minWidth: 0 }}>
       {/* Fixed-height box reserves the chart's space in the layout, so the chart
           (including its legend) can never spill outside the surrounding card */}
-      <div className="print-chart" style={{ width: '100%', height: vHeight }}>
+      <div className="print-chart" style={{ width: '100%', height: vHeight + 12 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={sliced} margin={{ top: 4, right: 16, left: 28, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-30} textAnchor="end" height={isCompact ? 48 : 72} />
             <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={fmtAxis} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
+            <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: 11, whiteSpace: 'normal' }} onClick={p => toggleSeries(p.dataKey as string)} />
             {visibleSeries.map((s, i) => (
               <Bar
                 key={s.key}
@@ -3982,7 +3982,13 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                         </span>
                       </div>
                     ) : regionWidgets.length === 1 ? (
-                      <WidgetInner widget={regionWidgets[0]} />
+                      <WidgetInner widget={
+                        region.presentation_mode === 'full_width_compact_line_chart' ||
+                        region.presentation_mode === 'compact_multi_series_line_chart' ||
+                        region.presentation_mode === 'compact_line_chart'
+                          ? { ...regionWidgets[0], widget_type: 'line_chart' }
+                          : regionWidgets[0]
+                      } />
                     ) : (
                       <div className="flex flex-col gap-2">
                         {regionWidgets.map((w, wi) => (
@@ -4084,7 +4090,7 @@ function DashboardSkeleton() {
 
 export function ReportDashboardForm({
   projectId,
-  projectTextId: _projectTextId,
+  projectTextId,
   schemaName,
   a3Mode = false,
 }: {
@@ -4148,10 +4154,12 @@ export function ReportDashboardForm({
       try {
         const db = schemaClient(schemaName)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (db as any)
+        let query = (db as any)
           .from('dbp6_0008_dashboard_structures')
           .select(STRUCTURE_LIST_COLS)
           .order('data_date', { ascending: false })
+        if (projectTextId) query = query.eq('project_id', projectTextId)
+        const { data, error } = await query
         if (cancelled) return
         if (error) throw error
         const rows = ((data ?? []) as DashboardStructure[]).map(s => ({ ...s, structure_plan: null, a3_layout: null }))
@@ -4167,7 +4175,7 @@ export function ReportDashboardForm({
     }
     load()
     return () => { cancelled = true }
-  }, [schemaName])
+  }, [schemaName, projectTextId])
 
   // Fetch the selected week's full structure AND its widgets in parallel.
   // `cancelled` drops stale responses when the user switches weeks quickly.
