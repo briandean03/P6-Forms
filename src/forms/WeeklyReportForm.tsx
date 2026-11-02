@@ -157,25 +157,115 @@ const CALLOUT_SEVERITY_CLASSES: Record<string, string> = {
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
 
-// A4 portrait content width in px at 96dpi (185mm = ~700px).
-// Used as a fixed width for ResponsiveContainer during print to prevent collapse.
-const PRINT_CHART_WIDTH = 700
+// A4 portrait content width available to a chart when printing:
+// page 210mm − 2×13mm margins ≈ 695px, minus section padding (2×24px) and border ≈ 645px;
+// 600 leaves headroom for any extra wrapper padding in the app shell.
+const PRINT_CHART_WIDTH = 600
+const PRINT_CHART_HEIGHT = 260
+const SCREEN_CHART_HEIGHT = 240
 
-// ── Print mode hook ──────────────────────────────────────────────────────────
+// ── Chart rendering ──────────────────────────────────────────────────────────
+// Every chart is rendered twice: a responsive copy for the screen (hidden when printing) and a
+// fixed-size copy for print (hidden on screen). The print copy needs no ResizeObserver, no React
+// state change and no animation, so it is complete the instant the browser snapshots the page —
+// including when the user prints with Ctrl+P instead of the button.
 
-function usePrintMode(): boolean {
-  const [printing, setPrinting] = useState(false)
-  useEffect(() => {
-    const onBefore = () => setPrinting(true)
-    const onAfter = () => setPrinting(false)
-    window.addEventListener('beforeprint', onBefore)
-    window.addEventListener('afterprint', onAfter)
-    return () => {
-      window.removeEventListener('beforeprint', onBefore)
-      window.removeEventListener('afterprint', onAfter)
-    }
-  }, [])
-  return printing
+// Show at most ~maxTicks x-axis labels. Recharts' `interval` is how many ticks to SKIP.
+function xTickInterval(count: number, maxTicks = 8): number {
+  return count <= maxTicks ? 0 : Math.ceil(count / maxTicks) - 1
+}
+
+// Static HTML legend for the print copy — no measurement, so it is correct the moment it is printed
+function PrintLegend({ series, isLine }: { series: ChartSeries[]; isLine: boolean }) {
+  return (
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: 10 }}>
+      {series.map((s, si) => {
+        const color = s.color ?? CHART_COLORS[si % CHART_COLORS.length]
+        return (
+          <span key={si} className="inline-flex items-center gap-1.5 text-slate-600">
+            <span
+              style={{
+                display: 'inline-block',
+                width: 12,
+                height: isLine ? 2 : 8,
+                background: color,
+                borderRadius: 1,
+              }}
+            />
+            {s.name}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function buildChart(
+  isLine: boolean,
+  chartData: Record<string, unknown>[],
+  series: ChartSeries[],
+  opts: { print: boolean; width?: number; height?: number },
+): React.ReactElement {
+  const { print, width, height } = opts
+  const fs = print ? 9 : 10
+  const n = chartData.length
+  const dense = n > 6
+  const dims = width && height ? { width, height } : {}
+  const common = {
+    data: chartData,
+    margin: { top: 4, right: 16, left: dense ? 20 : 8, bottom: 4 },
+    ...dims,
+  }
+  // NOTE: passed as a keyed array (not a fragment) so Recharts registers each child and
+  // reserves space for the legend instead of drawing it over the plot area.
+  const axes = [
+    <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#e5e7eb" />,
+    <XAxis
+      key="x"
+      dataKey="name"
+      tick={{ fontSize: fs }}
+      interval={xTickInterval(n)}
+      angle={dense ? -30 : 0}
+      textAnchor={dense ? 'end' : 'middle'}
+      height={dense ? 52 : 28}
+    />,
+    <YAxis key="y" tick={{ fontSize: fs }} width={44} />,
+    ...(print ? [] : [<Tooltip key="tip" />]),
+    // The print copy is mounted while display:none, where Recharts would measure the legend as
+    // 0px tall and draw it over the plot. Print uses the static <PrintLegend> instead.
+    ...(print ? [] : [<Legend key="legend" verticalAlign="top" height={26} wrapperStyle={{ fontSize: fs + 1 }} />]),
+  ]
+  return isLine ? (
+    <LineChart {...common}>
+      {axes}
+      {series.map((s, si) => (
+        <Line
+          key={si}
+          type="monotone"
+          dataKey={s.name}
+          stroke={s.color ?? CHART_COLORS[si % CHART_COLORS.length]}
+          strokeWidth={2}
+          dot={n <= 12 ? { r: 2.5, strokeWidth: 0 } : false}
+          activeDot={print ? false : undefined}
+          isAnimationActive={false}
+        />
+      ))}
+    </LineChart>
+  ) : (
+    <BarChart {...common} barCategoryGap="20%">
+      {axes}
+      {series.map((s, si) => (
+        <Bar
+          key={si}
+          dataKey={s.name}
+          fill={s.color ?? CHART_COLORS[si % CHART_COLORS.length]}
+          radius={[2, 2, 0, 0]}
+          maxBarSize={48}
+          isAnimationActive={false}
+        />
+      ))}
+    </BarChart>
+  )
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -211,7 +301,7 @@ function resolveColumns(columns: (string | TableColumn)[] | undefined): TableCol
 
 // ── Block renderer ──────────────────────────────────────────────────────────
 
-function renderBlock(block: ASTBlock, idx: number, isPrinting = false): React.ReactNode {
+function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
   const { type, content: c, source_references } = block
 
   const footnotes =
@@ -309,58 +399,28 @@ function renderBlock(block: ASTBlock, idx: number, isPrinting = false): React.Re
         return point
       })
       const isLine = (cc.chart_type ?? 'bar').toLowerCase() === 'line'
-      // During print, ResponsiveContainer collapses to 0 width inside flex layouts.
-      // Switch to a fixed pixel width (A4 portrait content area ≈ 700px) when printing.
-      const chartW = isPrinting ? PRINT_CHART_WIDTH : '100%'
       node = (
-        <div className="print-chart" style={isPrinting ? { width: PRINT_CHART_WIDTH } : undefined}>
+        <figure className="m-0" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
           {cc.title && (
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               {cc.title}
             </p>
           )}
-          <ResponsiveContainer width={chartW} height={240}>
-            {isLine ? (
-              <LineChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                {!isPrinting && <Tooltip />}
-                <Legend />
-                {series.map((s, si) => (
-                  <Line
-                    key={si}
-                    type="monotone"
-                    dataKey={s.name}
-                    stroke={s.color ?? CHART_COLORS[si % CHART_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={isPrinting ? false : undefined}
-                  />
-                ))}
-              </LineChart>
-            ) : (
-              <BarChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                {!isPrinting && <Tooltip />}
-                <Legend />
-                {series.map((s, si) => (
-                  <Bar
-                    key={si}
-                    dataKey={s.name}
-                    fill={s.color ?? CHART_COLORS[si % CHART_COLORS.length]}
-                    radius={[2, 2, 0, 0]}
-                  />
-                ))}
-              </BarChart>
-            )}
-          </ResponsiveContainer>
+          {/* Screen copy — responsive, hidden when printing */}
+          <div className="print:hidden">
+            <ResponsiveContainer width="100%" height={SCREEN_CHART_HEIGHT}>
+              {buildChart(isLine, chartData, series, { print: false })}
+            </ResponsiveContainer>
+          </div>
+          {/* Print copy — fixed size, static, hidden on screen */}
+          <div className="hidden print:block print-chart mx-auto" style={{ width: PRINT_CHART_WIDTH }}>
+            <PrintLegend series={series} isLine={isLine} />
+            {buildChart(isLine, chartData, series, { print: true, width: PRINT_CHART_WIDTH, height: PRINT_CHART_HEIGHT })}
+          </div>
           {cc.qualification && (
             <p className="text-[11px] text-gray-400 italic mt-1">{cc.qualification}</p>
           )}
-        </div>
+        </figure>
       )
       break
     }
@@ -755,7 +815,7 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
   )
 }
 
-function SectionCard({ section, isPrinting }: { section: WeeklyReportSection; isPrinting: boolean }) {
+function SectionCard({ section }: { section: WeeklyReportSection }) {
   const blocks = section.section_ast?.blocks ?? []
   const badge = resolveNumbering(section.numbering, section.section_id)
 
@@ -790,7 +850,7 @@ function SectionCard({ section, isPrinting }: { section: WeeklyReportSection; is
         {blocks.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No content blocks in this section.</p>
         ) : (
-          blocks.map((block, idx) => renderBlock(block, idx, isPrinting))
+          blocks.map((block, idx) => renderBlock(block, idx))
         )}
       </div>
     </section>
@@ -817,7 +877,6 @@ export function WeeklyReportForm({
 
   const { notification, hideNotification, showError } = useNotification()
   const _printAreaRef = useRef<HTMLDivElement>(null)
-  const isPrinting = usePrintMode()
 
   // Fetch available week/report options
   useEffect(() => {
@@ -1155,7 +1214,7 @@ export function WeeklyReportForm({
               {sections.length > 0 && <TableOfContents sections={sections} />}
 
               {filteredSections.map(section => (
-                <SectionCard key={section.section_id} section={section} isPrinting={isPrinting} />
+                <SectionCard key={section.section_id} section={section} />
               ))}
             </>
           )}
