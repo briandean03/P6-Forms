@@ -216,6 +216,15 @@ const navSections: NavSection[] = [
     label: 'REPORTS',
     items: [
       {
+        key: 'weekly_dashboard',
+        label: 'Weekly Dashboard',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+          </svg>
+        ),
+      },
+      {
         key: 'weekly_report',
         label: 'Weekly Report',
         icon: (
@@ -438,7 +447,7 @@ function App() {
     }
   }
 
-  const activeLabel = activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'weekly_dashboard' ? 'Weekly Project Dashboard' : (allNavItems.find(t => t.key === activeTab)?.label ?? '')
+  const activeLabel = activeTab === 'dashboard' ? 'Dashboard' : (allNavItems.find(t => t.key === activeTab)?.label ?? '')
 
   const formatDate = (d: string | null) => {
     if (!d) return null
@@ -625,26 +634,6 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
               {sidebarExpanded && <span>Dashboard</span>}
-            </button>
-          </div>
-
-          {/* Weekly Project Dashboard */}
-          <div className={`px-2 mb-1`}>
-            <button
-              onClick={() => setActiveTab('weekly_dashboard')}
-              title={!sidebarExpanded ? 'Weekly Dashboard' : undefined}
-              className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                sidebarExpanded ? '' : 'justify-center'
-              } ${
-                activeTab === 'weekly_dashboard'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-              </svg>
-              {sidebarExpanded && <span>Weekly Dashboard</span>}
             </button>
           </div>
 
