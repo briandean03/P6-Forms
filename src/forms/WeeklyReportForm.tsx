@@ -556,14 +556,14 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
               {tc.title}
             </p>
           )}
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full text-sm border-collapse">
+          <div className="table-wrap rounded-lg border border-gray-200">
+            <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-slate-50">
                   {specs.map(col => (
                     <th
                       key={col.key}
-                      className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 whitespace-nowrap"
+                      className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200"
                     >
                       {col.label ?? col.key}
                     </th>
@@ -586,7 +586,7 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
                       {specs.map(col => (
                         <td
                           key={col.key}
-                          className="px-3 py-2 text-slate-700 max-w-xs overflow-hidden"
+                          className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
                         >
                           {fmtVal(row[col.key])}
                         </td>
@@ -650,14 +650,14 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
                 {tc.title}
               </p>
             )}
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full text-sm border-collapse">
+            <div className="table-wrap rounded-lg border border-gray-200">
+              <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-slate-50">
                     {specs.map(col => (
                       <th
                         key={col.key}
-                        className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 whitespace-nowrap"
+                        className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200"
                       >
                         {col.label ?? col.key}
                       </th>
@@ -680,7 +680,7 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
                         {specs.map(col => (
                           <td
                             key={col.key}
-                            className="px-3 py-2 text-slate-700 max-w-xs overflow-hidden"
+                            className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
                           >
                             {fmtVal(row[col.key])}
                           </td>
@@ -1119,6 +1119,17 @@ export function WeeklyReportForm({
                   box-shadow: none !important;
                   padding: 20px 24px !important;
                   margin-bottom: 0 !important;
+                }
+                .table-wrap {
+                  overflow: visible !important;
+                }
+                .table-wrap table {
+                  font-size: 7.5pt !important;
+                  width: 100% !important;
+                }
+                .table-wrap th,
+                .table-wrap td {
+                  padding: 4px 5px !important;
                 }
               }
             `
