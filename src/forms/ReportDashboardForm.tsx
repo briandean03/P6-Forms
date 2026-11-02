@@ -1167,6 +1167,26 @@ function usePrintMode(): boolean {
   return printing
 }
 
+// ── Chart label density helpers ───────────────────────────────────────────────
+
+// X-axis tick thinning: show at most ~maxTicks labels. Recharts' `interval` is the number of
+// ticks to SKIP between shown ones, so 0 = every tick, 4 = every 5th.
+function xTickInterval(count: number, maxTicks = 10): number {
+  return count <= maxTicks ? 0 : Math.ceil(count / maxTicks) - 1
+}
+
+// Data-point label collision avoidance for multi-series line charts.
+//  • thins each series to ~maxLabels labels when data is dense
+//  • staggers each series' starting index so series don't label the same x-position
+//  • alternates label side per series (even → above the point, odd → below)
+function lineLabelPlan(count: number, seriesCount: number, maxLabels = 8) {
+  const step = Math.max(1, Math.ceil(count / maxLabels))
+  return (seriesIdx: number, index: number): { show: boolean; below: boolean } => {
+    const phase = Math.floor((step * seriesIdx) / Math.max(1, seriesCount))
+    return { show: (index - phase) % step === 0 && index >= phase, below: seriesIdx % 2 === 1 }
+  }
+}
+
 // line_chart — content.data[], content.series[].value_field, content.category_field
 // Routes to SCurveLineChartWidget when semantic_role === 's_curve'
 function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
@@ -1198,7 +1218,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   // Thin labels for dense charts: only render every Nth label so text never overlaps.
   // At <=12 points every label shows; beyond that we skip proportionally.
-  const labelStep = chartData.length <= 12 ? 1 : Math.ceil(chartData.length / 12)
+  const labelPlan = lineLabelPlan(chartData.length, series.length)
 
   return (
     <div style={{ overflow: 'hidden' }}>
@@ -1212,9 +1232,9 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
           </defs>
         </svg>
         <ResponsiveContainer width="100%" height={chartH}>
-          <LineChart data={chartData} margin={{ top: 28, right: 24, left: 8, bottom: 36 }}>
+          <LineChart data={chartData} margin={{ top: 28, right: 24, left: 28, bottom: 36 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={48} />
+            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval={xTickInterval(chartData.length)} angle={-30} textAnchor="end" height={48} />
             <YAxis tick={{ fontSize: 11 }} width={48} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
@@ -1242,9 +1262,12 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     content={(props: any) => {
                       const { x, y, value, index } = props
-                      if (value == null || value === '' || index % labelStep !== 0) return null
+                      if (value == null || value === '') return null
+                      const { show, below } = labelPlan(i, index)
+                      if (!show) return null
                       return (
-                        <text x={x} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}>
+                        <text x={x} y={below ? y + 14 : y - 7} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}
+                          stroke="#fff" strokeWidth={3} paintOrder="stroke">
                           {fmtNum(value, 1)}
                         </text>
                       )
@@ -1372,7 +1395,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const sCurveH = isCompact ? 150 : 300
 
-  const scLabelStep = slicedData.length <= 12 ? 1 : Math.ceil(slicedData.length / 12)
+  const scLabelPlan = lineLabelPlan(slicedData.length, series.length)
 
   return (
     <div className="flex flex-col gap-3">
@@ -1387,9 +1410,9 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
           </defs>
         </svg>
         <ResponsiveContainer width="100%" height={sCurveH}>
-          <LineChart data={slicedData} margin={{ top: 28, right: 16, left: 4, bottom: 4 }}>
+          <LineChart data={slicedData} margin={{ top: 28, right: 16, left: 28, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval={xTickInterval(slicedData.length)} angle={-30} textAnchor="end" height={48} />
             <YAxis tick={{ fontSize: 11 }} unit={yUnit} domain={[0, 'auto']} />
             <Tooltip content={customTooltip} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -1417,9 +1440,12 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     content={(props: any) => {
                       const { x, y, value, index } = props
-                      if (value == null || value === '' || index % scLabelStep !== 0) return null
+                      if (value == null || value === '') return null
+                      const { show, below } = scLabelPlan(i, index)
+                      if (!show) return null
                       return (
-                        <text x={x} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}>
+                        <text x={x} y={below ? y + 14 : y - 7} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}
+                          stroke="#fff" strokeWidth={3} paintOrder="stroke">
                           {fmtNum(value, 1)}
                         </text>
                       )
@@ -1581,9 +1607,9 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
           (including its legend) can never spill outside the surrounding card */}
       <div className="print-chart" style={{ width: '100%', height: vHeight }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sliced} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+          <BarChart data={sliced} margin={{ top: 4, right: 16, left: 28, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={isCompact ? 48 : 84} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-30} textAnchor="end" height={isCompact ? 48 : 72} />
             <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={fmtAxis} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
@@ -1635,7 +1661,7 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
         <ResponsiveContainer width="100%" height={areaH}>
           <AreaChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 36 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={48} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-30} textAnchor="end" height={48} />
             <YAxis tick={{ fontSize: 11 }} width={48} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
