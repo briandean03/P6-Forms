@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, memo, createContext, useContext } from 'react'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
@@ -165,6 +165,16 @@ function fmtNum(v: unknown, decimals = 1): string {
   return rounded.toLocaleString('en-US', { maximumFractionDigits: decimals })
 }
 
+// Compact axis-tick formatter: 2400000 → "2.4M", 600000 → "600k"
+function fmtAxis(v: unknown): string {
+  const n = Number(v)
+  if (isNaN(n)) return String(v)
+  const abs = Math.abs(n)
+  if (abs >= 1_000_000) return `${parseFloat((n / 1_000_000).toFixed(1))}M`
+  if (abs >= 10_000)    return `${parseFloat((n / 1_000).toFixed(1))}k`
+  return n.toLocaleString('en-US', { maximumFractionDigits: 1 })
+}
+
 // Whole-number formatter — rounds to nearest integer with comma separators
 function fmtInt(v: unknown): string {
   if (v == null) return '—'
@@ -281,8 +291,6 @@ function SortableTable({
   const [colFilter, setColFilter] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  if (!specs.length || !rows.length) return <NoData />
-
   const filtered = useMemo(() => {
     if (!filter.trim()) return rows
     const q = filter.toLowerCase()
@@ -312,6 +320,8 @@ function SortableTable({
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filtered, sortKey, sortDir])
+
+  if (!specs.length || !rows.length) return <NoData />
 
   function toggleSort(key: string) {
     if (sortKey !== key) { setSortKey(key); setSortDir('asc'); return }
@@ -1176,10 +1186,11 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const isCompact  = useContext(CompactContext)
   const palette  = useChartPalette()
 
+  const filterFields = useMemo(() => (data?.length ? detectFilterFields(data, [xKey, labelKey]) : []), [data, xKey, labelKey])
+  const filtered = useMemo(() => (data?.length ? applyFilters(data, activeFilters) : []), [data, activeFilters])
+
   if (!data?.length) return <NoData />
 
-  const filterFields = useMemo(() => detectFilterFields(data, [xKey, labelKey]), [data, xKey, labelKey])
-  const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
   const sliced = filtered
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
@@ -1503,6 +1514,10 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const isPrintingBar = usePrintMode()
   const isCompactBar  = useContext(CompactContext)
 
+  // Hooks must run on every render — keep them above the early returns below
+  const filterFields = useMemo(() => (data?.length ? detectFilterFields(data, [xKey]) : []), [data, xKey])
+  const filtered = useMemo(() => (data?.length ? applyFilters(data, activeFilters) : []), [data, activeFilters])
+
   if (!data?.length) {
     const emptyState = (content.empty_state ?? chartObj.empty_state) as { heading?: string; message?: string } | null
     if (emptyState?.heading) {
@@ -1516,8 +1531,6 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
     return <NoData />
   }
 
-  const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
-  const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
   const isPrinting = isPrintingBar
   const isCompact  = isCompactBar
 
@@ -1532,15 +1545,17 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
       ? Math.max(100, sliced.length * 22)
       : Math.max(220, sliced.length * 36)
     return (
-      <div style={{ overflow: 'hidden' }}>
-        <div className="print-chart" style={{ overflow: 'visible' }}>
-          <ResponsiveContainer width="100%" height={hHeight}>
-            <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 24, left: 80, bottom: 4 }}>
+      <div style={{ width: '100%', minWidth: 0 }}>
+        {/* Fixed-height box reserves the chart's space in the layout, so the chart
+            (including its legend) can never spill outside the surrounding card */}
+        <div className="print-chart" style={{ width: '100%', height: hHeight + 32 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={80} />
+              <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmtAxis} />
+              <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={96} />
               <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
+              <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
               {visibleSeries.map((s, i) => (
                 <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? palette[i % palette.length]} radius={[0, 3, 3, 0]}
                   isAnimationActive={!isPrinting} animationBegin={i * 100} animationDuration={800} animationEasing="ease-out" />
@@ -1555,19 +1570,23 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   const sliced = filtered
   // Scale height to data: compact uses 28px/bar (min 100, max 180), normal uses 48px/bar (min 200, max 400)
+  // The total box height already includes the legend (top) and the rotated x-axis labels
+  // (bottom), so the plot area keeps a usable height regardless of the category count.
   const vHeight = isCompact
-    ? Math.min(180, Math.max(100, sliced.length * 28))
-    : Math.min(400, Math.max(200, sliced.length * 48))
+    ? Math.min(200, Math.max(140, sliced.length * 28))
+    : Math.min(400, Math.max(300, sliced.length * 36))
   return (
-    <div style={{ overflow: 'hidden' }}>
-      <div className="print-chart" style={{ overflow: 'visible' }}>
-        <ResponsiveContainer width="100%" height={vHeight}>
-          <BarChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 36 }}>
+    <div style={{ width: '100%', minWidth: 0 }}>
+      {/* Fixed-height box reserves the chart's space in the layout, so the chart
+          (including its legend) can never spill outside the surrounding card */}
+      <div className="print-chart" style={{ width: '100%', height: vHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={sliced} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={48} />
-            <YAxis tick={{ fontSize: 11 }} width={48} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={isCompact ? 48 : 84} />
+            <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={fmtAxis} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} onClick={p => toggleSeries(p.dataKey as string)} />
+            <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
             {visibleSeries.map((s, i) => (
               <Bar
                 key={s.key}
@@ -2072,7 +2091,7 @@ function WidgetInner({ widget }: { widget: DashboardWidget }) {
 // Shared card title bar: widget title left, WGT-* code right
 function CardHeader({ title, widgetId, marginBottom = 10 }: { title: string; widgetId?: string | null; marginBottom?: number }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom, flex: 1, minWidth: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom, flex: '0 1 auto', width: '100%', minWidth: 0 }}>
       <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {title}
       </p>
@@ -3886,6 +3905,57 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+// ── Data-loading helpers ──────────────────────────────────────────────────────
+
+// The week list only needs light columns; the heavy JSON is fetched for the selected week only
+const STRUCTURE_LIST_COLS = 'structure_id, report_id, project_id, week_num, data_date, dashboard_title, processing_status, is_approved'
+const STRUCTURE_FULL_COLS = STRUCTURE_LIST_COLS + ', structure_plan, a3_layout'
+const NO_WIDGETS: DashboardWidget[] = []
+
+// JSON columns may arrive as strings (or double-encoded) from Supabase — parse safely
+function parseJsonCol(raw: unknown): unknown {
+  if (raw == null) return null
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const once = JSON.parse(raw)
+      if (typeof once === 'string') { try { return JSON.parse(once) } catch { return null } }
+      return once
+    } catch { return null }
+  }
+  return null
+}
+
+function parseAst(raw: unknown): Record<string, unknown> {
+  const v = parseJsonCol(raw)
+  return v != null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+}
+
+// Memoised page layouts — a page only re-renders when its own props change
+const MemoExecutiveOverviewPage    = memo(ExecutiveOverviewPage)
+const MemoProgressAnalysisPage     = memo(ProgressAnalysisPage)
+const MemoScheduleIntelligencePage = memo(ScheduleIntelligencePage)
+const MemoEngineeringQAPage        = memo(EngineeringQAPage)
+const MemoResourcesManpowerPage    = memo(ResourcesManpowerPage)
+const MemoKpiPerformancePage       = memo(KpiPerformancePage)
+
+// Placeholder shown while data loads — reserves page height so the layout doesn't collapse or jump
+function DashboardSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4" style={{ minHeight: '80vh' }} aria-busy="true" aria-label="Loading dashboard">
+      <div className="h-16 rounded-2xl bg-gray-200/70" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl bg-gray-200/70" />)}
+      </div>
+      <div className="h-72 rounded-2xl bg-gray-200/70" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="h-64 rounded-2xl bg-gray-200/70" />
+        <div className="h-64 rounded-2xl bg-gray-200/70" />
+      </div>
+    </div>
+  )
+}
+
 export function ReportDashboardForm({
   projectId,
   projectTextId: _projectTextId,
@@ -3904,7 +3974,8 @@ export function ReportDashboardForm({
   const [selectedStructureId, setSelectedStructureId] = useState<string>('')
   const [selectedStructure, setSelectedStructure] = useState<DashboardStructure | null>(null)
   const [widgets, setWidgets] = useState<DashboardWidget[]>([])
-  const [loadingWidgets, setLoadingWidgets] = useState(false)
+  // true until the first structure+widgets fetch settles — avoids a one-frame "No pages" flash
+  const [loadingWidgets, setLoadingWidgets] = useState(true)
   const [activePageId, setActivePageId] = useState<string>('')
   const [tok, setTok] = useState<ReturnType<typeof buildTokenResolver>>(() => DEFAULT_TOK)
 
@@ -3938,8 +4009,10 @@ export function ReportDashboardForm({
     load()
   }, [schemaName])
 
-  // Fetch all structures (no project_id filter — schema scoping handles isolation)
+  // Fetch the week list. Only light columns — the heavy JSON (structure_plan / a3_layout)
+  // is fetched for the selected week only, in parallel with its widgets (effect below).
   useEffect(() => {
+    let cancelled = false
     const load = async () => {
       setLoadingStructures(true)
       setStructures([])
@@ -3951,101 +4024,97 @@ export function ReportDashboardForm({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (db as any)
           .from('dbp6_0008_dashboard_structures')
-          .select('structure_id, report_id, project_id, week_num, data_date, dashboard_title, structure_plan, a3_layout, processing_status, is_approved')
+          .select(STRUCTURE_LIST_COLS)
           .order('data_date', { ascending: false })
+        if (cancelled) return
         if (error) throw error
-        // JSON columns may arrive as strings (or double-encoded) from Supabase — parse safely
-        const parseJsonCol = (raw: unknown) => {
-          if (raw == null) return null
-          if (typeof raw === 'object' && !Array.isArray(raw)) return raw
-          if (typeof raw === 'string') {
-            try {
-              const once = JSON.parse(raw)
-              if (typeof once === 'string') { try { return JSON.parse(once) } catch { return null } }
-              return once
-            } catch { return null }
-          }
-          return null
-        }
-        const rows = ((data ?? []) as DashboardStructure[]).map(s => ({
-          ...s,
-          structure_plan: parseJsonCol(s.structure_plan) as DashboardStructure['structure_plan'],
-          a3_layout: parseJsonCol(s.a3_layout) as A3Layout | null,
-        }))
+        const rows = ((data ?? []) as DashboardStructure[]).map(s => ({ ...s, structure_plan: null, a3_layout: null }))
         setStructures(rows)
-        if (rows.length > 0) {
-          setSelectedStructureId(rows[0].structure_id)
-          setSelectedStructure(rows[0])
-        }
+        if (rows.length > 0) setSelectedStructureId(rows[0].structure_id)
+        else setLoadingWidgets(false)
       } catch (err) {
+        if (cancelled) return
+        setLoadingWidgets(false)
         showError(err instanceof Error ? err.message : 'Failed to load report list')
       }
       setLoadingStructures(false)
     }
     load()
+    return () => { cancelled = true }
   }, [schemaName])
 
-  // Fetch widgets when selected structure changes
+  // Fetch the selected week's full structure AND its widgets in parallel.
+  // `cancelled` drops stale responses when the user switches weeks quickly.
   useEffect(() => {
     if (!selectedStructureId) return
+    let cancelled = false
     const load = async () => {
       setLoadingWidgets(true)
       setWidgets([])
+      setSelectedStructure(null)
       try {
         const db = schemaClient(schemaName)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (db as any)
-          .from('dbp6_0008_dashboard_widgets')
-          .select('widget_record_id, structure_id, page_id, widget_id, widget_order, widget_title, widget_type, widget_ast')
-          .eq('structure_id', selectedStructureId)
-          .order('widget_order', { ascending: true })
-        if (error) throw error
-        // widget_ast may arrive as a JSON string (or even double-encoded) from Supabase
-        const parseAst = (raw: unknown): Record<string, unknown> => {
-          if (raw == null) return {}
-          if (typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
-          if (typeof raw === 'string') {
-            try {
-              const once = JSON.parse(raw)
-              // If it was double-encoded, parse again
-              if (typeof once === 'string') {
-                try { return JSON.parse(once) } catch { return {} }
-              }
-              if (typeof once === 'object' && once !== null && !Array.isArray(once)) return once
-            } catch { /* fall through */ }
-          }
-          return {}
-        }
-        const parsed = ((data ?? []) as DashboardWidget[]).map(w => ({
+        const anyDb = db as any
+        const [structRes, widgetRes] = await Promise.all([
+          anyDb.from('dbp6_0008_dashboard_structures')
+            .select(STRUCTURE_FULL_COLS)
+            .eq('structure_id', selectedStructureId)
+            .maybeSingle(),
+          anyDb.from('dbp6_0008_dashboard_widgets')
+            .select('widget_record_id, structure_id, page_id, widget_id, widget_order, widget_title, widget_type, widget_ast')
+            .eq('structure_id', selectedStructureId)
+            .order('widget_order', { ascending: true }),
+        ])
+        if (cancelled) return
+        if (structRes.error) throw structRes.error
+        if (widgetRes.error) throw widgetRes.error
+        const sRow = structRes.data as DashboardStructure | null
+        setSelectedStructure(sRow ? {
+          ...sRow,
+          structure_plan: parseJsonCol(sRow.structure_plan) as DashboardStructure['structure_plan'],
+          a3_layout: parseJsonCol(sRow.a3_layout) as A3Layout | null,
+        } : null)
+        setWidgets(((widgetRes.data ?? []) as DashboardWidget[]).map(w => ({
           ...w,
           widget_ast: parseAst(w.widget_ast),
-        }))
-        setWidgets(parsed)
+        })))
       } catch (err) {
+        if (cancelled) return
         showError(err instanceof Error ? err.message : 'Failed to load widgets')
       }
-      setLoadingWidgets(false)
+      if (!cancelled) setLoadingWidgets(false)
     }
     load()
+    return () => { cancelled = true }
   }, [selectedStructureId, schemaName])
 
-  function getPages(structure: DashboardStructure | null): StructurePlanPage[] {
-    if (!structure?.structure_plan?.pages) return []
-    return [...structure.structure_plan.pages].sort((a, b) => (a.page_order ?? 0) - (b.page_order ?? 0))
-  }
+  // Parsed once per structure instead of re-deriving pages on every render
+  const pages = useMemo<StructurePlanPage[]>(() => {
+    const raw = selectedStructure?.structure_plan?.pages
+    return raw ? [...raw].sort((a, b) => (a.page_order ?? 0) - (b.page_order ?? 0)) : []
+  }, [selectedStructure])
 
-  const handleStructureChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value
-    setSelectedStructureId(id)
-    setSelectedStructure(structures.find(s => s.structure_id === id) ?? null)
-  }
+  // Group widgets by page once. Stable array identities let React.memo skip pages whose
+  // widgets did not change (otherwise every scroll-driven nav highlight re-rendered all charts).
+  const widgetsByPage = useMemo(() => {
+    const m = new Map<string, DashboardWidget[]>()
+    for (const w of widgets) {
+      if (!w.page_id) continue
+      const list = m.get(w.page_id)
+      if (list) list.push(w); else m.set(w.page_id, [w])
+    }
+    return m
+  }, [widgets])
 
-  const pages = getPages(selectedStructure)
+  const handleStructureChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedStructureId(e.target.value)
+  }, [])
 
   // Set initial active page when pages load
   useEffect(() => {
     if (pages.length > 0) setActivePageId(pages[0].page_id)
-  }, [selectedStructureId])
+  }, [pages])
 
   // IntersectionObserver — track which section is most visible
   // Runs after widgets finish loading so the section divs exist in the DOM
@@ -4083,7 +4152,7 @@ export function ReportDashboardForm({
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  if (loadingStructures) return <LoadingSpinner />
+  if (loadingStructures) return <DashboardSkeleton />
 
   if (structures.length === 0) {
     return (
@@ -4221,12 +4290,12 @@ export function ReportDashboardForm({
         )}
 
         {loadingWidgets ? (
-          <LoadingSpinner />
+          <DashboardSkeleton />
         ) : pages.length === 0 ? (
           <div className="flex items-center justify-center py-24 text-gray-400 text-sm">No pages defined for this report.</div>
         ) : (
           pages.map((page, pageIdx) => {
-            const pageWidgets = widgets.filter(w => w.page_id === page.page_id)
+            const pageWidgets = widgetsByPage.get(page.page_id) ?? NO_WIDGETS
             // Route by page_key first (stable semantic value from DB), then fall back to pageIdx
             const pk = (page.page_key ?? '').toLowerCase()
             const isExecutivePage        = pk === 'executive_overview'        || pageIdx === 0
@@ -4244,7 +4313,7 @@ export function ReportDashboardForm({
               >
                 {isExecutivePage ? (
                   // Special rich layout for the Executive Overview page
-                  <ExecutiveOverviewPage
+                  <MemoExecutiveOverviewPage
                     page={page}
                     pageIdx={pageIdx}
                     pageWidgets={pageWidgets}
@@ -4255,35 +4324,35 @@ export function ReportDashboardForm({
                   />
                 ) : isProgressAnalysis ? (
                   // 5-row custom layout for Progress Analysis page
-                  <ProgressAnalysisPage
+                  <MemoProgressAnalysisPage
                     page={page}
                     pageIdx={pageIdx}
                     pageWidgets={pageWidgets}
                   />
                 ) : isScheduleIntelligence ? (
                   // 5-row custom layout for Schedule Intelligence page
-                  <ScheduleIntelligencePage
+                  <MemoScheduleIntelligencePage
                     page={page}
                     pageIdx={pageIdx}
                     pageWidgets={pageWidgets}
                   />
                 ) : isEngineeringQA ? (
                   // 7-row custom layout for Engineering, QA/QC and HSE page
-                  <EngineeringQAPage
+                  <MemoEngineeringQAPage
                     page={page}
                     pageIdx={pageIdx}
                     pageWidgets={pageWidgets}
                   />
                 ) : isResourcesManpower ? (
                   // 4-row custom layout for Resources and Manpower page
-                  <ResourcesManpowerPage
+                  <MemoResourcesManpowerPage
                     page={page}
                     pageIdx={pageIdx}
                     pageWidgets={pageWidgets}
                   />
                 ) : isKpiPerformance ? (
                   // 5-row custom layout for KPI Performance page
-                  <KpiPerformancePage
+                  <MemoKpiPerformancePage
                     page={page}
                     pageIdx={pageIdx}
                     pageWidgets={pageWidgets}
