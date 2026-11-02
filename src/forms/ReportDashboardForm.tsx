@@ -799,6 +799,7 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
 //   content.headline_metrics[], content.status_distribution.statuses[], content.aging_metrics[]
 function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
+  console.log('[StatusSummaryWidget] full content:', JSON.stringify(content).slice(0, 800))
   const tok = useContext(DesignContext)
 
   type StatusItem = {
@@ -900,6 +901,48 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
             </div>
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── Categories variant — content.categories[]: { label, open, closed, total, status } ────
+  const cats = content.categories as { label?: string; open?: number; closed?: number; total?: number; status?: string }[] | null
+  if (Array.isArray(cats) && cats.length) {
+    return (
+      <div className="space-y-1.5">
+        {cats.map((cat, i) => {
+          const total  = cat.total ?? ((cat.open ?? 0) + (cat.closed ?? 0))
+          const sColor = severityColor(cat.status)
+          return (
+            <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 gap-3">
+              <span className="text-[11px] font-semibold text-gray-600 truncate">{cat.label}</span>
+              <div className="flex items-center gap-2 flex-shrink-0 text-[11px]">
+                {cat.open != null && <span className="text-red-500 font-bold">{fmtInt(cat.open)} open</span>}
+                {cat.closed != null && <span className="text-green-600 font-semibold">{fmtInt(cat.closed)} closed</span>}
+                {total != null && <span className={`font-bold ${sColor}`}>{fmtInt(total)}</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // ── Movement variant — content.movement.movement_categories[]: { label, count, status, records[] } ──
+  const movement = content.movement as Record<string, unknown> | null
+  const movCats  = movement?.movement_categories as { label?: string; count?: number; status?: string; records?: unknown[] }[] | null
+  if (Array.isArray(movCats) && movCats.length) {
+    return (
+      <div className="space-y-1.5">
+        {movCats.map((cat, i) => {
+          const sColor = severityColor(cat.status)
+          return (
+            <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+              <span className="text-[11px] font-semibold text-gray-600 truncate">{cat.label}</span>
+              <span className={`text-lg font-bold ${sColor}`}>{cat.count != null ? fmtInt(cat.count) : '—'}</span>
+            </div>
+          )
+        })}
       </div>
     )
   }
@@ -1212,6 +1255,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   if (!data?.length) return <NoData />
 
   const sliced = filtered
+  console.log('[LineChartWidget] series:', series, '| first row:', sliced[0], '| xKey:', xKey)
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
   const chartH = isCompact ? 140 : 280
@@ -1537,6 +1581,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const palette = useChartPalette()
+  const dataDate = useContext(DataDateContext)
   const isPrintingBar = usePrintMode()
   const isCompactBar  = useContext(CompactContext)
 
@@ -1595,6 +1640,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   }
 
   const sliced = filtered
+  const ddLabelBar = findDataDateLabel(sliced, xKey, xKey, dataDate)
   // Scale height to data: compact uses 28px/bar (min 100, max 180), normal uses 48px/bar (min 200, max 400)
   // The total box height already includes the legend (top) and the rotated x-axis labels
   // (bottom), so the plot area keeps a usable height regardless of the category count.
@@ -1627,6 +1673,15 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
                 animationEasing="ease-out"
               />
             ))}
+            {ddLabelBar && (
+              <ReferenceLine
+                x={ddLabelBar}
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+              />
+            )}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -1935,6 +1990,48 @@ function inferWidgetType(ast: Record<string, unknown>): string | null {
   return null
 }
 
+// photo_gallery — content.photos[]: { photo_url, caption_or_description, photo_date_display, location_or_area }
+function PhotoGalleryWidget({ ast }: { ast: Record<string, unknown> }) {
+  const content = getContent(ast)
+  type Photo = { photo_url?: string; caption_or_description?: string; photo_date_display?: string; location_or_area?: string }
+  const photos = (content.photos ?? content.images ?? content.items) as Photo[] | null
+  if (!photos?.length) return <NoData msg="No photos available" />
+  return (
+    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+      {photos.map((p, i) => (
+        <div key={i} className="flex flex-col rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+          {p.photo_url ? (
+            <img
+              src={p.photo_url}
+              alt={p.caption_or_description ?? `Photo ${i + 1}`}
+              className="w-full object-cover"
+              style={{ height: 110 }}
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <div className="flex items-center justify-center bg-gray-100" style={{ height: 110 }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+              </svg>
+            </div>
+          )}
+          <div className="px-2 py-1.5 flex flex-col gap-0.5">
+            {p.caption_or_description && (
+              <p className="text-[10px] text-gray-700 font-medium leading-tight line-clamp-2">{p.caption_or_description}</p>
+            )}
+            {(p.location_or_area || p.photo_date_display) && (
+              <p className="text-[9px] text-gray-400 leading-tight">
+                {[p.location_or_area, p.photo_date_display].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function SmartFallback({ ast, type }: { ast: Record<string, unknown>; type: string | null }) {
   const inferred = inferWidgetType(ast)
   if (inferred) {
@@ -2110,6 +2207,7 @@ function WidgetInner({ widget }: { widget: DashboardWidget }) {
     case 'narrative_summary':  return <NarrativeSummaryWidget ast={ast} />
     case 'text_block':         return <TextBlockWidget ast={ast} />
     case 'trade_schedule_gantt':return <TradeScheduleGanttWidget ast={ast} />
+    case 'photo_gallery':       return <PhotoGalleryWidget ast={ast} />
     default:                   return <SmartFallback ast={ast} type={type} />
   }
 }
@@ -2900,12 +2998,14 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
     const type = widget.widget_type
     const inner = (() => {
       switch (type) {
-        case 'line_chart':          return <LineChartWidget ast={ast} />
+        case 'line_chart':           return <LineChartWidget ast={ast} />
         case 'bar_chart':
-        case 'grouped_bar_chart':   return <BarChartWidget ast={ast} />
-        case 'horizontal_bar_chart':return <BarChartWidget ast={ast} horizontal />
-        case 'area_chart':          return <AreaChartWidget ast={ast} />
-        default:                    return <SmartFallback ast={ast} type={type} />
+        case 'grouped_bar_chart':    return <BarChartWidget ast={ast} />
+        case 'horizontal_bar_chart': return <BarChartWidget ast={ast} horizontal />
+        case 'area_chart':           return <AreaChartWidget ast={ast} />
+        case 'trade_schedule_gantt': return <TradeScheduleGanttWidget ast={ast} />
+        case 'photo_gallery':        return <PhotoGalleryWidget ast={ast} />
+        default:                     return <SmartFallback ast={ast} type={type} />
       }
     })()
     return (
