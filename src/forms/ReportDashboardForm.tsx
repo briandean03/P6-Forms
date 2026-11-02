@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, createContext, useContext } from 
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
-  ReferenceLine,
+  ReferenceLine, LabelList,
 } from 'recharts'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
@@ -161,22 +161,29 @@ function fmtNum(v: unknown, decimals = 1): string {
   if (v == null) return '—'
   const n = Number(v)
   if (isNaN(n)) return String(v)
-  return n % 1 === 0 ? String(n) : n.toFixed(decimals)
+  const rounded = n % 1 === 0 ? n : parseFloat(n.toFixed(decimals))
+  return rounded.toLocaleString('en-US', { maximumFractionDigits: decimals })
 }
 
-// Whole-number formatter — rounds to nearest integer (for worker/manpower counts)
+// Whole-number formatter — rounds to nearest integer with comma separators
 function fmtInt(v: unknown): string {
   if (v == null) return '—'
   const n = Number(v)
   if (isNaN(n)) return String(v)
-  return String(Math.round(n))
+  return Math.round(n).toLocaleString('en-US')
 }
 
-// Returns true if the unit string indicates a headcount / manpower quantity
+// Returns true if the unit string indicates a quantity that should display as a whole number
 function isWorkerUnit(unit: string | null | undefined): boolean {
   if (!unit) return false
   const u = unit.toLowerCase()
-  return ['worker', 'workers', 'manpower', 'headcount', 'persons', 'person', 'people', 'staff', 'head'].some(k => u.includes(k))
+  return [
+    'worker', 'workers', 'manpower', 'headcount', 'persons', 'person', 'people', 'staff', 'head',
+    'manhour', 'manhours', 'man-hour', 'man-hours', 'mh',
+    'hour', 'hours',
+    'day', 'days',
+    'float',
+  ].some(k => u.includes(k))
 }
 
 // Context that carries the current report's Data Date (ISO string) to all chart widgets
@@ -239,6 +246,25 @@ function toColSpecs(columns: unknown[]): ColSpec[] {
 
 type SortDir = 'asc' | 'desc' | null
 
+// Serialize cell values safely — avoids [object Object] for nested objects/arrays
+function renderCellValue(val: unknown): string {
+  if (val == null) return '—'
+  if (typeof val === 'string') return val
+  if (typeof val === 'number' || typeof val === 'boolean') return String(val)
+  if (Array.isArray(val)) return val.map(v => renderCellValue(v)).join(', ')
+  if (typeof val === 'object') {
+    // Try to extract a human-readable label from common status-object shapes
+    const obj = val as Record<string, unknown>
+    if (obj.label != null)  return String(obj.label)
+    if (obj.value != null)  return String(obj.value)
+    if (obj.status != null) return String(obj.status)
+    if (obj.name != null)   return String(obj.name)
+    // Fall back to compact JSON
+    try { return JSON.stringify(val) } catch { return String(val) }
+  }
+  return String(val)
+}
+
 function SortableTable({
   columns,
   rows,
@@ -263,9 +289,9 @@ function SortableTable({
     // If a column filter is active, only search that column
     return rows.filter(row => {
       if (colFilter) {
-        return String(row[colFilter] ?? '').toLowerCase().includes(q)
+        return renderCellValue(row[colFilter]).toLowerCase().includes(q)
       }
-      return specs.some(({ key }) => String(row[key] ?? '').toLowerCase().includes(q))
+      return specs.some(({ key }) => renderCellValue(row[key]).toLowerCase().includes(q))
     })
   }, [rows, filter, colFilter, specs])
 
@@ -376,7 +402,7 @@ function SortableTable({
               <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50/40 transition-colors`}>
                 {specs.map(({ key }) => (
                   <td key={key} className="px-3 py-2.5 text-gray-700 whitespace-nowrap">
-                    {row[key] != null ? String(row[key]) : '—'}
+                    {renderCellValue(row[key])}
                   </td>
                 ))}
               </tr>
@@ -432,15 +458,15 @@ function severityColor(status: string | null | undefined) {
   return 'text-gray-500'
 }
 
-function KpiCard({ item }: { item: KpiItem }) {
+function KpiCard({ item, bare }: { item: KpiItem; bare?: boolean }) {
   const sColor = severityColor(item.status)
   const variance = item.variance
   const isWorker = isWorkerUnit(item.unit) || item.data_type === 'integer' || item.data_type === 'count'
   const displayValue = item.value != null
-    ? (isWorker ? fmtInt(item.value) : String(item.value))
+    ? (isWorker ? fmtInt(item.value) : (typeof item.value === 'number' || (typeof item.value === 'string' && !isNaN(Number(item.value)) && item.value.trim() !== '') ? fmtNum(item.value, 1) : String(item.value)))
     : '—'
-  return (
-    <div className="flex flex-col rounded-lg px-4 py-3 bg-gray-50 border border-gray-100">
+  const inner = (
+    <>
       <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate">{item.label}</span>
       <span className="text-2xl font-bold mt-1 text-gray-900">
         {displayValue}
@@ -459,8 +485,10 @@ function KpiCard({ item }: { item: KpiItem }) {
       {item.status && (
         <span className={`text-[11px] font-semibold mt-1 capitalize ${sColor}`}>{item.status}</span>
       )}
-    </div>
+    </>
   )
+  if (bare) return <div className="flex flex-col">{inner}</div>
+  return <div className="flex flex-col rounded-lg px-4 py-3 bg-gray-50 border border-gray-100">{inner}</div>
 }
 
 // kpi_card — content.{ value, label, unit, status, variance, comparison_label, comparison_value }
@@ -526,9 +554,81 @@ function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
     comparison_value: (raw.comparison_value ?? raw.planned_current_period ?? null) as number | null,
     data_type:        raw.data_type as string | undefined,
   }))
+
+  return <KpiGroupSelectable items={items} />
+}
+
+// Selectable KPI group — pill row above, selected card highlighted with ring + accent border
+function KpiGroupSelectable({ items }: { items: KpiItem[] }) {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+
+  // Colour accent per severity — used for the selected card ring and pill active state
+  const accentFor = (status: string | null | undefined) => {
+    if (!status) return { ring: '#3b82f6', pill: '#eff6ff', pillText: '#1d4ed8', pillBorder: '#bfdbfe' }
+    if (['critical', 'error', 'behind'].includes(status))  return { ring: '#ef4444', pill: '#fef2f2', pillText: '#b91c1c', pillBorder: '#fecaca' }
+    if (['overdue', 'warning'].includes(status))            return { ring: '#f59e0b', pill: '#fffbeb', pillText: '#b45309', pillBorder: '#fde68a' }
+    if (['ahead', 'ok', 'good', 'on_track'].includes(status)) return { ring: '#10b981', pill: '#f0fdf4', pillText: '#15803d', pillBorder: '#bbf7d0' }
+    return { ring: '#3b82f6', pill: '#eff6ff', pillText: '#1d4ed8', pillBorder: '#bfdbfe' }
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {items.map((item, i) => <KpiCard key={i} item={item} />)}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Pill selector row */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {items.map((item, i) => {
+          const ac = accentFor(item.status)
+          const isActive = selectedIdx === i
+          return (
+            <button
+              key={i}
+              onClick={() => setSelectedIdx(isActive ? null : i)}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: 99,
+                border: `1px solid ${isActive ? ac.ring : '#e2e8f0'}`,
+                background: isActive ? ac.pill : '#f8fafc',
+                color: isActive ? ac.pillText : '#64748b',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                outline: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* KPI card grid — selected card gets ring + accent border-top */}
+      <div className="grid grid-cols-2 gap-2">
+        {items.map((item, i) => {
+          const isSelected = selectedIdx === i
+          const ac = accentFor(item.status)
+          return (
+            <div
+              key={i}
+              onClick={() => setSelectedIdx(isSelected ? null : i)}
+              style={{
+                cursor: 'pointer',
+                borderRadius: 8,
+                border: isSelected ? `2px solid ${ac.ring}` : '1px solid #e5e7eb',
+                borderTop: isSelected ? `3px solid ${ac.ring}` : undefined,
+                background: isSelected ? ac.pill : '#f8fafc',
+                boxShadow: isSelected ? `0 0 0 3px ${ac.ring}22` : undefined,
+                transition: 'all 0.15s',
+                padding: '10px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <KpiCard item={item} bare />
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -950,45 +1050,6 @@ function useChartPalette(): string[] {
 // Keep PALETTE as alias for backwards-compat in places that can't use hooks
 const PALETTE = PALETTE_FALLBACK
 
-// Compact timeframe picker — pill buttons that control how many data points to show.
-// frames: array of { label, pct } where pct is the tail-% of the full data set to keep.
-// "All" = 100%, "6M" ≈ last 26 weeks, "3M" ≈ last 13 weeks, "1M" ≈ last 4 weeks.
-const TIMEFRAMES = [
-  { label: '1M',  pct: 12 },
-  { label: '3M',  pct: 37 },
-  { label: '6M',  pct: 74 },
-  { label: 'All', pct: 100 },
-] as const
-type TFLabel = typeof TIMEFRAMES[number]['label']
-
-function TimeframePicker({ active, setActive }: { active: TFLabel; setActive: (v: TFLabel) => void }) {
-  return (
-    <div className="no-print flex items-center gap-1 mt-2 justify-end">
-      {TIMEFRAMES.map(tf => (
-        <button
-          key={tf.label}
-          onClick={() => setActive(tf.label)}
-          style={{
-            fontSize: 10, fontWeight: active === tf.label ? 700 : 500,
-            padding: '2px 8px', borderRadius: 4, border: '1px solid',
-            borderColor: active === tf.label ? '#3b82f6' : '#e2e8f0',
-            background: active === tf.label ? '#eff6ff' : '#ffffff',
-            color: active === tf.label ? '#1d4ed8' : '#64748b',
-            cursor: 'pointer', lineHeight: '16px',
-          }}
-        >
-          {tf.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// Convert a timeframe label to a data-slice pct
-function tfPct(label: TFLabel): number {
-  return TIMEFRAMES.find(t => t.label === label)?.pct ?? 100
-}
-
 // Detect low-cardinality string columns suitable for filtering
 // Returns { key, values[] } pairs, ignoring xKey and the label field
 function detectFilterFields(
@@ -1109,7 +1170,6 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
   const labelKey = (content.category_label_field ?? xKey) as string
   const series = normaliseSeries(content, xKey)
-  const [tf, setTf] = useState<TFLabel>('All')
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
   const isPrinting = usePrintMode()
@@ -1120,39 +1180,68 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const filterFields = useMemo(() => detectFilterFields(data, [xKey, labelKey]), [data, xKey, labelKey])
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
-  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
+  const sliced = filtered
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
   const chartH = isCompact ? 140 : 280
 
+  // Thin labels for dense charts: only render every Nth label so text never overlaps.
+  // At <=12 points every label shows; beyond that we skip proportionally.
+  const labelStep = chartData.length <= 12 ? 1 : Math.ceil(chartData.length / 12)
+
   return (
-    <div>
-      <div className="print-chart">
+    <div style={{ overflow: 'hidden' }}>
+      <div className="print-chart" style={{ overflow: 'visible' }}>
+        {/* SVG filter for line drop-shadow — injected once, referenced by each Line */}
+        <svg width="0" height="0" style={{ position: 'absolute' }}>
+          <defs>
+            <filter id="lineShadow" x="-10%" y="-30%" width="120%" height="160%">
+              <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#94a3b8" floodOpacity="0.25" />
+            </filter>
+          </defs>
+        </svg>
         <ResponsiveContainer width="100%" height={chartH}>
-          <LineChart data={chartData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+          <LineChart data={chartData} margin={{ top: 28, right: 24, left: 8, bottom: 36 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 11 }} />
+            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={48} />
+            <YAxis tick={{ fontSize: 11 }} width={48} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            {series.map((s, i) => (
-              <Line
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                name={s.label}
-                stroke={s.color ?? palette[i % palette.length]}
-                strokeDasharray={s.dashed ? '6 3' : undefined}
-                dot={false}
-                activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
-                strokeWidth={2}
-                connectNulls={false}
-                isAnimationActive={!isPrinting}
-                animationBegin={i * 150}
-                animationDuration={1000}
-                animationEasing="ease-out"
-              />
-            ))}
+            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+            {series.map((s, i) => {
+              const color = s.color ?? palette[i % palette.length]
+              return (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={color}
+                  strokeDasharray={s.dashed ? '6 3' : undefined}
+                  dot={{ r: 3, fill: color, strokeWidth: 0, filter: 'url(#lineShadow)' }}
+                  activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
+                  strokeWidth={2.5}
+                  style={{ filter: 'url(#lineShadow)' }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                >
+                  <LabelList
+                    dataKey={s.key}
+                    position="top"
+                    style={{ fontSize: 9, fontWeight: 600, fill: color }}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    content={(props: any) => {
+                      const { x, y, value, index } = props
+                      if (value == null || value === '' || index % labelStep !== 0) return null
+                      return (
+                        <text x={x} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}>
+                          {fmtNum(value, 1)}
+                        </text>
+                      )
+                    }}
+                  />
+                </Line>
+              )
+            })}
             {ddLabel && (
               <ReferenceLine
                 x={ddLabel}
@@ -1166,7 +1255,6 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
         </ResponsiveContainer>
       </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {!isPrinting && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1273,35 +1361,62 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const sCurveH = isCompact ? 150 : 300
 
+  const scLabelStep = slicedData.length <= 12 ? 1 : Math.ceil(slicedData.length / 12)
+
   return (
     <div className="flex flex-col gap-3">
       {/* Chart */}
       <div className="print-chart">
+        {/* SVG filter for line drop-shadow */}
+        <svg width="0" height="0" style={{ position: 'absolute' }}>
+          <defs>
+            <filter id="sCurveShadow" x="-10%" y="-30%" width="120%" height="160%">
+              <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#94a3b8" floodOpacity="0.25" />
+            </filter>
+          </defs>
+        </svg>
         <ResponsiveContainer width="100%" height={sCurveH}>
-          <LineChart data={slicedData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+          <LineChart data={slicedData} margin={{ top: 28, right: 16, left: 4, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="__x" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 11 }} unit={yUnit} domain={[0, 'auto']} />
             <Tooltip content={customTooltip} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            {series.map((s, i) => (
-              <Line
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                name={s.label}
-                stroke={s.color ?? palette[i % palette.length]}
-                strokeDasharray={s.dashed ? '6 3' : undefined}
-                dot={false}
-                activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
-                strokeWidth={2}
-                connectNulls={false}
-                isAnimationActive={!isPrinting}
-                animationBegin={i * 150}
-                animationDuration={1000}
-                animationEasing="ease-out"
-              />
-            ))}
+            {series.map((s, i) => {
+              const color = s.color ?? palette[i % palette.length]
+              return (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={color}
+                  strokeDasharray={s.dashed ? '6 3' : undefined}
+                  dot={{ r: 3, fill: color, strokeWidth: 0, filter: 'url(#sCurveShadow)' }}
+                  activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
+                  strokeWidth={2.5}
+                  style={{ filter: 'url(#sCurveShadow)' }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                >
+                  <LabelList
+                    dataKey={s.key}
+                    position="top"
+                    style={{ fontSize: 9, fontWeight: 600, fill: color }}
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    content={(props: any) => {
+                      const { x, y, value, index } = props
+                      if (value == null || value === '' || index % scLabelStep !== 0) return null
+                      return (
+                        <text x={x} y={y - 6} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}>
+                          {fmtNum(value, 1)}
+                        </text>
+                      )
+                    }}
+                  />
+                </Line>
+              )
+            })}
             {ddLabelSC && (
               <ReferenceLine
                 x={ddLabelSC}
@@ -1382,7 +1497,6 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const merged = chartObj.data ? { ...content, ...chartObj } : content
   const xKey  = (merged.category_field ?? merged.x_key ?? merged.x_axis ?? 'category') as string
   const series = normaliseSeries(merged, xKey)
-  const [tf, setTf] = useState<TFLabel>('All')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const palette = useChartPalette()
@@ -1413,18 +1527,18 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const visibleSeries = series.filter(s => !hidden.has(s.key))
 
   if (horizontal) {
-    const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
+    const sliced = filtered
     const hHeight = isCompact
       ? Math.max(100, sliced.length * 22)
       : Math.max(220, sliced.length * 36)
     return (
-      <div>
-        <div className="print-chart">
+      <div style={{ overflow: 'hidden' }}>
+        <div className="print-chart" style={{ overflow: 'visible' }}>
           <ResponsiveContainer width="100%" height={hHeight}>
-            <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 16, left: 80, bottom: 4 }}>
+            <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 24, left: 80, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={76} />
+              <YAxis type="category" dataKey={xKey} tick={{ fontSize: 11 }} width={80} />
               <Tooltip contentStyle={{ fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
               {visibleSeries.map((s, i) => (
@@ -1435,26 +1549,25 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
           </ResponsiveContainer>
         </div>
         <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-        {!isPrinting && !isCompact && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
       </div>
     )
   }
 
-  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
-  // Scale height to data: compact uses 28px/bar (min 100, max 180), normal uses 48px/bar (min 160, max 340)
+  const sliced = filtered
+  // Scale height to data: compact uses 28px/bar (min 100, max 180), normal uses 48px/bar (min 200, max 400)
   const vHeight = isCompact
     ? Math.min(180, Math.max(100, sliced.length * 28))
-    : Math.min(340, Math.max(160, sliced.length * 48))
+    : Math.min(400, Math.max(200, sliced.length * 48))
   return (
-    <div>
-      <div className="print-chart">
+    <div style={{ overflow: 'hidden' }}>
+      <div className="print-chart" style={{ overflow: 'visible' }}>
         <ResponsiveContainer width="100%" height={vHeight}>
-          <BarChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+          <BarChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 36 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 11 }} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={48} />
+            <YAxis tick={{ fontSize: 11 }} width={48} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} onClick={p => toggleSeries(p.dataKey as string)} />
+            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} onClick={p => toggleSeries(p.dataKey as string)} />
             {visibleSeries.map((s, i) => (
               <Bar
                 key={s.key}
@@ -1473,7 +1586,6 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
         </ResponsiveContainer>
       </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {!isPrinting && !isCompact && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1484,7 +1596,6 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const data  = content.data as Record<string, unknown>[] | null
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
   const series = normaliseSeries(content, xKey)
-  const [tf, setTf] = useState<TFLabel>('All')
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
   const palette  = useChartPalette()
@@ -1495,18 +1606,18 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const filterFields = useMemo(() => detectFilterFields(data, [xKey]), [data, xKey])
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
-  const sliced = filtered.slice(-Math.max(1, Math.round(filtered.length * tfPct(tf) / 100)))
+  const sliced = filtered
   const ddLabelArea = findDataDateLabel(sliced, xKey, xKey, dataDate)
   const areaH = isCompact ? 140 : 280
 
   return (
-    <div>
-      <div className="print-chart">
+    <div style={{ overflow: 'hidden' }}>
+      <div className="print-chart" style={{ overflow: 'visible' }}>
         <ResponsiveContainer width="100%" height={areaH}>
-          <AreaChart data={sliced} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
+          <AreaChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 36 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 11 }} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval="preserveStartEnd" angle={-30} textAnchor="end" height={48} />
+            <YAxis tick={{ fontSize: 11 }} width={48} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {series.map((s, i) => (
@@ -1536,7 +1647,6 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
         </ResponsiveContainer>
       </div>
       <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
-      {!isPrinting && !isCompact && filtered.length > 4 && <TimeframePicker active={tf} setActive={setTf} />}
     </div>
   )
 }
@@ -1641,21 +1751,20 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
             />
           </PieChart>
         </ResponsiveContainer>
-        {/* Center label overlay */}
-        {centerMeta && (
-          <div style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            textAlign: 'center', pointerEvents: 'none', width: isCompact ? 60 : 90, zIndex: 1,
-          }}>
-            <p style={{ fontSize: isCompact ? 14 : 20, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>
-              {centerMeta.value ?? total}
-            </p>
-            <p style={{ fontSize: isCompact ? 8 : 9, color: '#94a3b8', margin: '2px 0 0', lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {centerMeta.unit ?? 'total'}
-            </p>
-          </div>
-        )}
+        {/* Center label overlay — always shown; uses centerMeta if available, otherwise shows total */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          textAlign: 'center', pointerEvents: 'none', width: isCompact ? 60 : 90, zIndex: 1,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <p style={{ fontSize: isCompact ? 14 : 20, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>
+            {centerMeta?.value ?? total}
+          </p>
+          <p style={{ fontSize: isCompact ? 8 : 9, color: '#94a3b8', margin: '2px 0 0', lineHeight: 1.3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            {centerMeta?.unit ?? 'total'}
+          </p>
+        </div>
       </div>
       {/* Right-side legend */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isCompact ? 3 : 5 }}>
@@ -1960,6 +2069,29 @@ function WidgetInner({ widget }: { widget: DashboardWidget }) {
   }
 }
 
+// Shared card title bar: widget title left, WGT-* code right
+function CardHeader({ title, widgetId, marginBottom = 10 }: { title: string; widgetId?: string | null; marginBottom?: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom, flex: 1, minWidth: 0 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {title}
+      </p>
+      {widgetId && (
+        <span style={{
+          fontSize: 10, fontFamily: 'ui-monospace, "Cascadia Code", "Fira Code", monospace',
+          fontWeight: 600, color: '#475569',
+          background: '#f1f5f9', border: '1px solid #cbd5e1',
+          borderRadius: 4, padding: '1px 6px',
+          flexShrink: 0, marginLeft: 10, letterSpacing: '0.04em',
+          lineHeight: '16px',
+        }}>
+          {widgetId}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
   const type = widget.widget_type
 
@@ -1969,11 +2101,18 @@ function WidgetRenderer({ widget }: { widget: DashboardWidget }) {
   ].includes(type ?? '')
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col ${colSpan(type)}`}>
-      {widget.widget_title && (
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 leading-tight flex-shrink-0">
-          {widget.widget_title}
-        </p>
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col ${colSpan(type)}`}>
+      {(widget.widget_title || widget.widget_id) && (
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight min-w-0 truncate">
+            {widget.widget_title ?? ''}
+          </p>
+          {widget.widget_id && (
+            <span className="flex-shrink-0 ml-2.5 font-mono font-semibold text-slate-600 bg-slate-100 border border-slate-300 rounded px-1.5 py-px text-[10px] leading-4 tracking-wide">
+              {widget.widget_id}
+            </span>
+          )}
+        </div>
       )}
       <div className={isTable ? 'flex-1 flex flex-col min-h-0' : ''}>
         <WidgetInner widget={widget} />
@@ -2013,6 +2152,7 @@ function ExecutiveOverviewPage({
   const wgt005 = w('WGT-005')
   const wgt006 = w('WGT-006')
   const wgt007 = w('WGT-007')
+  const wgt051 = w('WGT-051')
 
   // ── WGT-001 header ───────────────────────────────────────────────────────────
   const metaC = wgt001 ? getContent(wgt001.widget_ast ?? {}) : null
@@ -2075,22 +2215,14 @@ function ExecutiveOverviewPage({
   const ENG_COLORS: Record<string, string> = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#9ca3af', UR: '#ef4444' }
 
   // ── WGT-006 QA/QC ────────────────────────────────────────────────────────────
-  const qaC    = wgt006 ? getContent(wgt006.widget_ast ?? {}) : null
-  const qaMet  = Array.isArray(qaC?.metrics)           ? (qaC!.metrics           as KR[]) : []
-  const qaSeg  = Array.isArray(qaC?.segments)          ? (qaC!.segments          as KR[]) : []
-  const qaAge  = Array.isArray(qaC?.aging_exceptions)  ? (qaC!.aging_exceptions  as KR[]) : []
-  const qaT    = qaMet.find(x => x.key === 'total_documents')
-  const qaCls  = qaMet.find(x => x.key === 'closed')
-  const qaOpn  = qaMet.find(x => x.key === 'open')
-  const qa14   = qaMet.find(x => x.key === 'open_over_14_days')
-  const QA_COLORS: Record<string, string> = { CLS: '#10b981', OPN: '#f59e0b' }
+  const qaC       = wgt006 ? getContent(wgt006.widget_ast ?? {}) : null
+  const qaSum     = (qaC?.summary ?? {}) as KR
+  const qaSupMet  = Array.isArray(qaC?.supporting_metrics) ? (qaC!.supporting_metrics as KR[]) : []
 
   // ── WGT-007 exceptions ────────────────────────────────────────────────────────
   const excC      = wgt007 ? getContent(wgt007.widget_ast ?? {}) : null
-  const excGroups = Array.isArray(excC?.groups)     ? (excC!.groups     as KR[]) : []
-  const excItems  = Array.isArray(excC?.exceptions) ? (excC!.exceptions as KR[]) : []
-  const excHd     = excC?.headline as string | undefined
-  const excCnts   = excC?.counts  as KR | undefined
+  const excRows   = Array.isArray(excC?.rows) ? (excC!.rows as KR[]) : []
+  const excTotals = (excC?.source_exception_totals ?? {}) as KR
 
   // ── WGT-002 previous-week comparison data ─────────────────────────────────────
   const compBasis = (() => {
@@ -2105,36 +2237,14 @@ function ExecutiveOverviewPage({
   const currPlanned   = Number(pPlanned.value ?? 0)
   const currActual    = Number(pActual.value  ?? 0)
 
-  // ── colour helpers ────────────────────────────────────────────────────────────
-  const tokBg = (t: string | undefined) => {
-    if (t === 'critical') return { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' }
-    if (t === 'overdue')  return { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' }
-    if (t === 'warning')  return { bg: '#fffbeb', border: '#fde68a', text: '#b45309' }
-    if (t === 'success')  return { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' }
-    return { bg: '#f9fafb', border: '#e5e7eb', text: '#6b7280' }
-  }
-  const tokBorderL = (t: string | undefined) => {
-    if (t === 'critical') return '#ef4444'
-    if (t === 'overdue')  return '#f97316'
-    if (t === 'warning')  return '#f59e0b'
-    return '#d1d5db'
-  }
-
   // ── shared style tokens — driven by design specification ─────────────────────
   const CARD: React.CSSProperties = {
     background: tok('surface_primary', '#ffffff'),
-    borderRadius: 8,
+    borderRadius: 16,
     border: `1px solid ${tok('subtle_border', '#e2e8f0')}`,
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
-  }
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: tok('text_secondary', '#64748b'),
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 10,
+    overflow: 'hidden',
   }
   const ROW_LABEL: React.CSSProperties = { fontSize: 13, color: tok('text_secondary', '#64748b') }
   const ROW_VAL: React.CSSProperties   = { fontSize: 13, fontWeight: 700, color: tok('text_primary', '#1e293b') }
@@ -2230,7 +2340,7 @@ function ExecutiveOverviewPage({
 
         {/* ── Project & Reporting Identification ─────────────────────────────── */}
         <div style={{ ...CARD }}>
-          <p style={{ ...SECTION_LABEL }}>{wgt001?.widget_title ?? 'Project and Reporting Identification'}</p>
+          <CardHeader title={wgt001?.widget_title ?? 'Project and Reporting Identification'} widgetId={wgt001?.widget_id} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px 20px' }}>
             {metaItems.map((f, i) => (
               <div key={i}>
@@ -2243,7 +2353,7 @@ function ExecutiveOverviewPage({
 
         {/* ── Overall Progress Position ──────────────────────────────────────── */}
         <div style={{ ...CARD }}>
-          <p style={{ ...SECTION_LABEL }}>{wgt002?.widget_title ?? 'Overall Progress Position'}</p>
+          <CardHeader title={wgt002?.widget_title ?? 'Overall Progress Position'} widgetId={wgt002?.widget_id} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
 
             {/* Planned */}
@@ -2333,7 +2443,7 @@ function ExecutiveOverviewPage({
 
         {/* ── Executive Schedule Position ────────────────────────────────────── */}
         <div style={{ ...CARD }}>
-          <p style={{ ...SECTION_LABEL }}>{wgt003?.widget_title ?? 'Executive Schedule Position'}</p>
+          <CardHeader title={wgt003?.widget_title ?? 'Executive Schedule Position'} widgetId={wgt003?.widget_id} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 }}>
 
             {/* Forecast Completion */}
@@ -2382,7 +2492,7 @@ function ExecutiveOverviewPage({
         {/* ── Previous Reporting Week Comparison ────────────────────────────── */}
         {compBasis && (
           <div style={{ ...CARD }}>
-            <p style={{ ...SECTION_LABEL }}>Previous Reporting Week Comparison</p>
+            <CardHeader title="Previous Reporting Week Comparison" />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
               {/* Planned comparison */}
@@ -2435,7 +2545,7 @@ function ExecutiveOverviewPage({
         {/* ── Overall Engineering Submissions ────────────────────────────────── */}
         <div style={{ ...CARD }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{wgt005?.widget_title ?? 'Overall Engineering Submissions'}</p>
+            <CardHeader title={wgt005?.widget_title ?? 'Overall Engineering Submissions'} widgetId={wgt005?.widget_id} marginBottom={0} />
             {engTotal > 0 && (
               <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>
                 Total Register: <strong style={{ color: '#1e293b', fontSize: 14 }}>{engTotal}</strong> transmittals
@@ -2443,7 +2553,12 @@ function ExecutiveOverviewPage({
             )}
           </div>
 
+          {/* If the expected primary_metrics structure is absent, fall back to the generic StatusSummaryWidget */}
+          {engPrim.length === 0 && engDist.length === 0 && wgt005 && (
+            <StatusSummaryWidget ast={wgt005.widget_ast ?? {}} />
+          )}
           {/* 3 primary KPIs */}
+          {engPrim.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
             {[ePlanned, eSubmit, eOverdue].map((mm, i) => {
               if (!mm) return <div key={i} />
@@ -2466,6 +2581,7 @@ function ExecutiveOverviewPage({
               )
             })}
           </div>
+          )}
 
           {/* Status distribution bar */}
           {engDist.length > 0 && (() => {
@@ -2517,164 +2633,165 @@ function ExecutiveOverviewPage({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* QA/QC — full-width row 1 */}
+          {wgt006 && (
           <div style={{ ...CARD }}>
-            <p style={{ ...SECTION_LABEL, marginBottom: 8 }}>{wgt006?.widget_title ?? 'Overall QA/QC Open vs Closed'}</p>
+            <CardHeader title={wgt006.widget_title ?? 'Overall QA/QC Open vs Closed'} widgetId={wgt006.widget_id} marginBottom={8} />
 
-            {/* Segment bar */}
-            {qaSeg.length > 0 && (() => {
-              const total = qaSeg.reduce((s, sg) => s + Number(sg.count ?? 0), 0)
-              return (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 6 }}>
-                    {qaSeg.map((sg, i) => (
-                      <div key={i} style={{ flex: Number(sg.count) / total, background: QA_COLORS[String(sg.status_code ?? '')] ?? '#9ca3af' }} />
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    {qaSeg.map((sg, i) => (
-                      <span key={i} style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: 2, display: 'inline-block', flexShrink: 0, background: QA_COLORS[String(sg.status_code ?? '')] ?? '#9ca3af' }} />
-                        <strong style={{ color: '#1e293b', fontWeight: 700 }}>{String(sg.status_label ?? sg.status_code ?? '')}</strong>
-                        {' '}{String(sg.count ?? 0)}{' '}
-                        <span style={{ color: '#94a3b8' }}>({String(sg.share_percent ?? 0)}%)</span>
-                      </span>
-                    ))}
-                  </div>
+            {/* Donut chart — reads content.data + content.center_metric */}
+            <DonutChartWidget ast={wgt006.widget_ast ?? {}} />
+
+            {/* Summary metrics row */}
+            {(qaSum.total_documents != null || qaSum.open_count != null || qaSum.open_over_14_days != null) && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
+                <div style={{ borderRadius: 6, padding: '9px 12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Total Documents</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>{String(qaSum.total_documents ?? '—')}</p>
                 </div>
-              )
-            })()}
-
-            {/* Metric boxes — 2×2 compact grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
-              {[qaT, qaCls, qaOpn, qa14].filter(Boolean).map((mm, i) => {
-                const is14  = mm!.key === 'open_over_14_days'
-                const isCls = mm!.key === 'closed'
-                return (
-                  <div key={i} style={{
-                    borderRadius: 6, padding: '9px 12px',
-                    background: is14 ? '#fff7ed' : isCls ? '#f0fdf4' : '#f8fafc',
-                    border: `1px solid ${is14 ? '#fed7aa' : isCls ? '#bbf7d0' : '#e2e8f0'}`,
-                  }}>
-                    <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{String(mm!.label ?? '')}</p>
-                    <p style={{ fontSize: 22, fontWeight: 800, color: is14 ? '#ea580c' : isCls ? '#15803d' : '#1e293b', margin: 0, lineHeight: 1 }}>{String(mm!.value ?? '—')}</p>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Aging exceptions — scrollable if many items */}
-            {qaAge.length > 0 && (
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 8 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#ea580c', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Open &gt; 14 Days</p>
-                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5, paddingRight: 2 }}>
-                  {qaAge.map((ex, i) => (
-                    <div key={i} style={{ borderRadius: 6, background: '#fff7ed', border: '1px solid #fed7aa', borderLeft: '3px solid #f97316', padding: '7px 10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{String(ex.doc_ref ?? ex.reference ?? '')}</span>
-                        <span style={{ fontSize: 12, fontWeight: 800, color: '#ea580c', marginLeft: 8, flexShrink: 0 }}>{String(ex.days_open ?? '')} days</span>
-                      </div>
-                      <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4, margin: '0 0 4px' }}>{String(ex.document_subject ?? ex.description ?? '')}</p>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {!!ex.discipline_code && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.discipline_code)}</span>}
-                        {!!ex.document_type   && <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.document_type)}</span>}
-                      </div>
-                    </div>
-                  ))}
+                <div style={{ borderRadius: 6, padding: '9px 12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Open</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>{String(qaSum.open_count ?? '—')}</p>
+                </div>
+                <div style={{ borderRadius: 6, padding: '9px 12px', background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Open &gt; 14 Days</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#ea580c', margin: 0, lineHeight: 1 }}>{String(qaSum.open_over_14_days ?? '—')}</p>
                 </div>
               </div>
             )}
+
+            {/* Supporting metrics (e.g. overdue alerts) */}
+            {qaSupMet.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                {qaSupMet.map((m, i) => (
+                  <div key={i} style={{ flex: '1 1 160px', borderRadius: 6, padding: '8px 12px', background: m.semantic_status === 'overdue' ? '#fff7ed' : '#f8fafc', border: `1px solid ${m.semantic_status === 'overdue' ? '#fed7aa' : '#e2e8f0'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>{String(m.label ?? '')}</span>
+                    <span style={{ fontSize: 20, fontWeight: 800, color: m.semantic_status === 'overdue' ? '#ea580c' : '#1e293b', marginLeft: 8 }}>{String(m.value ?? '—')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+          )}
 
           {/* Major Exceptions — full-width row 2 */}
-          {wgt007 && (
-            <div style={{ ...CARD, padding: '16px 20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{wgt007.widget_title}</p>
-                {excCnts && (
-                  <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}>
-                    {String(excCnts.combined_category_exception_total ?? '')} total
+          {wgt007 && excRows.length > 0 && (() => {
+            // colour helpers keyed on age_basis
+            const rowAccent = (ageBasis: string) => {
+              const b = String(ageBasis ?? '').toLowerCase()
+              if (b.includes('overdue')) return { border: '#ef4444', ageBg: '#fef2f2', ageColor: '#dc2626' }
+              if (b.includes('under review')) return { border: '#f59e0b', ageBg: '#fffbeb', ageColor: '#d97706' }
+              if (b.includes('status c') || b.includes('since status')) return { border: '#f97316', ageBg: '#fff7ed', ageColor: '#ea580c' }
+              return { border: '#f59e0b', ageBg: '#fffbeb', ageColor: '#d97706' }
+            }
+            // group rows by domain, preserving source order
+            const domainOrder: string[] = []
+            const byDomain: Record<string, KR[]> = {}
+            excRows.forEach(r => {
+              const d = String(r.domain ?? 'Other')
+              if (!byDomain[d]) { domainOrder.push(d); byDomain[d] = [] }
+              byDomain[d].push(r)
+            })
+            // domain accent colours
+            const domainAccent: Record<string, { bg: string; border: string; text: string }> = {
+              'Construction Schedule': { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
+              'Engineering':           { bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
+              'QA/QC & HSE':           { bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' },
+            }
+            const defaultDomainAccent = { bg: '#f8fafc', border: '#e2e8f0', text: '#475569' }
+            // source totals summary pills
+            const eng  = (excTotals.engineering              ?? {}) as KR
+            const sch  = (excTotals.construction_schedule    ?? {}) as KR
+            const qa   = (excTotals.qaqc_hse                 ?? {}) as KR
+            const summaryPills = [
+              { label: 'Overdue Not Started',    value: sch.overdue_not_started_count,              accent: '#1d4ed8' },
+              { label: 'Overdue Not Submitted',  value: eng.overdue_not_submitted,                  accent: '#15803d' },
+              { label: 'Under Review >14d',      value: eng.under_review_over_14_days,              accent: '#d97706' },
+              { label: 'Status C Not Resubmitted', value: eng.status_c_not_resubmitted_over_14_days, accent: '#ea580c' },
+              { label: 'QA/QC Open >14d',        value: qa.open_over_14_days,                       accent: '#dc2626' },
+            ].filter(p => p.value != null && Number(p.value) > 0)
+
+            return (
+              <div style={{ ...CARD, padding: '16px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <CardHeader title={wgt007.widget_title ?? ''} widgetId={wgt007.widget_id} marginBottom={0} />
+                  <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', flexShrink: 0, marginLeft: 12 }}>
+                    {excRows.length} shown
                   </span>
+                </div>
+
+                {/* Source totals summary */}
+                {summaryPills.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {summaryPills.map((p, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: `3px solid ${p.accent}` }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: p.accent, lineHeight: 1 }}>{String(p.value)}</span>
+                        <span style={{ fontSize: 11, color: '#64748b', lineHeight: 1.3 }}>{p.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
+
+                {/* Rows grouped by domain */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {domainOrder.map(domain => {
+                    const da = domainAccent[domain] ?? defaultDomainAccent
+                    return (
+                      <div key={domain}>
+                        {/* Domain header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '3px 10px', borderRadius: 99, background: da.bg, border: `1px solid ${da.border}`, color: da.text }}>
+                            {domain}
+                          </span>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>{byDomain[domain].length} items</span>
+                        </div>
+                        {/* Exception rows for this domain */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {byDomain[domain].map((ex, i) => {
+                            const ac = rowAccent(String(ex.age_basis ?? ''))
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: `4px solid ${ac.border}`, padding: '9px 12px' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{String(ex.reference ?? '')}</span>
+                                    {!!ex.record_type && (
+                                      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569', marginLeft: 'auto', flexShrink: 0 }}>
+                                        {String(ex.record_type)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p style={{ fontSize: 12, color: '#475569', margin: '0 0 4px', lineHeight: 1.4 }}>{String(ex.description ?? '')}</p>
+                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                    {!!ex.exception_category && (
+                                      <span style={{ fontSize: 10, color: '#64748b', fontStyle: 'italic' }}>{String(ex.exception_category)}</span>
+                                    )}
+                                    {!!ex.discipline_code && (
+                                      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.discipline_code)}</span>
+                                    )}
+                                    {!!ex.area && (
+                                      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.area)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {ex.age_days != null && (
+                                  <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 46, padding: '4px 6px', borderRadius: 6, background: ac.ageBg }}>
+                                    <p style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, color: ac.ageColor, margin: 0 }}>{String(ex.age_days)}</p>
+                                    <p style={{ fontSize: 9, color: '#94a3b8', marginTop: 1, lineHeight: 1.2, textTransform: 'uppercase' }}>days</p>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-
-              {excHd && (
-                <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #e2e8f0' }}>{excHd}</p>
-              )}
-
-              {/* Category summary pills */}
-              {excGroups.length > 0 && (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                  {excGroups.map((g, i) => {
-                    const tok = String(g.status_token ?? '')
-                    const col = tokBg(tok)
-                    const bd  = g.breakdown as KR | undefined
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 8, background: col.bg, border: `1px solid ${col.border}`, minWidth: 130 }}>
-                        <span style={{ fontSize: 28, fontWeight: 900, lineHeight: 1, color: col.text }}>{String(g.count ?? '—')}</span>
-                        <div>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: col.text, lineHeight: 1.2, marginBottom: 2 }}>{String(g.category_label ?? '')}</p>
-                          {bd && (
-                            <p style={{ fontSize: 11, color: col.text, opacity: 0.8 }}>
-                              {Object.entries(bd).map(([k, val]) => `${String(val)} ${k.replace(/_/g, ' ')}`).join(' · ')}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Exception rows */}
-              {excItems.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {excItems.map((ex, i) => {
-                    const tok = String(ex.status_token ?? 'warning')
-                    const bdrColor = tokBorderL(tok)
-                    const isSched  = ex.category === 'schedule'
-                    const ageLabel = ex.age_basis === 'overdue_days'      ? 'days overdue'
-                                   : ex.age_basis === 'days_under_review'  ? 'days u/review'
-                                   : ex.age_basis === 'days_since_return'  ? 'days since return'
-                                   : ex.age_basis === 'days_open'          ? 'days open'
-                                   : 'days'
-                    const col = tokBg(tok)
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: `4px solid ${bdrColor}`, padding: '10px 14px' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{String(ex.reference ?? '')}</span>
-                            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: col.bg, border: `1px solid ${col.border}`, color: col.text }}>
-                              {String(ex.category_label ?? ex.category ?? '')}
-                            </span>
-                          </div>
-                          <p style={{ fontSize: 13, color: '#475569', margin: '0 0 5px', lineHeight: 1.5 }}>{String(ex.description ?? '')}</p>
-                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                            {!!ex.transmittal_type_label && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.transmittal_type_label)}</span>}
-                            {!!ex.document_type          && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.document_type)}</span>}
-                            {!!ex.discipline_code        && <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: '#fff', border: '1px solid #e2e8f0', color: '#475569' }}>{String(ex.discipline_code)}</span>}
-                          </div>
-                          {isSched && ex.total_float_days != null && (
-                            <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>
-                              Float: {Number(ex.total_float_days).toFixed(1)} days{ex.location ? ` · ${String(ex.location)}` : ''}
-                            </p>
-                          )}
-                        </div>
-                        {ex.age_days != null && (
-                          <div style={{ flexShrink: 0, textAlign: 'center', minWidth: 52 }}>
-                            <p style={{ fontSize: 22, fontWeight: 900, lineHeight: 1, color: tok === 'critical' ? '#dc2626' : tok === 'overdue' ? '#ea580c' : '#d97706', margin: 0 }}>
-                              {String(ex.age_days)}
-                            </p>
-                            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>{ageLabel}</p>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+            )
+          })()}
         </div>
+
+        {/* ── Additional Executive page widgets ────────────────────────────── */}
+        {wgt051 && <WidgetRenderer widget={wgt051} />}
 
       </div>{/* /body */}
     </div>
@@ -2698,6 +2815,7 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
   const wgt012 = w('WGT-012')
   const wgt013 = w('WGT-013')
   const wgt014 = w('WGT-014')
+  const wgt044 = w('WGT-044')
 
   // Extract annotation text from WGT-010 content
   const wgt010Content = wgt010 ? getContent(wgt010.widget_ast ?? {}) : null
@@ -2712,21 +2830,12 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
   // ── shared style tokens — identical to ExecutiveOverviewPage ─────────────────
   const CARD: React.CSSProperties = {
     background: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
     border: '1px solid #e2e8f0',
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
     display: 'flex',
     flexDirection: 'column',
-  }
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 10,
-    flexShrink: 0,
   }
 
   // Helper — renders a widget's chart content inside a sized card
@@ -2756,7 +2865,7 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
     })()
     return (
       <div style={{ ...CARD, ...style }}>
-        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} />
         <div style={{ flex: 1, height, minHeight: height }}>{inner}</div>
         {noteSlot}
       </div>
@@ -2778,7 +2887,7 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
     return (
       <div style={{ ...CARD, ...style }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12, flexShrink: 0 }}>
-          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} marginBottom={0} />
           {headerSlot}
         </div>
         <div style={{ flex: 1 }}>
@@ -2912,6 +3021,9 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
       {/* ── ROW 5: Construction progress by trade (full-width) ─────────────── */}
       <ChartCard widget={wgt014} height={300} />
 
+      {/* ── Additional Progress page widgets ─────────────────────────────── */}
+      {wgt044 && <ChartCard widget={wgt044} height={280} />}
+
       </div>{/* /body */}
     </div>
   )
@@ -2936,21 +3048,12 @@ function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePagePr
   // ── shared style tokens — identical to ExecutiveOverviewPage ──────────────
   const CARD: React.CSSProperties = {
     background: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
     border: '1px solid #e2e8f0',
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
     display: 'flex',
     flexDirection: 'column',
-  }
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 10,
-    flexShrink: 0,
   }
 
   // Helper — renders a kpi_group widget inside a card
@@ -2965,7 +3068,7 @@ function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePagePr
     const ast = widget.widget_ast ?? {}
     return (
       <div style={{ ...CARD, ...style }}>
-        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} />
         <div style={{ flex: 1 }}>
           <KpiGroupWidget ast={ast} />
         </div>
@@ -2997,7 +3100,7 @@ function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePagePr
     return (
       <div style={{ ...CARD, ...style }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 12, flexShrink: 0 }}>
-          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} marginBottom={0} />
           {summarySlot}
         </div>
         <div style={{ flex: 1 }}>{inner}</div>
@@ -3066,7 +3169,7 @@ function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePagePr
             })()
             return (
               <div key={pw.widget_record_id} style={{ ...CARD }}>
-                <p style={{ ...SECTION_LABEL }}>{pw.widget_title ?? ''}</p>
+                <CardHeader title={pw.widget_title ?? ''} widgetId={pw.widget_id} />
                 <div style={{ flex: 1 }}>{inner}</div>
               </div>
             )
@@ -3120,25 +3223,22 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
   const wgt028 = w('WGT-028')   // QA/QC Document Status Summary            — kpi_group
   const wgt029 = w('WGT-029')   // Material Submission Exceptions            — exception_table
   const wgt030 = w('WGT-030')   // QA/QC Open Exceptions                    — exception_table
+  const wgt045 = w('WGT-045')   // Additional — Engineering/HSE page
+  const wgt046 = w('WGT-046')
+  const wgt047 = w('WGT-047')
+  const wgt048 = w('WGT-048')
+  const wgt049 = w('WGT-049')
+  const wgt050 = w('WGT-050')
 
   // ── shared style tokens — identical to ExecutiveOverviewPage ──────────────
   const CARD: React.CSSProperties = {
     background: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
     border: '1px solid #e2e8f0',
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
     display: 'flex',
     flexDirection: 'column',
-  }
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 10,
-    flexShrink: 0,
   }
 
   // Helper — generic card wrapper that dispatches to the right widget renderer
@@ -3172,7 +3272,7 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
     const needsHeight = ['donut_chart','pie_chart','line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
     return (
       <div style={{ ...CARD, ...style }}>
-        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} />
         <div style={{ flex: 1, ...(needsHeight && height ? { minHeight: height } : {}) }}>
           {inner}
         </div>
@@ -3205,7 +3305,7 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
     return (
       <div style={{ ...CARD, ...style }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0, gap: 12 }}>
-          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} marginBottom={0} />
           {rowCount != null && (
             <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', border: '1px solid #e2e8f0', flexShrink: 0 }}>
               {rowCount} {rowCount === 1 ? 'row' : 'rows'}
@@ -3280,6 +3380,11 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
         {/* ── ROW 7: QA/QC Open Exceptions (full-width) ────────────────────── */}
         <TableCard widget={wgt030} />
 
+        {/* ── Remaining Engineering/QA widgets not in fixed layout ─────────── */}
+        {([wgt045, wgt046, wgt047, wgt048, wgt049, wgt050] as (DashboardWidget | undefined)[]).filter((x): x is DashboardWidget => !!x).map(wgt => (
+          <WidgetCard key={wgt.widget_record_id} widget={wgt} />
+        ))}
+
       </div>{/* /body */}
     </div>
   )
@@ -3308,21 +3413,12 @@ function ResourcesManpowerPage({ page, pageIdx, pageWidgets }: ResourcesPageProp
   // ── shared style tokens ────────────────────────────────────────────────────
   const CARD: React.CSSProperties = {
     background: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
     border: '1px solid #e2e8f0',
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
     display: 'flex',
     flexDirection: 'column',
-  }
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 10,
-    flexShrink: 0,
   }
 
   // Helper — renders any widget into a styled card with title
@@ -3355,7 +3451,7 @@ function ResourcesManpowerPage({ page, pageIdx, pageWidgets }: ResourcesPageProp
     const needsHeight = ['line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
     return (
       <div style={{ ...CARD, ...style }}>
-        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} />
         <div style={{ flex: 1, ...(needsHeight && height ? { minHeight: height } : {}) }}>
           {inner}
         </div>
@@ -3387,7 +3483,7 @@ function ResourcesManpowerPage({ page, pageIdx, pageWidgets }: ResourcesPageProp
     return (
       <div style={{ ...CARD, ...style }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0, gap: 12 }}>
-          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} marginBottom={0} />
           {rowCount != null && (
             <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', border: '1px solid #e2e8f0', flexShrink: 0 }}>
               {rowCount} {rowCount === 1 ? 'row' : 'rows'}
@@ -3475,28 +3571,20 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
   const w = (id: string) => pageWidgets.find(x => x.widget_id === id)
   const wgt037 = w('WGT-037')   // KPI Coverage Summary                                   — kpi_group
   const wgt038 = w('WGT-038')   // Total vs Actual KPI Quantities to Date                 — data_table
-  const wgt039 = w('WGT-039')   // Planned vs Actual KPI Quantities Cumulative to Date    — data_table
+  const wgt039 = w('WGT-039')   // Planned vs Actual KPI Quantities Cumulative to Date    — grouped_bar_chart
   const wgt040 = w('WGT-040')   // Weekly Planned vs Actual KPI Quantities — Current Week — grouped_bar_chart
   const wgt041 = w('WGT-041')   // KPI Current-Week and Cumulative Variances               — exception_table
+  const wgt045 = w('WGT-045')   // KPI summary / additional KPI group                      — kpi_group
 
   // ── shared style tokens ────────────────────────────────────────────────────
   const CARD: React.CSSProperties = {
     background: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 16,
     border: '1px solid #e2e8f0',
     boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     padding: '16px 18px',
     display: 'flex',
     flexDirection: 'column',
-  }
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    marginBottom: 10,
-    flexShrink: 0,
   }
 
   // Helper — generic widget card
@@ -3527,7 +3615,7 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
     const needsHeight = ['line_chart','bar_chart','grouped_bar_chart','stacked_bar_chart'].includes(type ?? '')
     return (
       <div style={{ ...CARD, ...style }}>
-        <p style={{ ...SECTION_LABEL }}>{widget.widget_title ?? ''}</p>
+        <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} />
         <div style={{ flex: 1, ...(needsHeight && height ? { minHeight: height } : {}) }}>
           {inner}
         </div>
@@ -3558,7 +3646,7 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
     return (
       <div style={{ ...CARD, ...style }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0, gap: 12 }}>
-          <p style={{ ...SECTION_LABEL, marginBottom: 0 }}>{widget.widget_title ?? ''}</p>
+          <CardHeader title={widget.widget_title ?? ''} widgetId={widget.widget_id} marginBottom={0} />
           {rowCount != null && (
             <span style={{ fontSize: 11, fontWeight: 700, background: '#f1f5f9', color: '#64748b', borderRadius: 4, padding: '2px 8px', border: '1px solid #e2e8f0', flexShrink: 0 }}>
               {rowCount} {rowCount === 1 ? 'row' : 'rows'}
@@ -3605,8 +3693,8 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
         {/* ── ROW 2: Total vs Actual KPI Quantities to Date — full-width table */}
         <TableCard widget={wgt038} />
 
-        {/* ── ROW 3: Planned vs Actual KPI Quantities Cumulative — full-width */}
-        <TableCard widget={wgt039} />
+        {/* ── ROW 3: Planned vs Actual KPI Quantities Cumulative — full-width grouped bar chart */}
+        <WidgetCard widget={wgt039} height={280} />
 
         {/* ── ROW 4: Weekly KPI bar chart (left half) + balanced right slot ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -3616,6 +3704,9 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
 
         {/* ── ROW 5: KPI Variances exception table — full-width ─────────────── */}
         <TableCard widget={wgt041} />
+
+        {/* ── ROW 6: Additional KPI group (WGT-045) — rendered only when present */}
+        {wgt045 && <WidgetCard widget={wgt045} />}
 
       </div>{/* /body */}
     </div>
@@ -4136,12 +4227,14 @@ export function ReportDashboardForm({
         ) : (
           pages.map((page, pageIdx) => {
             const pageWidgets = widgets.filter(w => w.page_id === page.page_id)
-            const isExecutivePage         = pageIdx === 0
-            const isProgressAnalysis      = page.page_id === 'PAGE-002'
-            const isScheduleIntelligence  = page.page_id === 'PAGE-003'
-            const isEngineeringQA         = page.page_id === 'PAGE-004'
-            const isResourcesManpower     = page.page_id === 'PAGE-005'
-            const isKpiPerformance        = page.page_id === 'PAGE-006'
+            // Route by page_key first (stable semantic value from DB), then fall back to pageIdx
+            const pk = (page.page_key ?? '').toLowerCase()
+            const isExecutivePage        = pk === 'executive_overview'        || pageIdx === 0
+            const isProgressAnalysis     = pk === 'progress_analysis'         || (pk === '' && pageIdx === 1)
+            const isScheduleIntelligence = pk === 'schedule_intelligence'     || (pk === '' && pageIdx === 2)
+            const isEngineeringQA        = pk === 'engineering_qaqc_hse'      || (pk === '' && pageIdx === 3)
+            const isResourcesManpower    = pk === 'resources_and_manpower'    || (pk === '' && pageIdx === 4)
+            const isKpiPerformance       = pk === 'kpi_performance'           || (pk === '' && pageIdx === 5)
 
             return (
               <div
