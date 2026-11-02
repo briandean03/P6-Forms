@@ -818,13 +818,18 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
 function SectionCard({ section }: { section: WeeklyReportSection }) {
   const blocks = section.section_ast?.blocks ?? []
   const badge = resolveNumbering(section.numbering, section.section_id)
+  // Wide content (tables) is cut off on a portrait page, so those sections print on a
+  // landscape page. Sections the data marks as landscape do too.
+  const printLandscape =
+    section.orientation === 'landscape' ||
+    blocks.some(b => b.type === 'table' || b.type === 'data_table')
 
   return (
     <section
       id={`section-${section.section_id}`}
       className={`weekly-report-section print-page bg-white rounded-xl border border-gray-100 shadow-sm p-8 mb-6 ${
         section.page_break_before ? 'break-before-page' : ''
-      } ${section.orientation === 'landscape' ? 'landscape' : ''}`}
+      } ${section.orientation === 'landscape' ? 'landscape' : ''} ${printLandscape ? 'print-landscape' : ''}`}
     >
       <div className="flex items-start gap-4 mb-6 pb-4 border-b border-gray-100">
         <span className="flex-shrink-0 text-xs font-bold font-mono bg-indigo-600 text-white px-2.5 py-1 rounded-lg shadow-sm whitespace-nowrap">
@@ -1084,7 +1089,15 @@ export function WeeklyReportForm({
             styleEl.id = 'weekly-report-print-override'
             styleEl.textContent = `
               @page { size: A4 portrait; margin: 14mm 13mm; }
+              @page landscape-page { size: A4 landscape; margin: 12mm 12mm; }
               @media print {
+                .weekly-report-section.print-landscape {
+                  page: landscape-page;
+                  /* Chromium keeps the portrait layout width for percentage widths, so set
+                     the landscape printable width (297mm - 2 x 12mm margins) explicitly. */
+                  width: 273mm !important;
+                  max-width: none !important;
+                }
                 .weekly-report-section {
                   padding: 20px 24px !important;
                   border: 1px solid #e5e7eb !important;
