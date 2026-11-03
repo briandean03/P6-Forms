@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef, useCallback, memo, createContext, useContext } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, memo, createContext, useContext, type Dispatch, type SetStateAction } from 'react'
+import { flushSync } from 'react-dom'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
@@ -1009,7 +1010,7 @@ function TradeScheduleGanttWidget({ ast }: { ast: Record<string, unknown> }) {
   const bgTrack      = tok('canvas',       '#f1f5f9')
 
   return (
-    <div className="space-y-1.5 overflow-y-auto max-h-96">
+    <div data-widget="trade-schedule" className="space-y-1.5 overflow-y-auto max-h-96">
       {/* Legend */}
       <div className="flex items-center gap-4 mb-2">
         <div className="flex items-center gap-1.5">
@@ -1031,7 +1032,7 @@ function TradeScheduleGanttWidget({ ast }: { ast: Record<string, unknown> }) {
         const varColor   = finVar == null ? 'text-gray-400' : finVar > 0 ? 'text-red-500' : finVar < 0 ? 'text-green-600' : 'text-gray-500'
 
         return (
-          <div key={i} className="grid items-center gap-x-2" style={{ gridTemplateColumns: '56px 1fr 40px' }}>
+          <div key={i} data-trade-row className="grid items-center gap-x-2" style={{ gridTemplateColumns: '56px 1fr 40px' }}>
             {/* Trade label */}
             <span className="text-[10px] font-semibold text-gray-600 truncate text-right pr-1">{label}</span>
 
@@ -1192,22 +1193,104 @@ function normaliseSeries(content: Record<string, unknown>, xKey: string): Series
     .map((k, i) => ({ key: k, label: k.replace(/_/g, ' '), color: PALETTE[i % PALETTE.length] }))
 }
 
+// ── A3 print scaling — module-level shared state ──────────────────────────────
+
+// All usePrintMode instances register here so preparePrint() can flushSync them all
+const _printSetters = new Set<Dispatch<SetStateAction<boolean>>>()
+
+// Epoch counter — incremented after every print cleanup so ResponsiveContainers
+// remount (via key) and re-measure at their true screen width.
+let _printEpoch = 0
+const _epochSetters = new Set<Dispatch<SetStateAction<number>>>()
+
+// A3 printable area at 96 dpi: A3 = 420×297mm; subtract 8mm margins each side
+const A3_PRINT_W = 1526   // (420 - 16) mm × 96/25.4 ≈ 1526px
+const A3_PRINT_H = 1062   // (297 - 16) mm × 96/25.4 ≈ 1062px
+const A3_SAFETY  = 0.97   // 3% safety margin so content doesn't land on the edge
+
+// preparePrint: synchronous. Sets html.a3-printing, flushSync isPrinting=true,
+// then iteratively fits CSS zoom to the A3 printable area.
+// Safe to call multiple times (resets zoom at the start each time).
+function preparePrint(el: HTMLElement): void {
+  el.style.zoom = ''
+  document.documentElement.classList.add('a3-printing')
+  flushSync(() => { _printSetters.forEach(s => s(true)) })
+
+  let scale = Math.min(A3_PRINT_W / el.scrollWidth, A3_PRINT_H / el.scrollHeight, 1)
+  for (let i = 0; i < 5; i++) {
+    el.style.zoom = String(scale)
+    void el.getBoundingClientRect()  // force reflow so getBCR returns updated value
+    const h = el.getBoundingClientRect().height
+    if (h <= A3_PRINT_H * A3_SAFETY) break
+    scale *= (A3_PRINT_H * A3_SAFETY) / h
+  }
+  console.log('[A3 Print] scale:', scale.toFixed(4),
+    '| contentW:', el.scrollWidth, '| contentH:', el.scrollHeight)
+}
+
+function cleanupPrint(): void {
+  document.documentElement.classList.remove('a3-printing')
+  const el = document.querySelector('.a3-page') as HTMLElement | null
+  if (el) el.style.zoom = ''
+  flushSync(() => { _printSetters.forEach(s => s(false)) })
+  // After the browser has re-laid-out at screen dimensions, bump the epoch so
+  // every ResponsiveContainer remounts and re-measures its true screen width.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    _printEpoch++
+    _epochSetters.forEach(s => s(_printEpoch))
+  }))
+}
+
+// useA3PrintScale: registers beforeprint/afterprint listeners when A3 mode is active.
+// beforeprint (Ctrl+P): calls preparePrint so layout is correct before browser renders.
+// afterprint: cleans up. Print button calls preparePrint + window.print() directly.
+function useA3PrintScale(enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) return
+    const onBefore = () => {
+      const el = document.querySelector('.a3-page') as HTMLElement | null
+      if (el) preparePrint(el)
+    }
+    const onAfter = () => cleanupPrint()
+    window.addEventListener('beforeprint', onBefore)
+    window.addEventListener('afterprint', onAfter)
+    return () => {
+      window.removeEventListener('beforeprint', onBefore)
+      window.removeEventListener('afterprint', onAfter)
+    }
+  }, [enabled])
+}
+
 // ── Print mode hook — fires before print dialog opens ─────────────────────────
 // Returns true while the browser is in print layout. Used to disable animations
-// and switch ResponsiveContainer to a fixed-height wrapper.
+// and chart-specific print adjustments.
 function usePrintMode(): boolean {
   const [printing, setPrinting] = useState(false)
   useEffect(() => {
+    _printSetters.add(setPrinting)
+    // Keep own beforeprint/afterprint listeners so non-A3 print paths also set isPrinting
     const onBefore = () => setPrinting(true)
     const onAfter  = () => setPrinting(false)
     window.addEventListener('beforeprint', onBefore)
     window.addEventListener('afterprint',  onAfter)
     return () => {
+      _printSetters.delete(setPrinting)
       window.removeEventListener('beforeprint', onBefore)
       window.removeEventListener('afterprint',  onAfter)
     }
   }, [])
   return printing
+}
+
+// Returns the current epoch value — changes after every print cleanup, triggering
+// ResponsiveContainer remounts via key={epoch}.
+function usePrintEpoch(): number {
+  const [epoch, setEpoch] = useState(_printEpoch)
+  useEffect(() => {
+    _epochSetters.add(setEpoch)
+    return () => { _epochSetters.delete(setEpoch) }
+  }, [])
+  return epoch
 }
 
 // ── Chart label density helpers ───────────────────────────────────────────────
@@ -1249,6 +1332,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const isCompact  = useContext(CompactContext)
   const palette  = useChartPalette()
 
+  const printEpoch = usePrintEpoch()
   const filterFields = useMemo(() => (data?.length ? detectFilterFields(data, [xKey, labelKey]) : []), [data, xKey, labelKey])
   const filtered = useMemo(() => (data?.length ? applyFilters(data, activeFilters) : []), [data, activeFilters])
 
@@ -1258,13 +1342,30 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   console.log('[LineChartWidget] series:', series, '| first row:', sliced[0], '| xKey:', xKey)
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
-  const chartH = isCompact ? 200 : 280
 
-  // Compact mode uses tighter margins and smaller axis areas to preserve plot area height
+  // XAxis height: fit rotated labels (angle -30°, sin30=0.5, cos30=0.866, font=10px)
+  const _lcFontPx = 10
+  const _lcAngle = Math.PI / 6
+  const _lcMaxChars = Math.max(...chartData.map(d => String(d.__x ?? '').length), 4)
+  const xAxisHeight = Math.max(
+    isCompact ? 36 : 52,
+    Math.ceil(_lcMaxChars * _lcFontPx * 0.55 * Math.sin(_lcAngle) + _lcFontPx * Math.cos(_lcAngle) + 8)
+  )
+
+  // Margins: bottom = 4 (outer gutter only — XAxis height already holds rotated labels).
+  // In print legend is on top (+24px budget); on screen it's below the chart (Recharts
+  // adds its own space outside chartH so we don't need to reserve it here).
+  const MIN_PLOT = 110
   const chartMargin = isCompact
-    ? { top: 16, right: 16, left: 8, bottom: 4 }
-    : { top: 28, right: 24, left: 28, bottom: 36 }
-  const xAxisHeight = isCompact ? 36 : 48
+    ? (isPrinting
+        ? { top: 4, right: 20, left: 36, bottom: 4 }
+        : { top: 16, right: 16, left: 8, bottom: 4 })
+    : { top: 28, right: 24, left: 28, bottom: 4 }
+  // chartH = top + legendH(print) + xAxisHeight + MIN_PLOT + bottom
+  const _lcLegendH = isPrinting ? 24 : 0
+  const chartH = isCompact
+    ? Math.max(chartMargin.top + _lcLegendH + xAxisHeight + MIN_PLOT + chartMargin.bottom, isPrinting ? 0 : 200)
+    : chartMargin.top + _lcLegendH + xAxisHeight + MIN_PLOT + chartMargin.bottom
   const yAxisWidth  = isCompact ? 36 : 48
   const legendStyle = isCompact ? { fontSize: 10, paddingTop: 4 } : { fontSize: 12, paddingTop: 8 }
 
@@ -1275,13 +1376,13 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   return (
     <div style={{ overflow: 'hidden' }}>
       <div className="print-chart" style={{ overflow: 'visible' }}>
-        <ResponsiveContainer width="100%" height={chartH}>
+        <ResponsiveContainer key={printEpoch} width="100%" height={chartH}>
           <LineChart data={chartData} margin={chartMargin}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval={xTickInterval(chartData.length)} angle={-30} textAnchor="end" height={xAxisHeight} />
             <YAxis tick={{ fontSize: 11 }} width={yAxisWidth} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Legend wrapperStyle={legendStyle} />
+            <Legend verticalAlign={isPrinting ? 'top' : 'bottom'} wrapperStyle={legendStyle} />
             {series.map((s, i) => {
               const color = s.color ?? palette[i % palette.length]
               return (
@@ -1292,11 +1393,11 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                   name={s.label}
                   stroke={color}
                   strokeDasharray={s.dashed ? '6 3' : undefined}
-                  dot={isCompact ? false : { r: 3, fill: color, strokeWidth: 0 }}
+                  dot={(isCompact && !isPrinting) ? false : { r: 3, fill: color, strokeWidth: 0 }}
                   activeDot={isPrinting ? false : { r: 5, strokeWidth: 2 }}
                   strokeWidth={2.5}
                   connectNulls={false}
-                  isAnimationActive={false}
+                  isAnimationActive={!isPrinting}
                 >
                   <LabelList
                     dataKey={s.key}
@@ -1307,7 +1408,11 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                       const { x, y, value, index } = props
                       if (value == null || value === '') return null
                       const { show, below } = labelPlan(i, index)
-                      if (!show) return null
+                      // In print: only first, last, and every 8th point to avoid overlap
+                      const finalShow = isPrinting
+                        ? (index === 0 || index === chartData.length - 1 || index % 8 === 0)
+                        : show
+                      if (!finalShow) return null
                       return (
                         <text x={x} y={below ? y + 14 : y - 7} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}
                           stroke="#fff" strokeWidth={3} paintOrder="stroke">
@@ -1325,7 +1430,8 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                 stroke="#ef4444"
                 strokeWidth={1.5}
                 strokeDasharray="4 3"
-                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444',
+                         dy: isPrinting ? -14 : 6, dx: isPrinting ? 4 : -4 }}
               />
             )}
           </LineChart>
@@ -1341,6 +1447,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const data = content.data as Record<string, unknown>[] | null
   const palette = useChartPalette()
+  const printEpoch = usePrintEpoch()
   if (!data?.length) return <NoData />
 
   const xKey      = (content.category_field      ?? 'period_end')   as string
@@ -1436,7 +1543,25 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const ddLabelSC = findDataDateLabel(slicedData, xKey, labelKey, dataDate)
 
-  const sCurveH = isCompact ? 150 : 300
+  // XAxis height: fit rotated labels (angle -30°, font=10px)
+  const _scFontPx = 10
+  const _scAngle = Math.PI / 6
+  const _scMaxChars = Math.max(...slicedData.map(d => String(d.__x ?? '').length), 4)
+  const scXAxisHeight = Math.max(
+    48,
+    Math.ceil(_scMaxChars * _scFontPx * 0.55 * Math.sin(_scAngle) + _scFontPx * Math.cos(_scAngle) + 8)
+  )
+
+  // Margins: bottom = 4 (outer gutter only).
+  // Print legend is on top, so reserve 24px for it in the height calculation.
+  const SC_MIN_PLOT = 110
+  const scMargin = isPrinting
+    ? { top: 4, right: 20, left: 36, bottom: 4 }
+    : { top: 28, right: 16, left: 28, bottom: 8 }
+  const _scLegendH = isPrinting ? 24 : 0
+  const sCurveH = isCompact
+    ? Math.max(scMargin.top + _scLegendH + scXAxisHeight + SC_MIN_PLOT + scMargin.bottom, isPrinting ? 0 : 150)
+    : Math.max(scMargin.top + _scLegendH + scXAxisHeight + SC_MIN_PLOT + scMargin.bottom, 300)
 
   const scLabelPlan = lineLabelPlan(slicedData.length, series.length)
 
@@ -1444,13 +1569,18 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
     <div className="flex flex-col gap-3">
       {/* Chart */}
       <div className="print-chart">
-        <ResponsiveContainer width="100%" height={sCurveH}>
-          <LineChart data={slicedData} margin={{ top: 28, right: 16, left: 28, bottom: 8 }}>
+        <ResponsiveContainer key={printEpoch} width="100%" height={sCurveH}>
+          <LineChart data={slicedData} margin={scMargin}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="__x" tick={{ fontSize: 10 }} interval={xTickInterval(slicedData.length)} angle={-30} textAnchor="end" height={48} />
+            <XAxis dataKey="__x" tick={{ fontSize: 10 }}
+              interval={isPrinting
+                ? (slicedData.length <= 12 ? 0 : 3)
+                : xTickInterval(slicedData.length)}
+              angle={-30} textAnchor="end"
+              height={scXAxisHeight} />
             <YAxis tick={{ fontSize: 11 }} unit={yUnit} domain={[0, 'auto']} />
             <Tooltip content={customTooltip} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Legend verticalAlign={isPrinting ? 'top' : 'bottom'} wrapperStyle={{ fontSize: isPrinting ? 10 : 12 }} />
             {series.map((s, i) => {
               const color = s.color ?? palette[i % palette.length]
               return (
@@ -1476,7 +1606,11 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                       const { x, y, value, index } = props
                       if (value == null || value === '') return null
                       const { show, below } = scLabelPlan(i, index)
-                      if (!show) return null
+                      // In print: only first, last, and every 8th point to avoid overlap
+                      const finalShow = isPrinting
+                        ? (index === 0 || index === slicedData.length - 1 || index % 8 === 0)
+                        : show
+                      if (!finalShow) return null
                       return (
                         <text x={x} y={below ? y + 14 : y - 7} textAnchor="middle" fontSize={9} fontWeight={600} fill={color}
                           stroke="#fff" strokeWidth={3} paintOrder="stroke">
@@ -1494,7 +1628,8 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
                 stroke="#ef4444"
                 strokeWidth={1.5}
                 strokeDasharray="4 3"
-                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444', dy: 6, dx: -4 }}
+                label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 9, fill: '#ef4444',
+                         dy: isPrinting ? -14 : 6, dx: isPrinting ? 4 : -4 }}
               />
             )}
           </LineChart>
@@ -1574,6 +1709,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const dataDate = useContext(DataDateContext)
   const isPrintingBar = usePrintMode()
   const isCompactBar  = useContext(CompactContext)
+  const printEpoch = usePrintEpoch()
 
   // Hooks must run on every render — keep them above the early returns below
   const filterFields = useMemo(() => (data?.length ? detectFilterFields(data, [xKey]) : []), [data, xKey])
@@ -1610,7 +1746,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
         {/* Fixed-height box reserves the chart's space in the layout, so the chart
             (including its legend) can never spill outside the surrounding card */}
         <div className="print-chart" style={{ width: '100%', height: hHeight + 40 }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer key={printEpoch} width="100%" height="100%">
             <BarChart data={sliced} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmtAxis} />
@@ -1631,21 +1767,39 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   const sliced = filtered
   const ddLabelBar = findDataDateLabel(sliced, xKey, xKey, dataDate)
-  // Scale height to data: compact uses 28px/bar (min 100, max 180), normal uses 48px/bar (min 200, max 400)
-  // The total box height already includes the legend (top) and the rotated x-axis labels
-  // (bottom), so the plot area keeps a usable height regardless of the category count.
-  const vHeight = isCompact
-    ? Math.min(240, Math.max(160, sliced.length * 28))
-    : Math.min(400, Math.max(300, sliced.length * 36))
+
+  // XAxis height: fit rotated labels (angle -35°, sin35≈0.574, cos35≈0.819, font=10px)
+  const _barFontPx = 10
+  const _barAngle = 35 * (Math.PI / 180)
+  const _barMaxChars = Math.max(...sliced.map(d => String(d[xKey] ?? '').length), 4)
+  const barXAxisHeight = Math.max(
+    isCompact ? 60 : 80,
+    Math.ceil(_barMaxChars * _barFontPx * 0.55 * Math.sin(_barAngle) + _barFontPx * Math.cos(_barAngle) + 8)
+  )
+
+  // Total chart height = margin.top + legend(36) + plotH + barXAxisHeight + margin.bottom(0)
+  // plotH is proportional to bar count, clamped to a sensible range.
+  const BAR_MARGIN_TOP = 4
+  const BAR_LEGEND_H   = 36   // Recharts reserves this inside chartH for verticalAlign="top"
+  const BAR_MARGIN_BOT = 0
+  const barPlotH = isCompact
+    ? Math.min(180, Math.max(80, sliced.length * 28))
+    : Math.min(320, Math.max(160, sliced.length * 36))
+  const vHeight = BAR_MARGIN_TOP + BAR_LEGEND_H + barPlotH + barXAxisHeight + BAR_MARGIN_BOT
   return (
     <div style={{ width: '100%', minWidth: 0 }}>
       {/* Fixed-height box reserves the chart's space in the layout, so the chart
           (including its legend) can never spill outside the surrounding card */}
       <div className="print-chart" style={{ width: '100%', height: vHeight + 12 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={sliced} margin={{ top: 4, right: 16, left: 28, bottom: 0 }}>
+        <ResponsiveContainer key={printEpoch} width="100%" height="100%">
+          <BarChart data={sliced} margin={{ top: BAR_MARGIN_TOP, right: 16, left: 28, bottom: BAR_MARGIN_BOT }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-35} textAnchor="end" height={isCompact ? 60 : 80} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }}
+              interval={isPrinting
+                ? (sliced.length <= 12 ? 0 : sliced.length <= 30 ? 2 : 3)
+                : (sliced.length <= 12 ? 0 : xTickInterval(sliced.length))}
+              angle={-35} textAnchor="end"
+              height={barXAxisHeight} />
             <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={fmtAxis} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: 11, whiteSpace: 'normal' }} onClick={p => toggleSeries(p.dataKey as string)} />
@@ -1691,6 +1845,7 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const palette  = useChartPalette()
   const isPrinting = usePrintMode()
   const isCompact  = useContext(CompactContext)
+  const printEpoch = usePrintEpoch()
 
   if (!data?.length) return <NoData />
 
@@ -1698,15 +1853,30 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const filtered = useMemo(() => applyFilters(data, activeFilters), [data, activeFilters])
   const sliced = filtered
   const ddLabelArea = findDataDateLabel(sliced, xKey, xKey, dataDate)
-  const areaH = isCompact ? 140 : 280
+
+  // XAxis height: fit rotated labels (angle -30°, font=10px)
+  const _areaFontPx = 10
+  const _areaAngle = Math.PI / 6
+  const _areaMaxChars = Math.max(...sliced.map(d => String(d[xKey] ?? '').length), 4)
+  const areaXAxisHeight = Math.max(
+    48,
+    Math.ceil(_areaMaxChars * _areaFontPx * 0.55 * Math.sin(_areaAngle) + _areaFontPx * Math.cos(_areaAngle) + 8)
+  )
+  // areaH = top(8) + xAxisHeight + MIN_PLOT(110) + bottom(4)
+  // Legend is verticalAlign default (bottom) → Recharts places it outside chartH.
+  const AREA_MIN_PLOT = 110
+  const areaH = Math.max(
+    8 + areaXAxisHeight + AREA_MIN_PLOT + 4,
+    isCompact ? 140 : 280
+  )
 
   return (
     <div style={{ overflow: 'hidden' }}>
       <div className="print-chart" style={{ overflow: 'visible' }}>
-        <ResponsiveContainer width="100%" height={areaH}>
-          <AreaChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 36 }}>
+        <ResponsiveContainer key={printEpoch} width="100%" height={areaH}>
+          <AreaChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-30} textAnchor="end" height={48} />
+            <XAxis dataKey={xKey} tick={{ fontSize: 10 }} interval={xTickInterval(sliced.length)} angle={-30} textAnchor="end" height={areaXAxisHeight} />
             <YAxis tick={{ fontSize: 11 }} width={48} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -3954,7 +4124,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                   <div
                     key={region.region_id ?? ri}
                     className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
-                    style={{ borderColor: tok('subtle_border', '#e2e8f0'), padding: '6px 8px' }}
+                    style={{ borderColor: tok('subtle_border', '#e2e8f0'), padding: '6px 8px', minWidth: 0 }}
                   >
                     {/* Region title */}
                     <p
@@ -3972,17 +4142,19 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                         </span>
                       </div>
                     ) : regionWidgets.length === 1 ? (
-                      <WidgetInner widget={
-                        region.presentation_mode === 'full_width_compact_line_chart' ||
-                        region.presentation_mode === 'compact_multi_series_line_chart' ||
-                        region.presentation_mode === 'compact_line_chart'
-                          ? { ...regionWidgets[0], widget_type: 'line_chart' }
-                          : regionWidgets[0]
-                      } />
+                      <div data-widget-body>
+                        <WidgetInner widget={
+                          region.presentation_mode === 'full_width_compact_line_chart' ||
+                          region.presentation_mode === 'compact_multi_series_line_chart' ||
+                          region.presentation_mode === 'compact_line_chart'
+                            ? { ...regionWidgets[0], widget_type: 'line_chart' }
+                            : regionWidgets[0]
+                        } />
+                      </div>
                     ) : (
                       <div className="flex flex-col gap-2">
                         {regionWidgets.map((w, wi) => (
-                          <div key={w.widget_id ?? wi}>
+                          <div key={w.widget_id ?? wi} data-widget-body>
                             {wi > 0 && (
                               <div className="border-t my-1" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
                             )}
@@ -4274,6 +4446,9 @@ export function ReportDashboardForm({
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // Register A3 print scale hook (no-op when a3Mode is false)
+  useA3PrintScale(a3Mode)
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loadingStructures) return <DashboardSkeleton />
@@ -4318,15 +4493,23 @@ export function ReportDashboardForm({
           </div>
           <button
             onClick={() => {
-              // Inject @page override: A3 landscape, 4mm margin (matches .a3-page scale(0.68) in CSS)
+              const el = document.querySelector('.a3-page') as HTMLElement | null
+              if (!el) { window.print(); return }
+
+              // Inject @page override
               const style = document.createElement('style')
               style.id = '__a3-print-override'
-              style.textContent = '@page { size: A3 landscape; margin: 4mm; }'
+              style.textContent = '@page { size: A3 landscape; margin: 8mm; }'
               document.head.appendChild(style)
+              window.addEventListener('afterprint', () => style.remove(), { once: true })
+
+              // Initial prepare: flushSync commits isPrinting=true, CSS class applied
+              preparePrint(el)
+
+              // Wait for Recharts ResizeObserver to re-render at print heights, then re-measure and print
               requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
+                preparePrint(el)
                 window.print()
-                const cleanup = () => { style.remove(); window.removeEventListener('afterprint', cleanup) }
-                window.addEventListener('afterprint', cleanup)
               }, 300)))
             }}
             style={{

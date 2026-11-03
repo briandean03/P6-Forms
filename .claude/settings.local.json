@@ -49,7 +49,21 @@
       "Bash(node \"C:/Users/bd502/AppData/Local/Temp/analyze_w3.js\")",
       "Bash(wc -l /c/Users/bd502/OneDrive/Desktop/Projects/P6ProjectControlForms/src/forms/*.tsx)",
       "Bash(ls -lh /c/Users/bd502/OneDrive/Desktop/Projects/P6ProjectControlForms/src/forms/*.tsx)",
-      "Read(//c/Users/bd502/OneDrive/Desktop/Projects/P6ProjectControlForms/**)"
+      "Read(//c/Users/bd502/OneDrive/Desktop/Projects/P6ProjectControlForms/**)",
+      "Bash(npm install -D @playwright/test pdf-parse @types/pdf-parse)",
+      "Bash(npx playwright install chromium)",
+      "Bash(grep -r \"a3Mode\\\\|a3-mode\\\\|a3Mode=\\\\|a3Mode =\" src/App.tsx src/main.tsx src/router*)",
+      "Bash(ls -la *.env* .env*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(npx playwright test tests/print-a3.spec.ts --reporter=line)",
+      "Bash(grep -n \"react-router\\\\|Router\\\\|BrowserRouter\\\\|Routes\\\\|Route\\\\|HashRouter\" src/*.tsx src/App.tsx)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s \"http://localhost:5173/src/main.tsx?t=1792406566759\")",
+      "Bash(curl -s \"http://localhost:5173/src/App.tsx\")",
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(npm install -D pdf-parse@1)",
+      "Bash(magick --version)",
+      "Bash(magick.exe --version)"
     ],
     "additionalDirectories": [
       "\\tmp",

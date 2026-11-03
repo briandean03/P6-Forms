@@ -55,15 +55,12 @@ tbody tr:hover {
 
 /* ── Print / PDF styles ────────────────────────────────────────────────────── */
 
-/* Default: A4 landscape for multi-page report view */
+/* Default: A3 landscape (matches the A3 print button's injected @page override).
+   Multi-page reports get a per-print injected @page too; this is the static fallback. */
 @page {
-  size: A4 landscape;
-  margin: 10mm 12mm;
+  size: A3 landscape;
+  margin: 8mm;
 }
-
-/* A3 landscape override is injected dynamically via JS before window.print()
-   with size: 420mm 297mm landscape and margin: 4mm — supersedes the rule above.
-   See ReportDashboardForm.tsx print button onClick. */
 
 @media print {
   /* ── 1. Hide all App chrome — sidebar, header, footer, toolbars, interactive controls ── */
@@ -129,22 +126,14 @@ tbody tr:hover {
   /* ── 4. A3 single-page export ── */
   .a3-print-root {
     width: 100% !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     display: block !important;
-    height: 100% !important;
   }
 
-  /* Scale the entire A3 dashboard to fit one physical A3 sheet.
-     Scale = 0.82 fills the page well without being too small.
-     width: 122% (= 100/0.82) pre-expands the element so the scaled result
-     still spans the full page width.
-     The negative margin collapses the whitespace the browser reserves for
-     the original unscaled height — (1 - 0.82) / 0.82 ≈ 22% of the height. */
+  /* CSS zoom is applied inline by preparePrint() in beforeprint.
+     No transform/width/margin-bottom here — zoom shrinks the layout box correctly. */
   .a3-page {
-    transform: scale(0.82) !important;
     transform-origin: top left !important;
-    width: 122% !important;
-    margin-bottom: -22% !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: avoid !important;
@@ -255,6 +244,77 @@ tbody tr:hover {
 
   .min-w-0 {
     min-width: 0 !important;
+  }
+}
+
+/* ── A3 print preparation — applied by html.a3-printing class in preparePrint() ──
+   These rules mirror the @media print rules but apply during the beforeprint
+   measurement pass so preparePrint() sees the correct layout dimensions.
+   Each rule is a separate block (combining html.a3-printing with @media print
+   in a single selector group is invalid CSS). */
+
+/* Pin .a3-print-root to A3 printable width for measurement */
+html.a3-printing .a3-print-root {
+  display: block;
+  width: 1526px;   /* (420mm - 16mm margins) × 96dpi / 25.4 ≈ 1526px */
+  overflow: visible;
+}
+
+/* Remove transform from .a3-page during measurement */
+html.a3-printing .a3-page {
+  transform-origin: top left;
+  overflow: visible;
+}
+
+/* Hide interactive chrome during measurement so it doesn't inflate scrollHeight */
+html.a3-printing .no-print {
+  display: none !important;
+}
+
+/* Trade Schedule: expand scroll container for measurement */
+html.a3-printing [data-widget="trade-schedule"] {
+  overflow: visible;
+  max-height: none;
+  height: auto;
+}
+
+/* Trade row: widen label column */
+html.a3-printing [data-trade-row] {
+  grid-template-columns: 80px 1fr 46px;
+}
+
+/* Trade label: allow wrap instead of truncate */
+html.a3-printing [data-trade-row] .truncate {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/* ── @media print additions for A3 single-page ─────────────────────────────── */
+
+@media print {
+  /* Trade Schedule: expand scroll container in print */
+  [data-widget="trade-schedule"] {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* Trade row: widen label column */
+  [data-trade-row] {
+    grid-template-columns: 80px 1fr 46px !important;
+  }
+
+  /* Trade label: allow wrap */
+  [data-trade-row] .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+  }
+
+  /* Hide scrollbar chrome in Trade Schedule */
+  [data-widget="trade-schedule"] ::-webkit-scrollbar {
+    display: none !important;
   }
 }
 
