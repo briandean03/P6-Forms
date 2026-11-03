@@ -284,9 +284,10 @@ function fmtDate(d: string | null | undefined): string {
   }
 }
 
-function fmtVal(v: unknown): string {
+function fmtVal(v: unknown, unit?: string | null): string {
   if (v === null || v === undefined) return '—'
   if (typeof v === 'number') {
+    if (unit === '%') return v.toFixed(2)
     return Number.isInteger(v) ? String(v) : v.toFixed(4).replace(/\.?0+$/, '')
   }
   return String(v)
@@ -362,7 +363,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
                   {card.label ?? ''}
                 </span>
                 <span className={`text-2xl font-bold mt-1 break-all ${statusClass}`}>
-                  {fmtVal(card.value)}
+                  {fmtVal(card.value, card.unit)}
                   {card.unit && (
                     <span className="text-sm font-normal text-gray-500 ml-1">
                       {card.unit}
@@ -371,7 +372,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
                 </span>
                 {card.comparison_label != null && card.comparison_value != null && (
                   <span className="text-[11px] text-gray-400 mt-1">
-                    {card.comparison_label}: {fmtVal(card.comparison_value)}
+                    {card.comparison_label}: {fmtVal(card.comparison_value, card.unit)}
                     {card.unit ? ` ${card.unit}` : ''}
                   </span>
                 )}
@@ -585,14 +586,17 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
                 ) : (
                   rows.map((row, ri) => (
                     <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                      {specs.map(col => (
-                        <td
-                          key={col.key}
-                          className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
-                        >
-                          {fmtVal(row[col.key])}
-                        </td>
-                      ))}
+                      {specs.map(col => {
+                        const isPercent = /percent|pct|%/i.test(col.key)
+                        return (
+                          <td
+                            key={col.key}
+                            className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
+                          >
+                            {fmtVal(row[col.key], isPercent ? '%' : null)}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))
                 )}
