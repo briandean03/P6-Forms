@@ -55,11 +55,23 @@ tbody tr:hover {
 
 /* ── Print / PDF styles ────────────────────────────────────────────────────── */
 
-/* Default: A3 landscape (matches the A3 print button's injected @page override).
-   Multi-page reports get a per-print injected @page too; this is the static fallback. */
+/* Default page: A4 portrait (used by the weekly report and any other print target).
+   The A3 dashboard uses a named @page so it no longer needs to override this. */
 @page {
+  size: A4 portrait;
+  margin: 14mm 13mm;
+}
+
+/* Named page for the A3 landscape dashboard */
+@page a3dash {
   size: A3 landscape;
   margin: 8mm;
+}
+
+/* Named page for landscape appendix sections in the weekly report */
+@page wr-landscape {
+  size: A4 landscape;
+  margin: 12mm;
 }
 
 @media print {
@@ -123,11 +135,12 @@ tbody tr:hover {
     break-after: avoid;
   }
 
-  /* ── 4. A3 single-page export ── */
+  /* ── 4. A3 single-page export — use named page so it doesn't fight the default A4 ── */
   .a3-print-root {
     width: 100% !important;
     overflow: visible !important;
     display: block !important;
+    page: a3dash;
   }
 
   /* CSS zoom is applied inline by preparePrint() in beforeprint.
@@ -315,6 +328,238 @@ html.a3-printing [data-trade-row] .truncate {
   /* Hide scrollbar chrome in Trade Schedule */
   [data-widget="trade-schedule"] ::-webkit-scrollbar {
     display: none !important;
+  }
+}
+
+/* ── Weekly Report print styles ─────────────────────────────────────────────
+   Activated by html.weekly-report-printing, set on mount and cleared on unmount
+   of WeeklyReportForm (so Ctrl+P also works).
+
+   Named @page rules live in the static stylesheet — dynamically injected
+   <style> @page rules are silently ignored by Chromium.
+   The default @page above is already A4 portrait 14mm/13mm so cover/toc/sections
+   that DON'T set `page:` explicitly already get the right size.
+   Landscape appendix sections set `page: wr-landscape` to switch to A4 landscape.
+
+   These elements do NOT carry the .print-page class, so the dashboard
+   break-after:page / break-inside:avoid rules never touch them. */
+
+@media print {
+  /* ── Scale the root font-size so all rem-based Tailwind classes shrink.
+     Browser default is 16px; 10px ≈ 62.5% — this makes text-sm (0.875rem)
+     render at ~8.75px, matching the reference's density. */
+  html.weekly-report-printing {
+    font-size: 10px !important;
+  }
+
+  /* ── When printing the weekly report: neutralise the App shell ──
+     The report lives inside:
+       div.flex.h-screen  (outer flex row)
+         aside.no-print   (sidebar — hidden by existing .no-print rule)
+         div.flex.flex-col.flex-1  (right column)
+           header.no-print
+           main.print-main  (scrollable content area — THIS holds the report)
+           footer.no-print
+     The right column (div.flex.flex-col.flex-1) is still a flex child; its
+     flex-basis / width squeezes the report. Turn it all into plain block flow
+     and hide everything except the report content. */
+  /* Force white on html itself — kills any body/html background bleed */
+  html.weekly-report-printing {
+    background: #fff !important;
+    min-height: 0 !important;
+  }
+
+  html.weekly-report-printing body {
+    background: #fff !important;
+    font-size: 10pt !important;
+    min-height: 0 !important;
+  }
+
+  /* Flatten every ancestor of the report into normal block flow.
+     bg-gray-100 on the outer shell div (div.flex.h-screen) is the grey
+     rectangle that paints through wherever the white section box does not
+     cover the page — force white on every ancestor wrapper. */
+  html.weekly-report-printing #root,
+  html.weekly-report-printing .flex.h-screen,
+  html.weekly-report-printing .flex.flex-col.flex-1,
+  html.weekly-report-printing .print-main {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: static !important;
+    transform: none !important;
+    flex: none !important;
+    background: #fff !important;
+  }
+
+  /* Hide the sidebar and the in-report sticky nav (aside.no-print is already
+     hidden by the global .no-print rule, but be explicit) */
+  html.weekly-report-printing aside,
+  html.weekly-report-printing header,
+  html.weekly-report-printing footer,
+  html.weekly-report-printing .no-print {
+    display: none !important;
+  }
+
+  /* ── Page assignments ── */
+  /* Cover, TOC and portrait sections inherit the default @page (A4 portrait) */
+  html.weekly-report-printing .weekly-report-section.print-landscape {
+    page: wr-landscape;
+  }
+
+  /* ── Cover — all sizes are px inline styles in the TSX, no rem, no font-size reset needed ── */
+  html.weekly-report-printing .weekly-report-cover {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+    padding: 35mm 20mm !important;
+    margin: 0 !important;
+    min-height: 100vh !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    background: #172642 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* ── TOC (mirrors reference .toc) ── */
+  html.weekly-report-printing .weekly-report-toc {
+    display: block !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+    padding: 25px 30px !important;
+    margin: 0 !important;
+  }
+
+  /* ── Sections (mirrors reference .section) ── */
+  html.weekly-report-printing .weekly-report-section {
+    display: block !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-before: page;
+    page-break-before: always;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  /* Landscape sections need explicit width: the A4 landscape printable area
+     is 297mm − 2×12mm = 273mm ≈ 1030px at 96dpi */
+  html.weekly-report-printing .weekly-report-section.print-landscape {
+    width: 273mm !important;
+    max-width: none !important;
+  }
+
+  /* Section header top padding (mirrors reference .section-head) */
+  html.weekly-report-printing .weekly-report-section > div:first-child {
+    padding-top: 5mm !important;
+  }
+
+  /* ── Block-level content — keep non-table blocks together; tables may flow ── */
+  html.weekly-report-printing .wr-block {
+    /* No break-inside: avoid here — table blocks must be able to flow across pages */
+  }
+
+  /* Non-table blocks: keep together (charts, KPI cards, callouts, paragraphs) */
+  html.weekly-report-printing .wr-block:not(.wr-block-table) {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ── Tables: flow across pages freely; only individual rows stay intact ── */
+  html.weekly-report-printing .table-wrap {
+    overflow: visible !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    /* No break-inside: avoid — allow the table to span multiple pages */
+  }
+
+  html.weekly-report-printing .table-wrap table {
+    font-size: 7.5pt !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    word-break: break-word !important;
+    /* No break-inside: avoid — table may span pages */
+  }
+
+  html.weekly-report-printing .table-wrap th,
+  html.weekly-report-printing .table-wrap td {
+    padding: 4px 5px !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  html.weekly-report-printing .table-wrap thead {
+    display: table-header-group !important;
+  }
+
+  /* Only rows must not split — individual cells stay on one page */
+  html.weekly-report-printing .table-wrap tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ── Details/footnotes: open them ── */
+  html.weekly-report-printing details {
+    display: block !important;
+  }
+
+  html.weekly-report-printing details > :not(summary) {
+    display: block !important;
+  }
+
+  /* ── Density overrides — match reference scale ── */
+
+  /* KPI cards: 5 per row */
+  html.weekly-report-printing .wr-kpi-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  /* Reduce block bottom margin (applies to all block types) */
+  html.weekly-report-printing .wr-block,
+  html.weekly-report-printing .wr-block-table {
+    margin-bottom: 8px !important;
+  }
+
+  /* Cap chart height so charts don't dominate pages */
+  html.weekly-report-printing .print-chart svg {
+    max-height: 200px !important;
+  }
+
+  /* Hardcoded text-[10px] and text-[11px] — keep them small in print */
+  html.weekly-report-printing [class*="text-\\[10px\\]"],
+  html.weekly-report-printing [class*="text-\\[11px\\]"] {
+    font-size: 7pt !important;
+  }
+
+  /* Section head: tighten top padding */
+  html.weekly-report-printing .weekly-report-section > div:first-child {
+    padding-top: 4mm !important;
+    padding-bottom: 2mm !important;
+  }
+
+  /* KPI card inner padding */
+  html.weekly-report-printing .wr-kpi-card {
+    padding: 6px 8px !important;
+  }
+
+  /* Callout/finding boxes */
+  html.weekly-report-printing .wr-callout {
+    padding: 6px 10px !important;
+    margin-bottom: 6px !important;
   }
 }
 

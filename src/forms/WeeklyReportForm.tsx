@@ -157,11 +157,12 @@ const CALLOUT_SEVERITY_CLASSES: Record<string, string> = {
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
 
-// A4 portrait content width available to a chart when printing:
-// page 210mm − 2×13mm margins ≈ 695px, minus section padding (2×24px) and border ≈ 645px;
-// 600 leaves headroom for any extra wrapper padding in the app shell.
-const PRINT_CHART_WIDTH = 600
-const PRINT_CHART_HEIGHT = 260
+// Print chart widths:
+// Portrait: 210mm − 2×13mm margins = 184mm ≈ 696px at 96dpi, use 680 with headroom.
+// Landscape: 297mm − 2×12mm margins = 273mm ≈ 1032px at 96dpi, use 1000 with headroom.
+const PRINT_CHART_WIDTH_PORTRAIT = 680
+const PRINT_CHART_WIDTH_LANDSCAPE = 1000
+const PRINT_CHART_HEIGHT = 200
 const SCREEN_CHART_HEIGHT = 240
 
 // ── Chart rendering ──────────────────────────────────────────────────────────
@@ -178,7 +179,7 @@ function xTickInterval(count: number, maxTicks = 8): number {
 // Static HTML legend for the print copy — no measurement, so it is correct the moment it is printed
 function PrintLegend({ series, isLine }: { series: ChartSeries[]; isLine: boolean }) {
   return (
-    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: 10 }}>
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: 8 }}>
       {series.map((s, si) => {
         const color = s.color ?? CHART_COLORS[si % CHART_COLORS.length]
         return (
@@ -207,7 +208,7 @@ function buildChart(
   opts: { print: boolean; width?: number; height?: number },
 ): React.ReactElement {
   const { print, width, height } = opts
-  const fs = print ? 9 : 10
+  const fs = print ? 8 : 10
   const n = chartData.length
   const dense = n > 6
   const dims = width && height ? { width, height } : {}
@@ -301,7 +302,7 @@ function resolveColumns(columns: (string | TableColumn)[] | undefined): TableCol
 
 // ── Block renderer ──────────────────────────────────────────────────────────
 
-function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
+function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.ReactNode {
   const { type, content: c, source_references } = block
 
   const footnotes =
@@ -347,7 +348,7 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
     case 'kpi_cards': {
       const cards = (c.cards ?? []) as KpiCardData[]
       node = (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="wr-kpi-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {cards.map((card, ci) => {
             const statusClass =
               KPI_STATUS_COLOR[(card.status ?? 'neutral').toLowerCase()] ??
@@ -355,7 +356,7 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
             return (
               <div
                 key={ci}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 flex flex-col"
+                className="wr-kpi-card bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 flex flex-col"
               >
                 <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate">
                   {card.label ?? ''}
@@ -399,6 +400,7 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
         return point
       })
       const isLine = (cc.chart_type ?? 'bar').toLowerCase() === 'line'
+      const printW = isLandscape ? PRINT_CHART_WIDTH_LANDSCAPE : PRINT_CHART_WIDTH_PORTRAIT
       node = (
         <figure className="m-0" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
           {cc.title && (
@@ -413,9 +415,9 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
             </ResponsiveContainer>
           </div>
           {/* Print copy — fixed size, static, hidden on screen */}
-          <div className="hidden print:block print-chart mx-auto" style={{ width: PRINT_CHART_WIDTH }}>
+          <div className="hidden print:block print-chart mx-auto" style={{ width: printW }}>
             <PrintLegend series={series} isLine={isLine} />
-            {buildChart(isLine, chartData, series, { print: true, width: PRINT_CHART_WIDTH, height: PRINT_CHART_HEIGHT })}
+            {buildChart(isLine, chartData, series, { print: true, width: printW, height: PRINT_CHART_HEIGHT })}
           </div>
           {cc.qualification && (
             <p className="text-[11px] text-gray-400 italic mt-1">{cc.qualification}</p>
@@ -504,7 +506,7 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
         CALLOUT_SEVERITY_CLASSES[severity] ??
         (type === 'finding' ? 'border-violet-500 bg-violet-50' : 'border-amber-400 bg-amber-50')
       node = (
-        <div className={`border-l-4 rounded-r-lg px-4 py-3 ${borderCls}`}>
+        <div className={`wr-callout border-l-4 rounded-r-lg px-4 py-3 ${borderCls}`}>
           {c.title != null && (
             <p className="text-sm font-semibold text-slate-800 mb-1">{String(c.title)}</p>
           )}
@@ -707,8 +709,12 @@ function renderBlock(block: ASTBlock, idx: number): React.ReactNode {
     }
   }
 
+  const isTableBlock =
+    type === 'table' ||
+    type === 'data_table' ||
+    type.endsWith('_table')
   return (
-    <div key={block.block_id ?? idx} className="mb-4">
+    <div key={block.block_id ?? idx} className={`wr-block${isTableBlock ? ' wr-block-table' : ''} mb-4`}>
       {node}
       {footnotes}
     </div>
@@ -728,41 +734,56 @@ function CoverPage({
   dataDate: string | null
   reportId: string
 }) {
+  // All sizes are in px/pt — NOT rem — so the 10px root font-size set for
+  // content pages in print does not shrink the cover.
   return (
     <section
       id="cover"
-      className="weekly-report-cover print-page relative bg-gradient-to-br from-slate-900 to-indigo-800 text-white rounded-xl overflow-hidden mb-6 p-10 min-h-80 flex flex-col justify-between"
+      className="weekly-report-cover"
+      style={{
+        background: 'linear-gradient(125deg, #172642 20%, #3a3d82 100%)',
+        color: '#fff',
+        borderRadius: 17,
+        padding: '48px 48px 39px',
+        marginBottom: 25,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        minHeight: 320,
+      }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-          Weekly Progress Report
-        </span>
-        <span className="text-xs text-slate-400 font-mono">{projectTextId}</span>
+      {/* Eyebrow */}
+      <div style={{ fontSize: 11, letterSpacing: '2.2px', textTransform: 'uppercase', color: '#aebde1' }}>
+        CONSTRUCTION PROJECT CONTROLS · WEEKLY REPORT
       </div>
 
-      <div className="flex-1 flex flex-col justify-center py-8">
-        <h1 className="text-4xl font-extrabold mb-3 leading-tight tracking-tight">
+      {/* Main title block */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px 0 20px' }}>
+        <h1 style={{ fontSize: 40, lineHeight: 1.18, margin: '16px 0 10px', letterSpacing: -1, fontWeight: 800 }}>
           {projectTextId}
         </h1>
-        <p className="text-2xl font-semibold text-slate-300 mb-1">
-          Week {weekNum ?? '—'}
-        </p>
-        <p className="text-lg text-slate-400">{fmtDate(dataDate)}</p>
+        <h2 style={{ fontSize: 18, fontWeight: 400, color: '#dbe2fa', margin: '0 0 0' }}>
+          Weekly Progress &amp; Performance Report
+        </h2>
       </div>
 
-      <div className="flex gap-8 border-t border-white/20 pt-4 flex-wrap">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-0.5">Report ID</p>
-          <p className="text-xs font-mono text-slate-300 break-all">{reportId}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-0.5">Project ID</p>
-          <p className="text-xs font-mono text-slate-300">{projectTextId}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-0.5">Data Date</p>
-          <p className="text-xs font-mono text-slate-300">{fmtDate(dataDate)}</p>
-        </div>
+      {/* Meta strip */}
+      <div style={{ display: 'flex', gap: 30, flexWrap: 'wrap', borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: 18 }}>
+        {([
+          ['Reporting week', weekNum ?? '—'],
+          ['Data Date', fmtDate(dataDate)],
+          ['Project ID', projectTextId],
+          ['Report ID', reportId],
+        ] as [string, string | number][]).map(([label, value]) => (
+          <div key={label} style={{ minWidth: 130 }}>
+            <span style={{ display: 'block', color: '#abbcdb', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+              {label}
+            </span>
+            <strong style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere' as const, color: '#fff' }}>
+              {value}
+            </strong>
+          </div>
+        ))}
       </div>
     </section>
   )
@@ -784,7 +805,7 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
   return (
     <section
       id="toc"
-      className="weekly-report-toc print-page bg-white rounded-xl border border-gray-100 shadow-sm p-8 mb-6"
+      className="weekly-report-toc bg-white rounded-xl border border-gray-100 shadow-sm p-8 mb-6"
     >
       <h2 className="text-xl font-bold text-slate-800 mb-6 pb-3 border-b border-gray-200">
         Table of Contents
@@ -818,18 +839,14 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
 function SectionCard({ section }: { section: WeeklyReportSection }) {
   const blocks = section.section_ast?.blocks ?? []
   const badge = resolveNumbering(section.numbering, section.section_id)
-  // Wide content (tables) is cut off on a portrait page, so those sections print on a
-  // landscape page. Sections the data marks as landscape do too.
-  const printLandscape =
-    section.orientation === 'landscape' ||
-    blocks.some(b => b.type === 'table' || b.type === 'data_table')
+  // Only use the orientation field from the DB — portrait sections with tables
+  // stay portrait (handled by table styling: 7.5pt, word-wrap, auto layout).
+  const printLandscape = section.orientation === 'landscape'
 
   return (
     <section
       id={`section-${section.section_id}`}
-      className={`weekly-report-section print-page bg-white rounded-xl border border-gray-100 shadow-sm p-8 mb-6 ${
-        section.page_break_before ? 'break-before-page' : ''
-      } ${section.orientation === 'landscape' ? 'landscape' : ''} ${printLandscape ? 'print-landscape' : ''}`}
+      className={`weekly-report-section bg-white rounded-xl border border-gray-100 shadow-sm p-8 mb-6${printLandscape ? ' print-landscape' : ''}`}
     >
       <div className="flex items-start gap-4 mb-6 pb-4 border-b border-gray-100">
         <span className="flex-shrink-0 text-xs font-bold font-mono bg-indigo-600 text-white px-2.5 py-1 rounded-lg shadow-sm whitespace-nowrap">
@@ -855,7 +872,7 @@ function SectionCard({ section }: { section: WeeklyReportSection }) {
         {blocks.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No content blocks in this section.</p>
         ) : (
-          blocks.map((block, idx) => renderBlock(block, idx))
+          blocks.map((block, idx) => renderBlock(block, idx, printLandscape))
         )}
       </div>
     </section>
@@ -882,6 +899,15 @@ export function WeeklyReportForm({
 
   const { notification, hideNotification, showError } = useNotification()
   const _printAreaRef = useRef<HTMLDivElement>(null)
+
+  // Add the weekly-report-printing class while this form is mounted so that
+  // Ctrl+P also picks up the correct print CSS (not just the Print button).
+  useEffect(() => {
+    document.documentElement.classList.add('weekly-report-printing')
+    return () => {
+      document.documentElement.classList.remove('weekly-report-printing')
+    }
+  }, [])
 
   // Fetch available week/report options
   useEffect(() => {
@@ -1081,62 +1107,7 @@ export function WeeklyReportForm({
         </div>
 
         <button
-          onClick={() => {
-            // Inject a portrait @page override so the weekly report prints correctly.
-            // The global @page in index.css defaults to A4 landscape (for the chart dashboard).
-            // We override it here, print, then remove the override.
-            const styleEl = document.createElement('style')
-            styleEl.id = 'weekly-report-print-override'
-            styleEl.textContent = `
-              @page { size: A4 portrait; margin: 14mm 13mm; }
-              @page landscape-page { size: A4 landscape; margin: 12mm 12mm; }
-              @media print {
-                .weekly-report-section.print-landscape {
-                  page: landscape-page;
-                  /* Chromium keeps the portrait layout width for percentage widths, so set
-                     the landscape printable width (297mm - 2 x 12mm margins) explicitly. */
-                  width: 273mm !important;
-                  max-width: none !important;
-                }
-                .weekly-report-section {
-                  padding: 20px 24px !important;
-                  border: 1px solid #e5e7eb !important;
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  margin-bottom: 0 !important;
-                }
-                .weekly-report-cover {
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  padding: 35mm 20mm !important;
-                  margin-bottom: 0 !important;
-                  background: #172542 !important;
-                  print-color-adjust: exact !important;
-                  -webkit-print-color-adjust: exact !important;
-                }
-                .weekly-report-toc {
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  padding: 20px 24px !important;
-                  margin-bottom: 0 !important;
-                }
-                .table-wrap {
-                  overflow: visible !important;
-                }
-                .table-wrap table {
-                  font-size: 7.5pt !important;
-                  width: 100% !important;
-                }
-                .table-wrap th,
-                .table-wrap td {
-                  padding: 4px 5px !important;
-                }
-              }
-            `
-            document.head.appendChild(styleEl)
-            window.print()
-            document.head.removeChild(styleEl)
-          }}
+          onClick={() => window.print()}
           className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-sm"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
