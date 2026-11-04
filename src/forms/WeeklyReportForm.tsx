@@ -271,6 +271,30 @@ function buildChart(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+// Recursively unwrap double-encoded JSON strings — mirrors Python's decode() in main.py.
+// Supabase stores JSON columns as serialised strings (sometimes more than once).
+// This ensures section_ast always arrives as a real object regardless of encoding depth.
+function parseJsonCol(raw: unknown): unknown {
+  if (raw == null) return null
+  if (typeof raw !== 'string') return raw
+  try {
+    const once = JSON.parse(raw)
+    // If parsing again gives another string, keep unwrapping
+    if (typeof once === 'string') {
+      try { return JSON.parse(once) } catch { return once }
+    }
+    return once
+  } catch {
+    return raw
+  }
+}
+
+function parseSectionAst(raw: unknown): SectionAST | null {
+  const v = parseJsonCol(raw)
+  if (v != null && typeof v === 'object' && !Array.isArray(v)) return v as SectionAST
+  return null
+}
+
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—'
   try {
@@ -913,13 +937,13 @@ export function WeeklyReportForm({
     }
   }, [])
 
-  // Fetch available week/report options
+  // Fetch available week/report options from Supabase
   useEffect(() => {
     if (!projectTextId || !schemaName || schemaName === 'public') return
-    const db = schemaClient(schemaName)
 
     async function fetchOptions() {
       setLoadingOptions(true)
+      const db = schemaClient(schemaName)
       try {
         const { data, error } = await (db as unknown as {
           from: (table: string) => {
@@ -940,15 +964,9 @@ export function WeeklyReportForm({
 
         if (error) throw new Error(error.message)
 
-        if (!data?.length) {
-          setWeekOptions([])
-          setLoadingOptions(false)
-          return
-        }
-
         const seen = new Set<string>()
         const opts: WeekOption[] = []
-        for (const row of data) {
+        for (const row of data ?? []) {
           if (!seen.has(row.report_id)) {
             seen.add(row.report_id)
             const formattedDate = row.data_date
@@ -966,27 +984,27 @@ export function WeeklyReportForm({
             })
           }
         }
-
         setWeekOptions(opts)
-        if (opts.length > 0) {
-          setSelectedReportId(opts[0].report_id)
-        }
+        if (opts.length > 0) setSelectedReportId(opts[0].report_id)
       } catch (err) {
         showError(
           'Failed to load report list: ' +
             (err instanceof Error ? err.message : String(err)),
         )
+        setWeekOptions([])
       } finally {
         setLoadingOptions(false)
       }
     }
 
     fetchOptions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectTextId, schemaName])
 
-  // Fetch sections for selected report
+  // Fetch sections for the selected report from Supabase
   useEffect(() => {
-    if (!selectedReportId || !schemaName || schemaName === 'public') return
+    if (!selectedReportId) return
+    if (!schemaName || schemaName === 'public') return
     const db = schemaClient(schemaName)
 
     async function fetchSections() {
@@ -1000,7 +1018,12 @@ export function WeeklyReportForm({
           .order('section_order', { ascending: true })
 
         if (error) throw new Error(error.message)
-        setSections((data ?? []) as WeeklyReportSection[])
+        setSections(
+          ((data ?? []) as WeeklyReportSection[]).map(s => ({
+            ...s,
+            section_ast: parseSectionAst(s.section_ast),
+          })),
+        )
       } catch (err) {
         showError(
           'Failed to load report sections: ' +
@@ -1027,28 +1050,6 @@ export function WeeklyReportForm({
         (s.section_id ?? '').toLowerCase().includes(q),
     )
   }, [sections, searchQuery])
-
-  if (!schemaName || schemaName === 'public') {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-        <svg
-          className="w-12 h-12 mb-4 text-gray-300"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-        <p className="text-base font-medium text-gray-500">No project selected</p>
-        <p className="text-sm mt-1">Select a project with a configured schema to view the weekly report.</p>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-full">

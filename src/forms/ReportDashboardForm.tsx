@@ -30,7 +30,7 @@ interface A3Region {
   row_span: number
   widget_ids: string[]
   presentation_mode: string
-  band?: 'executive' | 'main' | 'bottom' | 'header' | 'footer'
+  band?: string
   grid_column?: number
   grid_row?: number
   global_grid_row?: number
@@ -4438,168 +4438,221 @@ function A3PrintDashboardPage({ structure, widgets }: A3PageProps) {
 
 function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
   const tok = useContext(DesignContext)
+  const isPrinting = usePrintMode()
 
   const a3 = structure.a3_layout
   const ctx = a3?.dashboard_context
   const footerCfg = a3?.footer
 
-  // Read regions from a3_layout, skip header/footer metadata regions (no widget_ids)
-  const nonWidgetIds = new Set(a3?.planning_metadata?.non_widget_region_ids ?? [])
-  const regions: A3Region[] = [...(a3?.layout?.regions ?? [])]
+  // All regions sorted by region_order — header/footer included for grid row mapping
+  const allRegions: A3Region[] = [...(a3?.layout?.regions ?? [])]
     .sort((a, b) => (a.region_order ?? 0) - (b.region_order ?? 0))
-    .filter(r => !nonWidgetIds.has(r.region_id) && r.widget_ids.length > 0)
 
-  // Map widget_id → DashboardWidget (fetched row)
+  // Non-widget region IDs (header/footer metadata bands)
+  const nonWidgetIds = new Set(a3?.planning_metadata?.non_widget_region_ids ?? [])
+
+  // Map widget_id → DashboardWidget
   const widgetById = useMemo(() => {
     const m: Record<string, DashboardWidget> = {}
     for (const w of widgets) { if (w.widget_id) m[w.widget_id] = w }
     return m
   }, [widgets])
 
-  const dataDate = ctx?.data_date ?? structure.data_date ?? ''
-  const weekNum  = ctx?.week_num  ?? structure.week_num  ?? ''
-  const title    = ctx?.dashboard_title ?? structure.dashboard_title ?? 'Weekly Project Dashboard'
+  const dataDate   = ctx?.data_date   ?? structure.data_date   ?? ''
+  const weekNum    = ctx?.week_num    ?? structure.week_num    ?? ''
+  const title      = ctx?.dashboard_title ?? structure.dashboard_title ?? 'Weekly Project Dashboard'
   const reportType = ctx?.report_type ?? 'Weekly Progress Report'
+  const projectId  = ctx?.project_id  ?? ''
+  const reportId   = ctx?.report_id   ?? ''
+  const designVer  = ctx?.design_version ?? ''
 
-  // Column span → Tailwind grid-cols-12 span class
-  const spanClass = (span: number | undefined): string => {
-    switch (span) {
-      case 1:  return 'col-span-1'
-      case 2:  return 'col-span-2'
-      case 3:  return 'col-span-3'
-      case 4:  return 'col-span-4'
-      case 5:  return 'col-span-5'
-      case 6:  return 'col-span-6'
-      case 7:  return 'col-span-7'
-      case 8:  return 'col-span-8'
-      case 9:  return 'col-span-9'
-      case 10: return 'col-span-10'
-      case 11: return 'col-span-11'
-      case 12: return 'col-span-12'
-      default: return 'col-span-4'
-    }
+  // Build the page-level CSS grid row template from unique global_grid_row heights.
+  const rowHeightMap = new Map<number, number>()
+  for (const r of allRegions) {
+    const gr = r.global_grid_row ?? 0
+    if (!rowHeightMap.has(gr)) rowHeightMap.set(gr, r.height_mm ?? 42)
+  }
+  const sortedRows = [...rowHeightMap.entries()].sort((a, b) => a[0] - b[0])
+  // Map from global_grid_row number → CSS grid row index (1-based)
+  const rowToGridRow = new Map<number, number>()
+  sortedRows.forEach(([rowNum], idx) => rowToGridRow.set(rowNum, idx + 1))
+
+  // On screen: rows are auto-sized so content is never clipped.
+  // On print:  rows use exact mm heights to fit the A3 page.
+  const gridTemplateRows = isPrinting
+    ? sortedRows.map(([, h]) => `${h}mm`).join(' ')
+    : sortedRows.map(([, h]) => `minmax(${h * 3.78}px, auto)`).join(' ')
+
+  const paperMargin = 12 // mm
+
+  if (!a3) {
+    return (
+      <div className="a3-screen-page" style={{ padding: 16 }}>
+        <p className="text-xs text-gray-400 italic">
+          No A3 layout configured for this report.
+        </p>
+      </div>
+    )
   }
 
   return (
     <CompactContext.Provider value={true}>
       {/*
-        No CSS transform — the browser already sets the print viewport to the
-        injected @page size (420mm × 297mm A3 landscape).  We just need the
-        content to flow inside 100% of that width at compact heights.
-        On screen this renders as a normal scrollable preview.
+        On screen: width is fixed at 420mm for layout fidelity but height is auto
+        so content is never clipped. On print: both dimensions are constrained to
+        the A3 page via @media print rules in index.css.
       */}
       <div
         className="a3-screen-page"
-        style={{ background: tok('canvas', '#f1f5f9'), padding: '0 0 8px 0' }}
+        style={{
+          width: '420mm',
+          height: isPrinting ? '297mm' : 'auto',
+          boxSizing: 'border-box',
+          padding: `${paperMargin}mm`,
+          background: tok('canvas', '#f6f7fb'),
+          display: 'grid',
+          gridTemplateRows,
+          gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
+          gap: '1.5mm',
+          overflow: isPrinting ? 'hidden' : 'visible',
+        }}
       >
-        {/* ── Header bar ──────────────────────────────────────────────────────── */}
-        <div
-          className="flex items-center justify-between px-5 py-2 mb-2"
-          style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff') }}
-        >
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-            <div>
-              <p className="text-xs font-bold tracking-wide">{title}</p>
-              <p className="text-[9px] opacity-75">{reportType} — A3 Executive Summary</p>
-            </div>
-          </div>
-          <div className="text-right">
-            {dataDate && <p className="text-[11px] font-semibold">Data Date: {dataDate}</p>}
-            {weekNum   && <p className="text-[9px] opacity-75">Week {weekNum}</p>}
-          </div>
-        </div>
+        {allRegions.map((region, ri) => {
+          const gridRow    = rowToGridRow.get(region.global_grid_row ?? 0) ?? 1
+          const gridColStart = region.grid_column ?? 1
+          const gridColEnd   = gridColStart + (region.column_span ?? 1)
+          const isNonWidget  = nonWidgetIds.has(region.region_id)
 
-        {/* ── Widget grid — driven entirely by a3_layout.layout.regions ───────── */}
-        <div className="px-3">
-          {!a3 ? (
-            <p className="text-xs text-gray-400 italic p-4">
-              No A3 layout configured for this report. Please ensure the a3_layout column is populated.
-            </p>
-          ) : regions.length === 0 ? (
-            <p className="text-xs text-gray-400 italic p-4">
-              No widget regions found in the A3 layout.
-            </p>
-          ) : (
-            <div className="grid grid-cols-12 gap-2">
-              {regions.map((region, ri) => {
-                const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
-
-                return (
-                  <div
-                    key={region.region_id ?? ri}
-                    className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
-                    style={{ borderColor: tok('subtle_border', '#e2e8f0'), padding: '6px 8px', minWidth: 0 }}
-                  >
-                    {/* Region title */}
-                    <p
-                      className="text-[8px] font-bold uppercase tracking-widest mb-1.5 leading-tight flex-shrink-0"
-                      style={{ color: tok('muted_text', '#94a3b8') }}
-                    >
-                      {region.title}
-                    </p>
-
-                    {/* Render each widget in the region */}
-                    {regionWidgets.length === 0 ? (
-                      <div className="flex items-center justify-center h-10 text-gray-300">
-                        <span className="text-[9px] italic">
-                          Widget{region.widget_ids.length > 1 ? 's' : ''} not loaded
-                        </span>
-                      </div>
-                    ) : regionWidgets.length === 1 ? (
-                      <div data-widget-body>
-                        <WidgetInner widget={
-                          region.presentation_mode === 'full_width_compact_line_chart' ||
-                          region.presentation_mode === 'compact_multi_series_line_chart' ||
-                          region.presentation_mode === 'compact_line_chart'
-                            ? { ...regionWidgets[0], widget_type: 'line_chart' }
-                            : regionWidgets[0]
-                        } />
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        {regionWidgets.map((w, wi) => (
-                          <div key={w.widget_id ?? wi} data-widget-body>
-                            {wi > 0 && (
-                              <div className="border-t my-1" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
-                            )}
-                            {w.widget_title && (
-                              <p className="text-[8px] font-semibold uppercase tracking-wider mb-1"
-                                 style={{ color: tok('muted_text', '#94a3b8') }}>
-                                {w.widget_title}
-                              </p>
-                            )}
-                            <WidgetInner widget={w} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+          // ── Header band ─────────────────────────────────────────────────────
+          if (region.band === 'header' || isNonWidget && region.band === 'header') {
+            return (
+              <div
+                key={region.region_id}
+                style={{
+                  gridRow,
+                  gridColumn: `${gridColStart} / ${gridColEnd}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: `1px solid ${tok('subtle_border', '#dce1ed')}`,
+                  paddingBottom: '1.5mm',
+                  minWidth: 0,
+                  minHeight: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '15pt', fontWeight: 800, margin: 0, letterSpacing: -0.4, color: tok('text_primary', '#18233d'), lineHeight: 1.2 }}>
+                    {title}
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+                  <div style={{ fontSize: '7pt', color: tok('text_secondary', '#647189'), lineHeight: 1.4 }}>
+                    {reportType} · A3 Executive Summary
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '7pt', color: tok('text_secondary', '#647189'), lineHeight: 1.5 }}>
+                  {projectId && <div>Project: <strong>{projectId}</strong></div>}
+                  {weekNum   && <div>Week {weekNum}</div>}
+                  {dataDate  && <div>Data Date: <strong>{dataDate}</strong></div>}
+                </div>
+              </div>
+            )
+          }
 
-        {/* ── Footer bar ──────────────────────────────────────────────────────── */}
-        {(footerCfg?.show_data_date || footerCfg?.show_report_id || footerCfg?.show_project_id || footerCfg?.show_design_version) && (
-          <div
-            className="flex items-center justify-between px-5 py-1.5 mt-2 mx-3 rounded-lg"
-            style={{ background: tok('subtle_border', '#e2e8f0'), color: tok('text_secondary', '#64748b') }}
-          >
-            <div className="flex gap-4 text-[8px]">
-              {footerCfg?.show_project_id  && ctx?.project_id    && <span>Project: {ctx.project_id}</span>}
-              {footerCfg?.show_report_id   && ctx?.report_id     && <span>Report: {ctx.report_id}</span>}
+          // ── Footer band ─────────────────────────────────────────────────────
+          if (region.band === 'footer' || isNonWidget && region.band === 'footer') {
+            return (
+              <div
+                key={region.region_id}
+                style={{
+                  gridRow,
+                  gridColumn: `${gridColStart} / ${gridColEnd}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '6.5pt',
+                  color: tok('text_secondary', '#647189'),
+                  minWidth: 0,
+                  minHeight: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '6mm' }}>
+                  {footerCfg?.show_project_id  && projectId && <span>Project: {projectId}</span>}
+                  {footerCfg?.show_report_id   && reportId  && <span>Report ID: {reportId}</span>}
+                </div>
+                <div style={{ display: 'flex', gap: '6mm' }}>
+                  {footerCfg?.show_data_date      && dataDate  && <span>Data Date: {dataDate}</span>}
+                  {footerCfg?.show_design_version && designVer && <span>Design v{designVer}</span>}
+                </div>
+              </div>
+            )
+          }
+
+          // ── Widget panel ─────────────────────────────────────────────────────
+          const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
+
+          return (
+            <div
+              key={region.region_id ?? ri}
+              style={{
+                gridRow,
+                gridColumn: `${gridColStart} / ${gridColEnd}`,
+                border: `1px solid ${tok('subtle_border', '#dce2ee')}`,
+                borderRadius: 7,
+                background: '#fff',
+                minWidth: 0,
+                minHeight: 0,
+                overflow: isPrinting ? 'hidden' : 'visible',
+                padding: '2mm 2.4mm 1.8mm',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {/* Panel title */}
+              <div style={{
+                fontSize: '8pt', fontWeight: 800, color: tok('text_primary', '#22314b'),
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                flexShrink: 0, marginBottom: '2mm', lineHeight: 1.2,
+              }}>
+                {region.title}
+              </div>
+
+              {/* Widget content */}
+              <div style={{ flex: 1, minHeight: isPrinting ? 0 : 'auto', position: 'relative' }}>
+                {regionWidgets.length === 0 ? (
+                  <div style={{
+                    height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'column', gap: 4, background: '#fafbfe',
+                    border: '1px dashed #d6dfec', borderRadius: 5, padding: '2mm',
+                  }}>
+                    <span style={{ fontSize: '14pt', color: '#9aa6b9' }}>⋯</span>
+                    <span style={{ fontSize: '7pt', fontWeight: 600, color: '#64718a' }}>
+                      {region.widget_ids.length > 0 ? 'Data not loaded' : 'No data'}
+                    </span>
+                  </div>
+                ) : regionWidgets.length === 1 ? (
+                  <WidgetInner widget={regionWidgets[0]} />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5mm', height: '100%' }}>
+                    {regionWidgets.map((w, wi) => (
+                      <div key={w.widget_id ?? wi} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                        {wi > 0 && <div style={{ borderTop: `1px solid ${tok('subtle_border', '#e2e8f0')}`, marginBottom: '1mm' }} />}
+                        {w.widget_title && (
+                          <div style={{ fontSize: '7pt', fontWeight: 700, color: tok('muted_text', '#94a3b8'), marginBottom: '1mm', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            {w.widget_title}
+                          </div>
+                        )}
+                        <div style={{ flex: 1, minHeight: 0 }}>
+                          <WidgetInner widget={w} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex gap-4 text-[8px]">
-              {footerCfg?.show_data_date      && dataDate        && <span>Data Date: {dataDate}</span>}
-              {footerCfg?.show_design_version && ctx?.design_version && <span>Design v{ctx.design_version}</span>}
-            </div>
-          </div>
-        )}
+          )
+        })}
       </div>
     </CompactContext.Provider>
   )
@@ -4681,11 +4734,11 @@ export function ReportDashboardForm({
   const [loadingWidgets, setLoadingWidgets] = useState(true)
   const [activePageId, setActivePageId] = useState<string>('')
   const [tok, setTok] = useState<ReturnType<typeof buildTokenResolver>>(() => DEFAULT_TOK)
-
   const { notification, showError, hideNotification } = useNotification()
 
-  // Fetch the approved dashboard design and build a token resolver from it
+  // Fetch the approved dashboard design and build a token resolver from it.
   useEffect(() => {
+    if (!schemaName || schemaName === 'public') return
     const load = async () => {
       try {
         const db = schemaClient(schemaName)
@@ -4697,14 +4750,14 @@ export function ReportDashboardForm({
           .order('is_default', { ascending: false })
           .limit(1)
           .maybeSingle()
-        if (error) { console.warn('[ReportDashboard] design fetch error:', error.message); return }
-        if (data) {
+        if (!error && data) {
           const row = data as DashboardDesign
           const spec = typeof row.design_specification === 'string'
             ? (() => { try { return JSON.parse(row.design_specification as unknown as string) } catch { return {} } })()
             : (row.design_specification ?? {})
           setTok(() => buildTokenResolver(spec))
         }
+        if (error) console.warn('[ReportDashboard] design fetch error:', error.message)
       } catch (err) {
         console.warn('[ReportDashboard] design fetch failed:', err)
       }
@@ -4715,6 +4768,7 @@ export function ReportDashboardForm({
   // Fetch the week list. Only light columns — the heavy JSON (structure_plan / a3_layout)
   // is fetched for the selected week only, in parallel with its widgets (effect below).
   useEffect(() => {
+    if (!schemaName || schemaName === 'public') return
     let cancelled = false
     const load = async () => {
       setLoadingStructures(true)
@@ -4732,7 +4786,7 @@ export function ReportDashboardForm({
         if (projectTextId) query = query.eq('project_id', projectTextId)
         const { data, error } = await query
         if (cancelled) return
-        if (error) throw error
+        if (error) throw new Error(error.message)
         const rows = ((data ?? []) as DashboardStructure[]).map(s => ({ ...s, structure_plan: null, a3_layout: null }))
         setStructures(rows)
         if (rows.length > 0) setSelectedStructureId(rows[0].structure_id)
@@ -4742,10 +4796,11 @@ export function ReportDashboardForm({
         setLoadingWidgets(false)
         showError(err instanceof Error ? err.message : 'Failed to load report list')
       }
-      setLoadingStructures(false)
+      if (!cancelled) setLoadingStructures(false)
     }
     load()
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schemaName, projectTextId])
 
   // Fetch the selected week's full structure AND its widgets in parallel.
@@ -4913,7 +4968,7 @@ export function ReportDashboardForm({
               <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
               <rect x="6" y="14" width="12" height="8" rx="1" />
             </svg>
-            Print / Export PDF
+            Print A3
           </button>
         </div>
 

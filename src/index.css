@@ -62,10 +62,11 @@ tbody tr:hover {
   margin: 14mm 13mm;
 }
 
-/* Named page for the A3 landscape dashboard */
+/* Named page for the A3 landscape dashboard — zero margin so the fixed 420×297mm
+   sheet element fills the page exactly, matching the reference HTML approach */
 @page a3dash {
   size: A3 landscape;
-  margin: 8mm;
+  margin: 0;
 }
 
 /* Named page for landscape appendix sections in the weekly report */
@@ -135,7 +136,11 @@ tbody tr:hover {
     break-after: avoid;
   }
 
-  /* ── 4. A3 single-page export — use named page so it doesn't fight the default A4 ── */
+  /* ── 4. A3 single-page export ────────────────────────────────────────────────
+     .a3-print-root switches to the named @page a3dash (A3 landscape, margin:0).
+     .a3-page is the fixed 420mm × 297mm sheet — it fills the page exactly.
+     overflow:hidden prevents content from bleeding; break-after:avoid keeps it
+     on a single page. */
   .a3-print-root {
     width: var(--dashboard-paper-width, 100%) !important;
     overflow: visible !important;
@@ -143,15 +148,16 @@ tbody tr:hover {
     page: a3dash;
   }
 
-  /* CSS zoom is applied inline by preparePrint() in beforeprint.
-     No transform/width/margin-bottom here — zoom shrinks the layout box correctly. */
   .a3-page {
-    transform-origin: top left !important;
+    width: 420mm !important;
+    height: 297mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: avoid !important;
     break-after: avoid !important;
-    overflow: visible !important;
+    box-shadow: none !important;
   }
 
   /* ── 5. Colours and backgrounds must render ── */
@@ -654,3 +660,6 @@ html.a3-printing .a3-print-sheet { background: #fff !important; }
 @media print {
   .a3-print-sheet { background: #fff !important; }
 }
+
+/* Preserve main's screen preview shadow without applying it to the PDF. */
+.a3-screen-page { box-shadow: 0 18px 65px rgba(31, 40, 80, 0.2); }
