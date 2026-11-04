@@ -137,7 +137,7 @@ tbody tr:hover {
 
   /* ── 4. A3 single-page export — use named page so it doesn't fight the default A4 ── */
   .a3-print-root {
-    width: 100% !important;
+    width: var(--dashboard-paper-width, 100%) !important;
     overflow: visible !important;
     display: block !important;
     page: a3dash;
@@ -269,7 +269,7 @@ tbody tr:hover {
 /* Pin .a3-print-root to A3 printable width for measurement */
 html.a3-printing .a3-print-root {
   display: block;
-  width: 1526px;   /* (420mm - 16mm margins) × 96dpi / 25.4 ≈ 1526px */
+  width: var(--dashboard-paper-width, 1526px);
   overflow: visible;
 }
 
@@ -578,3 +578,13 @@ html.a3-printing [data-trade-row] .truncate {
   font-weight: 600;
   border-left-color: #2563eb;
 }
+
+/* Filters participate in card sizing rather than shrinking between charts. */
+.chart-filters {
+  position: relative;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding-block: 4px;
+  margin-bottom: 8px;
+}
+.chart-filters select { max-width: 100%; min-height: 26px; }

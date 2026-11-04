@@ -875,7 +875,7 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
             {/* Legend */}
             <div className="flex flex-wrap gap-x-3 gap-y-0.5">
               {distStatuses.map((s, i) => (
-                <div key={i} className="flex items-center gap-1">
+                <div key={i} className="flex flex-wrap items-center gap-1 min-w-0">
                   <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: statusCodeColor[s.status_code] ?? '#cbd5e1' }} />
                   <span className="text-[9px] text-gray-500">{s.status_label} <span className="font-semibold text-gray-700">{s.count}</span></span>
                 </div>
@@ -1134,9 +1134,9 @@ function ChartFilters({
 }) {
   if (!fields.length) return null
   return (
-    <div className="no-print flex flex-wrap items-center gap-1.5 mt-2">
+    <div className="no-print chart-filters flex flex-wrap items-center gap-1.5 mt-2">
       {fields.map(f => (
-        <div key={f.key} className="flex items-center gap-1">
+        <div key={f.key} className="flex flex-wrap items-center gap-1 min-w-0">
           <span className="text-[9px] text-gray-400 capitalize">{f.key.replace(/_/g, ' ')}:</span>
           <select
             value={active[f.key] ?? ''}
@@ -1203,53 +1203,82 @@ const _printSetters = new Set<Dispatch<SetStateAction<boolean>>>()
 let _printEpoch = 0
 const _epochSetters = new Set<Dispatch<SetStateAction<number>>>()
 
-// A3 printable area at 96 dpi: A3 = 420×297mm; subtract 8mm margins each side
-const A3_PRINT_W = 1526   // (420 - 16) mm × 96/25.4 ≈ 1526px
-const A3_PRINT_H = 1062   // (297 - 16) mm × 96/25.4 ≈ 1062px
-const A3_SAFETY  = 0.97   // 3% safety margin so content doesn't land on the edge
+type DashboardPaper = 'A3' | 'A4'
+const DASHBOARD_MARGIN_MM = 8
+let dashboardPaper: DashboardPaper = 'A3'
+let printPrepared = false
 
-// preparePrint: synchronous. Sets html.a3-printing, flushSync isPrinting=true,
-// then iteratively fits CSS zoom to the A3 printable area.
-// Safe to call multiple times (resets zoom at the start each time).
-function preparePrint(el: HTMLElement): void {
-  el.style.zoom = ''
-  document.documentElement.classList.add('a3-printing')
-  flushSync(() => { _printSetters.forEach(s => s(true)) })
-
-  let scale = Math.min(A3_PRINT_W / el.scrollWidth, A3_PRINT_H / el.scrollHeight, 1)
-  for (let i = 0; i < 5; i++) {
-    el.style.zoom = String(scale)
-    void el.getBoundingClientRect()  // force reflow so getBCR returns updated value
-    const h = el.getBoundingClientRect().height
-    if (h <= A3_PRINT_H * A3_SAFETY) break
-    scale *= (A3_PRINT_H * A3_SAFETY) / h
+function configureDashboardPaper(paper: DashboardPaper): void {
+  dashboardPaper = paper
+  let style = document.getElementById('__a3-print-override') as HTMLStyleElement | null
+  if (!style) {
+    style = document.createElement('style')
+    style.id = '__a3-print-override'
+    document.head.appendChild(style)
   }
-  console.log('[A3 Print] scale:', scale.toFixed(4),
-    '| contentW:', el.scrollWidth, '| contentH:', el.scrollHeight)
+  // Override the named page actually used by .a3-print-root, including Ctrl+P.
+  style.textContent = `@page { size: ${paper} landscape; margin: ${DASHBOARD_MARGIN_MM}mm; } @page a3dash { size: ${paper} landscape; margin: ${DASHBOARD_MARGIN_MM}mm; }`
 }
 
-function cleanupPrint(): void {
+function preparePrint(el: HTMLElement): void {
+  configureDashboardPaper(dashboardPaper)
+  const root = document.documentElement
+  root.classList.add('a3-printing')
+  if (!printPrepared) {
+    printPrepared = true
+    flushSync(() => { _printSetters.forEach(s => s(true)) })
+  }
+  const [widthMM, heightMM] = dashboardPaper === 'A3' ? [420, 297] : [297, 210]
+  const width = (widthMM - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4
+  const height = (heightMM - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4
+  root.style.setProperty('--dashboard-paper-width', `${width}px`)
+  el.style.zoom = '1'
+  el.style.width = '1526px'
+  // Choose a logical canvas with the paper's aspect ratio. Unlike shrinking a
+  // tall screen layout, this uses both the printable width and height.
+  const logicalWidth = Math.max(1526, el.scrollHeight * width / height)
+  el.style.width = `${logicalWidth}px`
+  const scale = Math.min(width / Math.max(el.scrollWidth, logicalWidth), height / el.scrollHeight) * 0.99
+  el.style.zoom = String(scale)
+}
+
+// Final fit uses the rendered SVG layout after ResizeObserver has settled.
+function fitRenderedPrint(el: HTMLElement): void {
+  const [w, h] = dashboardPaper === 'A3' ? [420, 297] : [297, 210]
+  const bounds = el.getBoundingClientRect()
+  const factor = Math.min(
+    (w - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4 / bounds.width,
+    (h - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4 / bounds.height,
+    1,
+  ) * 0.98
+  el.style.zoom = String(Number(el.style.zoom || 1) * factor)
+}
+
+function cleanupPrint(synchronous = true): void {
+  printPrepared = false
   document.documentElement.classList.remove('a3-printing')
+  document.documentElement.style.removeProperty('--dashboard-paper-width')
   const el = document.querySelector('.a3-page') as HTMLElement | null
-  if (el) el.style.zoom = ''
-  flushSync(() => { _printSetters.forEach(s => s(false)) })
-  // After the browser has re-laid-out at screen dimensions, bump the epoch so
-  // every ResponsiveContainer remounts and re-measures its true screen width.
+  if (el) { el.style.zoom = ''; el.style.width = '' }
+  const reset = () => { _printSetters.forEach(s => s(false)) }
+  if (synchronous) flushSync(reset)
+  else reset()
   requestAnimationFrame(() => requestAnimationFrame(() => {
     _printEpoch++
     _epochSetters.forEach(s => s(_printEpoch))
   }))
 }
 
-// useA3PrintScale: registers beforeprint/afterprint listeners when A3 mode is active.
-// beforeprint (Ctrl+P): calls preparePrint so layout is correct before browser renders.
-// afterprint: cleans up. Print button calls preparePrint + window.print() directly.
-function useA3PrintScale(enabled: boolean): void {
+function useA3PrintScale(enabled: boolean, paper: DashboardPaper): void {
   useEffect(() => {
     if (!enabled) return
+    configureDashboardPaper(paper)
     const onBefore = () => {
       const el = document.querySelector('.a3-page') as HTMLElement | null
-      if (el) preparePrint(el)
+      if (el) {
+        if (!printPrepared) preparePrint(el)
+        fitRenderedPrint(el)
+      }
     }
     const onAfter = () => cleanupPrint()
     window.addEventListener('beforeprint', onBefore)
@@ -1257,8 +1286,28 @@ function useA3PrintScale(enabled: boolean): void {
     return () => {
       window.removeEventListener('beforeprint', onBefore)
       window.removeEventListener('afterprint', onAfter)
+      cleanupPrint(false)
+      document.getElementById('__a3-print-override')?.remove()
     }
-  }, [enabled])
+  }, [enabled, paper])
+}
+
+async function printDashboard(): Promise<void> {
+  const el = document.querySelector('.a3-page') as HTMLElement | null
+  if (!el) return
+  try {
+    await document.fonts.ready
+    preparePrint(el)
+    // ResizeObserver and React must settle at the print canvas width before
+    // the browser snapshots Recharts' explicitly sized SVGs.
+    await new Promise(resolve => setTimeout(resolve, 350))
+    preparePrint(el)
+    await new Promise(resolve => setTimeout(resolve, 350))
+    fitRenderedPrint(el)
+    window.print()
+  } finally {
+    cleanupPrint()
+  }
 }
 
 // ── Print mode hook — fires before print dialog opens ─────────────────────────
@@ -1374,7 +1423,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const labelPlan = lineLabelPlan(chartData.length, series.length)
 
   return (
-    <div style={{ overflow: 'hidden' }}>
+    <div style={{ minWidth: 0, overflow: 'visible' }}>
       <div className="print-chart" style={{ overflow: 'visible' }}>
         <ResponsiveContainer key={printEpoch} width="100%" height={chartH}>
           <LineChart data={chartData} margin={chartMargin}>
@@ -1871,7 +1920,7 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   )
 
   return (
-    <div style={{ overflow: 'hidden' }}>
+    <div style={{ minWidth: 0, overflow: 'visible' }}>
       <div className="print-chart" style={{ overflow: 'visible' }}>
         <ResponsiveContainer key={printEpoch} width="100%" height={areaH}>
           <AreaChart data={sliced} margin={{ top: 8, right: 24, left: 8, bottom: 4 }}>
@@ -4096,7 +4145,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
             </svg>
             <div>
               <p className="text-xs font-bold tracking-wide">{title}</p>
-              <p className="text-[9px] opacity-75">{reportType} — A3 Executive Summary</p>
+              <p className="text-[9px] opacity-75">{reportType} — Executive Summary</p>
             </div>
           </div>
           <div className="text-right">
@@ -4447,7 +4496,8 @@ export function ReportDashboardForm({
   }
 
   // Register A3 print scale hook (no-op when a3Mode is false)
-  useA3PrintScale(a3Mode)
+  const [paperSize, setPaperSize] = useState<DashboardPaper>('A3')
+  useA3PrintScale(a3Mode, paperSize)
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -4476,7 +4526,7 @@ export function ReportDashboardForm({
         {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
 
         {/* A3 toolbar — hidden on print */}
-        <div className="no-print flex items-center justify-between px-4 py-2 mb-2 border-b" style={{ borderColor: tok('subtle_border', '#e2e8f0') }}>
+        <div className="no-print flex flex-wrap gap-2 items-center justify-between px-4 py-2 mb-2 border-b" style={{ borderColor: tok('subtle_border', '#e2e8f0') }}>
           <div className="flex items-center gap-3">
             <select
               value={selectedStructureId}
@@ -4491,27 +4541,17 @@ export function ReportDashboardForm({
             </select>
             <span className="text-[10px] text-gray-400">Weekly Project Dashboard — A3 Executive Summary</span>
           </div>
+          <label className="flex items-center gap-2 text-xs ml-auto mr-3">
+            Paper
+            <select aria-label="Dashboard paper size" value={paperSize}
+              onChange={e => setPaperSize(e.target.value as DashboardPaper)}
+              className="border rounded px-2 py-1 bg-white text-gray-700">
+              <option value="A3">A3 landscape</option>
+              <option value="A4">A4 landscape</option>
+            </select>
+          </label>
           <button
-            onClick={() => {
-              const el = document.querySelector('.a3-page') as HTMLElement | null
-              if (!el) { window.print(); return }
-
-              // Inject @page override
-              const style = document.createElement('style')
-              style.id = '__a3-print-override'
-              style.textContent = '@page { size: A3 landscape; margin: 8mm; }'
-              document.head.appendChild(style)
-              window.addEventListener('afterprint', () => style.remove(), { once: true })
-
-              // Initial prepare: flushSync commits isPrinting=true, CSS class applied
-              preparePrint(el)
-
-              // Wait for Recharts ResizeObserver to re-render at print heights, then re-measure and print
-              requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
-                preparePrint(el)
-                window.print()
-              }, 300)))
-            }}
+            onClick={() => { void printDashboard() }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               fontSize: 11, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
