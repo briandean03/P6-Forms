@@ -1203,13 +1203,10 @@ const _printSetters = new Set<Dispatch<SetStateAction<boolean>>>()
 let _printEpoch = 0
 const _epochSetters = new Set<Dispatch<SetStateAction<number>>>()
 
-type DashboardPaper = 'A3' | 'A4'
 const DASHBOARD_MARGIN_MM = 8
-let dashboardPaper: DashboardPaper = 'A3'
 let printPrepared = false
 
-function configureDashboardPaper(paper: DashboardPaper): void {
-  dashboardPaper = paper
+function configureDashboardPaper(): void {
   let style = document.getElementById('__a3-print-override') as HTMLStyleElement | null
   if (!style) {
     style = document.createElement('style')
@@ -1217,34 +1214,31 @@ function configureDashboardPaper(paper: DashboardPaper): void {
     document.head.appendChild(style)
   }
   // Override the named page actually used by .a3-print-root, including Ctrl+P.
-  style.textContent = `@page { size: ${paper} landscape; margin: ${DASHBOARD_MARGIN_MM}mm; } @page a3dash { size: ${paper} landscape; margin: ${DASHBOARD_MARGIN_MM}mm; }`
+  style.textContent = `@page { size: A3 landscape; margin: ${DASHBOARD_MARGIN_MM}mm; } @page a3dash { size: A3 landscape; margin: ${DASHBOARD_MARGIN_MM}mm; }`
 }
 
 function preparePrint(el: HTMLElement): void {
-  configureDashboardPaper(dashboardPaper)
+  configureDashboardPaper()
   const root = document.documentElement
   root.classList.add('a3-printing')
   if (!printPrepared) {
     printPrepared = true
     flushSync(() => { _printSetters.forEach(s => s(true)) })
   }
-  const [widthMM, heightMM] = dashboardPaper === 'A3' ? [420, 297] : [297, 210]
+  const [widthMM, heightMM] = [420, 297]
   const width = (widthMM - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4
   const height = (heightMM - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4
   root.style.setProperty('--dashboard-paper-width', `${width}px`)
   el.style.zoom = '1'
   el.style.width = '1526px'
-  // Choose a logical canvas with the paper's aspect ratio. Unlike shrinking a
-  // tall screen layout, this uses both the printable width and height.
-  const logicalWidth = Math.max(1526, el.scrollHeight * width / height)
-  el.style.width = `${logicalWidth}px`
-  const scale = Math.min(width / Math.max(el.scrollWidth, logicalWidth), height / el.scrollHeight) * 0.99
+  // Fixed A3 canvas: never widen the sheet to fit a tall screen widget.
+  const scale = Math.min(width / el.scrollWidth, height / el.scrollHeight, 1)
   el.style.zoom = String(scale)
 }
 
 // Final fit uses the rendered SVG layout after ResizeObserver has settled.
 function fitRenderedPrint(el: HTMLElement): void {
-  const [w, h] = dashboardPaper === 'A3' ? [420, 297] : [297, 210]
+  const [w, h] = [420, 297]
   const bounds = el.getBoundingClientRect()
   const factor = Math.min(
     (w - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4 / bounds.width,
@@ -1269,10 +1263,10 @@ function cleanupPrint(synchronous = true): void {
   }))
 }
 
-function useA3PrintScale(enabled: boolean, paper: DashboardPaper): void {
+function useA3PrintScale(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return
-    configureDashboardPaper(paper)
+    configureDashboardPaper()
     const onBefore = () => {
       const el = document.querySelector('.a3-page') as HTMLElement | null
       if (el) {
@@ -1289,7 +1283,7 @@ function useA3PrintScale(enabled: boolean, paper: DashboardPaper): void {
       cleanupPrint(false)
       document.getElementById('__a3-print-override')?.remove()
     }
-  }, [enabled, paper])
+  }, [enabled])
 }
 
 async function printDashboard(): Promise<void> {
@@ -4072,6 +4066,119 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
 // flagged include_in_a3_export=true in the structure plan, laid out on a
 // 12-column grid matching the grid.column_span values from the plan.
 
+// A3 has a fixed physical canvas. Its widgets must fit their cells rather than
+// forcing the entire sheet (including every label) to shrink to screen heights.
+function A3Widget({ widget }: { widget: DashboardWidget }) {
+  const content = getContent(widget.widget_ast ?? {})
+  const nested = content.chart as Record<string, unknown> | undefined
+  const c = nested ? { ...content, ...nested } : content
+  const type = widget.widget_type ?? ''
+  const palette = useChartPalette()
+  const data = (c.data ?? []) as Record<string, unknown>[]
+  const xKey = String(c.category_field ?? c.x_key ?? c.x_axis ?? 'category')
+  const series = normaliseSeries(c, xKey)
+  const empty = (c.empty_state ?? {}) as { heading?: string; message?: string }
+  const noData = <div className="a3-empty"><strong>{empty.heading ?? 'No data available'}</strong>{empty.message && <span>{empty.message}</span>}</div>
+
+  if (type.includes('chart') && !['donut_chart', 'pie_chart'].includes(type)) {
+    if (!data.length) return noData
+    const isLine = type === 'line_chart' || type === 'area_chart'
+    const horizontal = type === 'horizontal_bar_chart'
+    const axisTick = { fontSize: 8 }
+    const category = (value: unknown) => {
+      const text = String(value ?? '')
+      return /^\d{4}-\d{2}-\d{2}/.test(text) ? fmtDate(text) : text
+    }
+    const axes = <>
+      <CartesianGrid stroke="#e2e8f0" vertical={false} />
+      <XAxis type={horizontal ? 'number' : 'category'} dataKey={horizontal ? undefined : xKey}
+        tick={axisTick} tickFormatter={horizontal ? fmtAxis : category} minTickGap={32} height={12} />
+      <YAxis type={horizontal ? 'category' : 'number'} dataKey={horizontal ? xKey : undefined}
+        tick={axisTick} tickFormatter={horizontal ? undefined : fmtAxis} width={horizontal ? 72 : 38} />
+      <Legend verticalAlign="top" height={12} iconSize={7} wrapperStyle={{ fontSize: 9 }} />
+    </>
+    return <ResponsiveContainer width="100%" height="100%" minHeight={0}>
+      {isLine ? <LineChart data={data} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
+        {axes}
+        {series.map((s, i) => <Line key={s.key} dataKey={s.key} name={s.label} stroke={s.color ?? palette[i % palette.length]} strokeWidth={1.7} dot={false} connectNulls isAnimationActive={false} />)}
+      </LineChart> : <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
+        {axes}
+        {series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? palette[i % palette.length]} stackId={type === 'stacked_bar_chart' ? 'stack' : undefined} isAnimationActive={false} />)}
+      </BarChart>}
+    </ResponsiveContainer>
+  }
+
+  if (type === 'donut_chart' || type === 'pie_chart') {
+    const slices = (c.data ?? c.segments ?? c.slices ?? []) as Record<string, unknown>[]
+    if (!slices.length) return noData
+    const values = slices.map(slice => ({
+      name: String(slice.status_label ?? slice.label ?? slice.name ?? slice.status_code ?? slice.code ?? ''),
+      value: Number(slice.count ?? slice.value ?? 0),
+    }))
+    return <div className="a3-donut">
+      <div className="a3-donut-chart"><ResponsiveContainer width="100%" height="100%" minHeight={0}>
+        <PieChart><Pie data={values} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="52%" outerRadius="82%" isAnimationActive={false} strokeWidth={0}>
+          {values.map((_, i) => <Cell key={i} fill={palette[i % palette.length]} />)}
+        </Pie><text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#102746" fontSize={16} fontWeight={700}>{fmtNum(values.reduce((sum, slice) => sum + slice.value, 0), 0)}</text></PieChart>
+      </ResponsiveContainer></div>
+      <div className="a3-donut-legend">{values.map((slice, i) => <div key={i}><i style={{ background: palette[i % palette.length] }} /><span>{slice.name}</span><strong>{fmtNum(slice.value, 0)}</strong></div>)}</div>
+    </div>
+  }
+
+  if (type === 'kpi_group' || type === 'kpi_card') {
+    const cards = (c.kpis ?? c.cards ?? [c]) as Record<string, unknown>[]
+    return <div className="a3-kpis" style={{ gridTemplateColumns: `repeat(${Math.max(1, cards.length)}, minmax(0, 1fr))` }}>
+      {cards.map((card, i) => <div key={String(card.key ?? i)} className="a3-kpi" style={{ background: ['#f4f0ff', '#ebfaf5', '#fff1f2', '#f3f6fc'][i % 4] }}>
+        <span>{String(card.label ?? card.title ?? '')}</span>
+        <strong style={{ color: ['#7c54d9', '#0aaf94', '#e54567', '#183456'][i % 4] }}>
+          {card.value == null ? '—' : typeof card.value === 'number' ? fmtNum(card.value, Number.isInteger(card.value) ? 0 : 2) : String(card.value)}
+          {card.unit != null && <small> {String(card.unit)}</small>}
+        </strong>
+        {card.comparison_value != null && <small>Previous: {typeof card.comparison_value === 'number' ? fmtNum(card.comparison_value, 2) : String(card.comparison_value)}</small>}
+      </div>)}
+    </div>
+  }
+
+  if (type.includes('table')) {
+    const rows = (c.rows ?? c.activities ?? c.items ?? []) as Record<string, unknown>[]
+    if (!rows.length) return noData
+    const columns = toColSpecs((c.columns ?? Object.keys(rows[0])) as unknown[])
+    if (type === 'financial_status_table' && rows.length === 1) {
+      return <dl className="a3-record">{columns.map(col => <div key={col.key}><dt>{col.label}</dt><dd>{renderCellValue(rows[0][col.key])}</dd></div>)}</dl>
+    }
+    // A single-sheet overview explicitly summarises long registers. Full data
+    // remains in the normal dashboard; omitted rows are never silently hidden.
+    const summaryColumns = columns.slice(0, 3)
+    return <div className="a3-table-summary"><table><thead><tr>{summaryColumns.map(col => <th key={col.key}>{col.label}</th>)}</tr></thead>
+      <tbody>{rows.slice(0, 3).map((row, i) => <tr key={i}>{summaryColumns.map(col => <td key={col.key}><span title={renderCellValue(row[col.key])}>{renderCellValue(row[col.key])}</span></td>)}</tr>)}</tbody></table>
+      {(rows.length > 3 || columns.length > 3) && <p>Summary: {Math.min(3, rows.length)} of {rows.length} rows, {summaryColumns.length} of {columns.length} columns. Full register in dashboard.</p>}
+    </div>
+  }
+
+  if (type === 'trade_schedule_gantt') {
+    const trades = (c.trades ?? []) as Record<string, unknown>[]
+    if (!trades.length) return noData
+    return <div className="a3-trades">{trades.slice(0, 8).map((trade, i) => {
+      const planned = trade.planned as Record<string, unknown> | undefined
+      const actual = trade.actual as Record<string, unknown> | undefined
+      return <div key={i}><span>{String(trade.trade_name ?? trade.trade_label ?? trade.trade_code ?? '')}</span><div>
+        {[planned, actual].map((value, j) => <div key={j} className="a3-trade-track"><div style={{ width: `${Math.max(0, Math.min(100, Number(value?.cumulative_percent_complete ?? 0)))}%`, background: palette[j] }} /></div>)}
+      </div></div>
+    })}{trades.length > 8 && <small>Showing 8 of {trades.length} trades — full schedule in dashboard.</small>}</div>
+  }
+
+  if (type === 'photo_gallery') {
+    const photos = (c.photos ?? []) as Record<string, unknown>[]
+    if (!photos.length) return noData
+    const photo = photos[0]
+    const url = String(photo.photo_url ?? photo.imageurl ?? '')
+    return <div className="a3-photo"><img src={url} alt={String(photo.caption_or_description ?? photo.filename ?? 'Progress photograph')} /><div><strong>{String(photo.photo_date_display ?? photo.photo_date ?? '')}</strong><p>{String(photo.caption_or_description ?? photo.filename ?? '')}</p><small>Photo 1 of {photos.length}</small></div></div>
+  }
+
+  // Preserve existing renderers for other supported widget types.
+  return <WidgetInner widget={widget} />
+}
+
 type A3PageProps = {
   structure: DashboardStructure
   widgets: DashboardWidget[]
@@ -4102,6 +4209,19 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
   const title    = ctx?.dashboard_title ?? structure.dashboard_title ?? 'Weekly Project Dashboard'
   const reportType = ctx?.report_type ?? 'Weekly Progress Report'
 
+  const layoutRows: { weight: number; used: number }[] = []
+  const placements = regions.map(region => {
+    const columns = Math.max(1, Math.min(12, region.column_span || 4))
+    let row = layoutRows.length - 1
+    if (row < 0 || layoutRows[row].used + columns > 12) {
+      layoutRows.push({ weight: 0, used: 0 })
+      row++
+    }
+    layoutRows[row].used += columns
+    layoutRows[row].weight = Math.max(layoutRows[row].weight, region.row_span || 2)
+    return row + 1
+  })
+
   // Column span → Tailwind grid-cols-12 span class
   const spanClass = (span: number | undefined): string => {
     switch (span) {
@@ -4131,12 +4251,12 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
       */}
       <div
         className="a3-page"
-        style={{ background: tok('canvas', '#f1f5f9'), padding: '0 0 8px 0' }}
+        style={{ background: '#f7f7fc', padding: '12px', height: 1040, display: 'flex', flexDirection: 'column' }}
       >
         {/* ── Header bar ──────────────────────────────────────────────────────── */}
         <div
-          className="flex items-center justify-between px-5 py-2 mb-2"
-          style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff') }}
+          className="a3-heading flex items-center justify-between px-1 py-2 mb-2"
+          style={{ color: '#102746', flexShrink: 0 }}
         >
           <div className="flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -4144,7 +4264,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
               <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
             </svg>
             <div>
-              <p className="text-xs font-bold tracking-wide">{title}</p>
+              <p className="text-lg font-bold uppercase">{title}</p>
               <p className="text-[9px] opacity-75">{reportType} — Executive Summary</p>
             </div>
           </div>
@@ -4155,7 +4275,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
         </div>
 
         {/* ── Widget grid — driven entirely by a3_layout.layout.regions ───────── */}
-        <div className="px-3">
+        <div className="a3-grid-area">
           {!a3 ? (
             <p className="text-xs text-gray-400 italic p-4">
               No A3 layout configured for this report. Please ensure the a3_layout column is populated.
@@ -4165,7 +4285,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
               No widget regions found in the A3 layout.
             </p>
           ) : (
-            <div className="grid grid-cols-12 gap-2">
+            <div className="a3-region-grid grid grid-cols-12 gap-2" style={{ gridTemplateRows: layoutRows.map(row => `minmax(80px, ${row.weight}fr)`).join(' ') }}>
               {regions.map((region, ri) => {
                 const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
 
@@ -4173,11 +4293,11 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                   <div
                     key={region.region_id ?? ri}
                     className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
-                    style={{ borderColor: tok('subtle_border', '#e2e8f0'), padding: '6px 8px', minWidth: 0 }}
+                    style={{ borderColor: tok('subtle_border', '#d5dced'), padding: '6px 8px', minWidth: 0, minHeight: 0, gridRow: placements[ri] }}
                   >
                     {/* Region title */}
                     <p
-                      className="text-[8px] font-bold uppercase tracking-widest mb-1.5 leading-tight flex-shrink-0"
+                      className="a3-region-title font-bold mb-1 leading-tight flex-shrink-0"
                       style={{ color: tok('muted_text', '#94a3b8') }}
                     >
                       {region.title}
@@ -4191,8 +4311,8 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                         </span>
                       </div>
                     ) : regionWidgets.length === 1 ? (
-                      <div data-widget-body>
-                        <WidgetInner widget={
+                      <div data-widget-body className="a3-widget-slot">
+                        <A3Widget widget={
                           region.presentation_mode === 'full_width_compact_line_chart' ||
                           region.presentation_mode === 'compact_multi_series_line_chart' ||
                           region.presentation_mode === 'compact_line_chart'
@@ -4201,9 +4321,9 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                         } />
                       </div>
                     ) : (
-                      <div className="flex flex-col gap-2">
+                      <div className="a3-widget-stack">
                         {regionWidgets.map((w, wi) => (
-                          <div key={w.widget_id ?? wi} data-widget-body>
+                          <div key={w.widget_id ?? wi} data-widget-body className="a3-widget-slot a3-widget-stack-item">
                             {wi > 0 && (
                               <div className="border-t my-1" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
                             )}
@@ -4213,7 +4333,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                                 {w.widget_title}
                               </p>
                             )}
-                            <WidgetInner widget={w} />
+                            <div className="a3-widget-slot"><A3Widget widget={w} /></div>
                           </div>
                         ))}
                       </div>
@@ -4228,7 +4348,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
         {/* ── Footer bar ──────────────────────────────────────────────────────── */}
         {(footerCfg?.show_data_date || footerCfg?.show_report_id || footerCfg?.show_project_id || footerCfg?.show_design_version) && (
           <div
-            className="flex items-center justify-between px-5 py-1.5 mt-2 mx-3 rounded-lg"
+            className="a3-footer flex items-center justify-between px-1 py-1.5 mt-2"
             style={{ background: tok('subtle_border', '#e2e8f0'), color: tok('text_secondary', '#64748b') }}
           >
             <div className="flex gap-4 text-[8px]">
@@ -4496,8 +4616,7 @@ export function ReportDashboardForm({
   }
 
   // Register A3 print scale hook (no-op when a3Mode is false)
-  const [paperSize, setPaperSize] = useState<DashboardPaper>('A3')
-  useA3PrintScale(a3Mode, paperSize)
+  useA3PrintScale(a3Mode)
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -4541,15 +4660,6 @@ export function ReportDashboardForm({
             </select>
             <span className="text-[10px] text-gray-400">Weekly Project Dashboard — A3 Executive Summary</span>
           </div>
-          <label className="flex items-center gap-2 text-xs ml-auto mr-3">
-            Paper
-            <select aria-label="Dashboard paper size" value={paperSize}
-              onChange={e => setPaperSize(e.target.value as DashboardPaper)}
-              className="border rounded px-2 py-1 bg-white text-gray-700">
-              <option value="A3">A3 landscape</option>
-              <option value="A4">A4 landscape</option>
-            </select>
-          </label>
           <button
             onClick={() => { void printDashboard() }}
             style={{
