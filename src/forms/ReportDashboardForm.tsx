@@ -4080,8 +4080,8 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
   const c = nested ? { ...content, ...nested } : content
   const type = widget.widget_type ?? ''
   const palette = useChartPalette()
-  const seriesColor = (series: SeriesSpec, index: number) => /planned/i.test(series.key + series.label)
-    ? '#8362d5' : /actual/i.test(series.key + series.label) ? '#29ad8b' : series.color ?? palette[index % palette.length]
+  // Match the screen charts: explicit source colour, then dashboard palette.
+  const seriesColor = (series: SeriesSpec, index: number) => series.color ?? palette[index % palette.length]
   const allData = (c.data ?? []) as Record<string, unknown>[]
   const weekly = type.includes('bar_chart') && /period|week/.test(String(c.category_field ?? ''))
   const data = weekly ? allData.slice(-9) : allData
@@ -4124,7 +4124,7 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
     const values = slices.map(slice => ({
       name: String(slice.status_label ?? slice.label ?? slice.name ?? slice.status_code ?? slice.code ?? ''),
       value: Number(slice.count ?? slice.value ?? 0),
-      color: ({ A: '#a9b6c9', B: '#60baa9', C: '#f3b15b', D: '#db6375', UR: '#8498c5' } as Record<string, string>)[String(slice.status_code ?? slice.code ?? '')] ?? '#b9c3d5',
+      color: (slice.color as string | undefined) ?? STATUS_COLORS[String(slice.status_code ?? slice.code ?? '')] ?? PALETTE[0],
     }))
     return <div className="a3-donut">
       <div className="a3-donut-chart"><ResponsiveContainer width="100%" height="100%" minHeight={0}>
@@ -4140,21 +4140,10 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
     const cards = [...((c.kpis ?? c.cards ?? [c]) as Record<string, unknown>[])]
     const previousActual = cards.find(card => /actual/i.test(String(card.key ?? card.label ?? '')) && card.comparison_value != null)
     if (previousActual) cards.push({ label: 'Previous actual', value: previousActual.comparison_value, unit: previousActual.unit })
-    const tone = (card: Record<string, unknown>) => {
-      const name = String(card.key ?? card.label ?? '').toLowerCase()
-      const adverse = (/delay/.test(name) && Number(card.value) > 0)
-        || (/variance/.test(name) && Number(card.value) < 0)
-        || /delayed|behind|critical|at risk/i.test(String(card.value ?? ''))
-      if (adverse) return { background: '#fff1f1', color: '#c74256' }
-      if (/previous/.test(name)) return { background: '#f5f7fc', color: '#183456' }
-      if (/actual/.test(name)) return { background: '#ebfbf5', color: '#159b75' }
-      if (/planned/.test(name)) return { background: '#f4efff', color: '#7654c9' }
-      return { background: '#f5f7fc', color: '#183456' }
-    }
     return <div className="a3-kpis" style={{ gridTemplateColumns: `repeat(${Math.max(1, cards.length)}, minmax(0, 1fr))` }}>
-      {cards.map((card, i) => <div key={String(card.key ?? i)} className="a3-kpi" style={{ background: tone(card).background }}>
+      {cards.map((card, i) => <div key={String(card.key ?? i)} className="a3-kpi" style={{ background: '#f9fafb' }}>
         <span>{String(card.label ?? card.title ?? '')}</span>
-        <strong style={{ color: tone(card).color }}>
+        <strong style={{ color: '#111827' }}>
           {card.value == null ? '—' : typeof card.value === 'number' ? fmtNum(card.value, Number.isInteger(card.value) ? 0 : 2) : String(card.value)}
           {card.unit != null && <small> {String(card.unit)}</small>}
         </strong>
@@ -4306,12 +4295,12 @@ function A3PrintDashboardPage({ structure, widgets }: A3PageProps) {
       */}
       <div
         className="a3-page a3-print-sheet"
-        style={{ background: '#f6f7fb', padding: '12mm', height: '297mm', display: 'flex', flexDirection: 'column' }}
+        style={{ background: tok('canvas', '#f1f5f9'), padding: '12mm', height: '297mm', display: 'flex', flexDirection: 'column' }}
       >
         {/* ── Header bar ──────────────────────────────────────────────────────── */}
         <div
           className="a3-heading flex items-center justify-between px-1 py-2 mb-2"
-          style={{ color: '#102746', flexShrink: 0 }}
+          style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff'), flexShrink: 0 }}
         >
           <div className="flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
