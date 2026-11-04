@@ -541,6 +541,23 @@ function KpiCardWidget({ ast }: { ast: Record<string, unknown> }) {
 // kpi_group — content.items[] OR content.kpis[] OR content.metrics[]
 // Some KPI items use actual_current_period/kpi instead of value/label.
 // content.empty_state: { title, message, hint } shown when data is unavailable.
+// Shared by the website and the compact PDF renderer so both accept the same
+// source fields and preserve identical values, units and comparison metadata.
+function normaliseKpiItems(rawItems: (KpiItem & Record<string, unknown>)[]) {
+  return rawItems.map(raw => ({
+    ...raw,
+    label:            (raw.label ?? raw.kpi ?? '') as string,
+    value:            raw.value ?? raw.actual_current_period ?? null,
+    unit:             raw.unit as string | null,
+    status:           raw.status as string | null,
+    variance:         raw.variance as number | null,
+    variance_unit:    raw.variance_unit as string | null,
+    comparison_label: (raw.comparison_label ?? (raw.planned_current_period != null ? 'Planned' : null)) as string | null,
+    comparison_value: (raw.comparison_value ?? raw.planned_current_period ?? null) as number | null,
+    data_type:        raw.data_type as string | undefined,
+  }))
+}
+
 function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const rawItems = (content.items ?? content.kpis ?? content.metrics) as (KpiItem & Record<string, unknown>)[] | null
@@ -559,18 +576,7 @@ function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
     )
   }
 
-  const items: KpiItem[] = rawItems.map(raw => ({
-    ...raw,
-    label:            (raw.label ?? raw.kpi ?? '') as string,
-    value:            raw.value ?? raw.actual_current_period ?? null,
-    unit:             raw.unit as string | null,
-    status:           raw.status as string | null,
-    variance:         raw.variance as number | null,
-    variance_unit:    raw.variance_unit as string | null,
-    comparison_label: (raw.comparison_label ?? (raw.planned_current_period != null ? 'Planned' : null)) as string | null,
-    comparison_value: (raw.comparison_value ?? raw.planned_current_period ?? null) as number | null,
-    data_type:        raw.data_type as string | undefined,
-  }))
+  const items = normaliseKpiItems(rawItems)
 
   return <KpiGroupSelectable items={items} />
 }
@@ -4137,7 +4143,8 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
   }
 
   if (type === 'kpi_group' || type === 'kpi_card') {
-    const cards = [...((c.kpis ?? c.cards ?? [c]) as Record<string, unknown>[])]
+    const rawItems = (c.items ?? c.kpis ?? c.metrics ?? c.cards ?? [c]) as (KpiItem & Record<string, unknown>)[]
+    const cards: Record<string, unknown>[] = normaliseKpiItems(rawItems)
     const previousActual = cards.find(card => /actual/i.test(String(card.key ?? card.label ?? '')) && card.comparison_value != null)
     if (previousActual) cards.push({ label: 'Previous actual', value: previousActual.comparison_value, unit: previousActual.unit })
     return <div className="a3-kpis" style={{ gridTemplateColumns: `repeat(${Math.max(1, cards.length)}, minmax(0, 1fr))` }}>
