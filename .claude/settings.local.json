@@ -63,7 +63,9 @@
       "Bash(curl -s http://localhost:5174/)",
       "Bash(npm install -D pdf-parse@1)",
       "Bash(magick --version)",
-      "Bash(magick.exe --version)"
+      "Bash(magick.exe --version)",
+      "Read(//c/Users/bd502/.claude/projects/c--Users-bd502-OneDrive-Desktop-Projects-P6ProjectControlForms/9a367694-3538-4179-88ee-108dea0c45bd/tool-results/**)",
+      "Bash(python -c \":*)"
     ],
     "additionalDirectories": [
       "\\tmp",
