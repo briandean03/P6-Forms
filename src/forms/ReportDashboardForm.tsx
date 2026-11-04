@@ -216,20 +216,28 @@ function findDataDateLabel(
   xKey: string,
   labelKey: string,
   dataDate: string,
-): string | null {
+): string | number | null {
   if (!dataDate || !data.length) return null
   const target = new Date(dataDate).getTime()
   if (isNaN(target)) return null
-  let best: string | null = null
+  let best: string | number | null = null
   let bestDiff = Infinity
   for (const row of data) {
-    const raw = String(row[labelKey] ?? row[xKey] ?? '')
-    const t = new Date(raw).getTime()
+    const axisValue = row[labelKey] ?? row[xKey]
+    const raw = String(axisValue ?? '')
+    // Weekly axes can display W54 or W54 · 27-Sep-2026 rather than an ISO date.
+    // Resolve through the row's date, but return the original category value.
+    const weeklyAxis = /period|week|date|month|time/i.test(xKey) || /^W\d+/i.test(raw)
+    if (!weeklyAxis && !/^\d{4}[-/]\d{2}[-/]\d{2}/.test(raw)) continue
+    const dateValue = weeklyAxis
+      ? row.period_end ?? row.week_end ?? row.week_end_date ?? row.date ?? raw.split('·').slice(-1)[0].trim()
+      : raw
+    const t = typeof dateValue === 'string' ? new Date(dateValue).getTime() : NaN
     if (!isNaN(t)) {
       const diff = Math.abs(t - target)
       if (diff < bestDiff) {
         bestDiff = diff
-        best = raw
+        best = typeof axisValue === 'number' ? axisValue : raw
       }
     }
   }
@@ -4086,6 +4094,7 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
   const c = nested ? { ...content, ...nested } : content
   const type = widget.widget_type ?? ''
   const palette = useChartPalette()
+  const dataDate = useContext(DataDateContext)
   // Match the screen charts: explicit source colour, then dashboard palette.
   const seriesColor = (series: SeriesSpec, index: number) => series.color ?? palette[index % palette.length]
   const allData = (c.data ?? []) as Record<string, unknown>[]
@@ -4105,6 +4114,12 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
       const text = String(value ?? '')
       return /^\d{4}-\d{2}-\d{2}/.test(text) ? fmtDate(text) : text
     }
+    const marker = findDataDateLabel(data, xKey, xKey, dataDate)
+    const dataDateMarker = marker != null ? <ReferenceLine
+      {...(horizontal ? { y: marker } : { x: marker })}
+      stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 3"
+      label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 8, fill: '#ef4444', dy: 4, dx: -4 }}
+    /> : null
     const axes = <>
       <CartesianGrid stroke="#e2e8f0" vertical={false} />
       <XAxis type={horizontal ? 'number' : 'category'} dataKey={horizontal ? undefined : xKey}
@@ -4116,9 +4131,11 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
     return <ResponsiveContainer width="100%" height="100%" minHeight={0}>
       {isLine ? <LineChart data={data} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
         {axes}
+        {dataDateMarker}
         {series.map((s, i) => <Line key={s.key} dataKey={s.key} name={s.label} stroke={seriesColor(s, i)} strokeWidth={1.7} dot={{ r: 1.3, strokeWidth: 0 }} connectNulls={false} isAnimationActive={false} />)}
       </LineChart> : <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
         {axes}
+        {dataDateMarker}
         {series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label} fill={seriesColor(s, i)} stackId={type === 'stacked_bar_chart' ? 'stack' : undefined} isAnimationActive={false} />)}
       </BarChart>}
     </ResponsiveContainer>
@@ -4192,16 +4209,18 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
     const start = Math.min(...dates)
     const finish = Math.max(...dates)
     const span = Math.max(1, finish - start)
+    const cutoff = date(dataDate)
+    const markerPosition = Number.isFinite(cutoff) && cutoff >= start && cutoff <= finish ? (cutoff - start) / span * 100 : null
     return <div className="a3-trades">{shown.map((trade, i) => {
       const planned = trade.planned as Record<string, unknown> | undefined
       const actual = trade.actual as Record<string, unknown> | undefined
       return <div key={i}><span>{String(trade.trade_name ?? trade.trade_label ?? trade.trade_code ?? '')}</span><div>
         {[planned, actual].map((value, j) => {
           const from = date(value?.start), to = date(value?.finish)
-          return <div key={j} className="a3-trade-track">{Number.isFinite(from) && Number.isFinite(to) && <div style={{ marginLeft: `${(from - start) / span * 100}%`, width: `${Math.max(0.5, (to - from) / span * 100)}%`, background: palette[j] }} />}</div>
+          return <div key={j} className="a3-trade-track" style={{ position: 'relative' }}>{Number.isFinite(from) && Number.isFinite(to) && <div style={{ marginLeft: `${(from - start) / span * 100}%`, width: `${Math.max(0.5, (to - from) / span * 100)}%`, background: palette[j] }} />}{markerPosition != null && <span title={`Data Date: ${dataDate}`} style={{ position: 'absolute', left: `${markerPosition}%`, top: -2, bottom: -2, borderLeft: '1.5px dashed #ef4444' }} />}</div>
         })}
       </div></div>
-    })}<small>{new Date(start).toISOString().slice(0, 10)} — {new Date(finish).toISOString().slice(0, 10)} · Planned / actual dates</small>
+    })}<small>{new Date(start).toISOString().slice(0, 10)} — {new Date(finish).toISOString().slice(0, 10)} · Planned / actual dates{markerPosition != null && <span style={{ color: '#ef4444' }}> · Data Date: {dataDate}</span>}</small>
     <small>{shown.length} of {trades.length} trades. In-progress actual finish is latest recorded activity finish.</small></div>
   }
 
