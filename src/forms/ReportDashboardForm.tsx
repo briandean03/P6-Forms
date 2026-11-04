@@ -30,6 +30,12 @@ interface A3Region {
   row_span: number
   widget_ids: string[]
   presentation_mode: string
+  band?: 'executive' | 'main' | 'bottom' | 'header' | 'footer'
+  grid_column?: number
+  grid_row?: number
+  global_grid_row?: number
+  height_mm?: number
+  presentation_selection?: { maximum_items?: number; selected_trade_codes?: string[] }
 }
 
 // Top-level a3_layout column
@@ -1203,7 +1209,7 @@ const _printSetters = new Set<Dispatch<SetStateAction<boolean>>>()
 let _printEpoch = 0
 const _epochSetters = new Set<Dispatch<SetStateAction<number>>>()
 
-const DASHBOARD_MARGIN_MM = 8
+const DASHBOARD_MARGIN_MM = 0
 let printPrepared = false
 
 function configureDashboardPaper(): void {
@@ -1230,7 +1236,7 @@ function preparePrint(el: HTMLElement): void {
   const height = (heightMM - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4
   root.style.setProperty('--dashboard-paper-width', `${width}px`)
   el.style.zoom = '1'
-  el.style.width = '1526px'
+  el.style.width = `${width}px`
   // Fixed A3 canvas: never widen the sheet to fit a tall screen widget.
   const scale = Math.min(width / el.scrollWidth, height / el.scrollHeight, 1)
   el.style.zoom = String(scale)
@@ -4068,13 +4074,17 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
 
 // A3 has a fixed physical canvas. Its widgets must fit their cells rather than
 // forcing the entire sheet (including every label) to shrink to screen heights.
-function A3Widget({ widget }: { widget: DashboardWidget }) {
+function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Region }) {
   const content = getContent(widget.widget_ast ?? {})
   const nested = content.chart as Record<string, unknown> | undefined
   const c = nested ? { ...content, ...nested } : content
   const type = widget.widget_type ?? ''
   const palette = useChartPalette()
-  const data = (c.data ?? []) as Record<string, unknown>[]
+  const seriesColor = (series: SeriesSpec, index: number) => /planned/i.test(series.key + series.label)
+    ? '#8362d5' : /actual/i.test(series.key + series.label) ? '#29ad8b' : series.color ?? palette[index % palette.length]
+  const allData = (c.data ?? []) as Record<string, unknown>[]
+  const weekly = type.includes('bar_chart') && /period|week/.test(String(c.category_field ?? ''))
+  const data = weekly ? allData.slice(-9) : allData
   const xKey = String(c.category_field ?? c.x_key ?? c.x_axis ?? 'category')
   const series = normaliseSeries(c, xKey)
   const empty = (c.empty_state ?? {}) as { heading?: string; message?: string }
@@ -4100,10 +4110,10 @@ function A3Widget({ widget }: { widget: DashboardWidget }) {
     return <ResponsiveContainer width="100%" height="100%" minHeight={0}>
       {isLine ? <LineChart data={data} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
         {axes}
-        {series.map((s, i) => <Line key={s.key} dataKey={s.key} name={s.label} stroke={s.color ?? palette[i % palette.length]} strokeWidth={1.7} dot={false} connectNulls isAnimationActive={false} />)}
+        {series.map((s, i) => <Line key={s.key} dataKey={s.key} name={s.label} stroke={seriesColor(s, i)} strokeWidth={1.7} dot={{ r: 1.3, strokeWidth: 0 }} connectNulls={false} isAnimationActive={false} />)}
       </LineChart> : <BarChart data={data} layout={horizontal ? 'vertical' : 'horizontal'} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
         {axes}
-        {series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color ?? palette[i % palette.length]} stackId={type === 'stacked_bar_chart' ? 'stack' : undefined} isAnimationActive={false} />)}
+        {series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label} fill={seriesColor(s, i)} stackId={type === 'stacked_bar_chart' ? 'stack' : undefined} isAnimationActive={false} />)}
       </BarChart>}
     </ResponsiveContainer>
   }
@@ -4114,27 +4124,41 @@ function A3Widget({ widget }: { widget: DashboardWidget }) {
     const values = slices.map(slice => ({
       name: String(slice.status_label ?? slice.label ?? slice.name ?? slice.status_code ?? slice.code ?? ''),
       value: Number(slice.count ?? slice.value ?? 0),
+      color: ({ A: '#a9b6c9', B: '#60baa9', C: '#f3b15b', D: '#db6375', UR: '#8498c5' } as Record<string, string>)[String(slice.status_code ?? slice.code ?? '')] ?? '#b9c3d5',
     }))
     return <div className="a3-donut">
       <div className="a3-donut-chart"><ResponsiveContainer width="100%" height="100%" minHeight={0}>
         <PieChart><Pie data={values} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="52%" outerRadius="82%" isAnimationActive={false} strokeWidth={0}>
-          {values.map((_, i) => <Cell key={i} fill={palette[i % palette.length]} />)}
+          {values.map((slice, i) => <Cell key={i} fill={slice.color} />)}
         </Pie><text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" fill="#102746" fontSize={16} fontWeight={700}>{fmtNum(values.reduce((sum, slice) => sum + slice.value, 0), 0)}</text></PieChart>
       </ResponsiveContainer></div>
-      <div className="a3-donut-legend">{values.map((slice, i) => <div key={i}><i style={{ background: palette[i % palette.length] }} /><span>{slice.name}</span><strong>{fmtNum(slice.value, 0)}</strong></div>)}</div>
+      <div className="a3-donut-legend">{values.map((slice, i) => <div key={i}><i style={{ background: slice.color }} /><span>{slice.name}</span><strong>{fmtNum(slice.value, 0)}</strong></div>)}</div>
     </div>
   }
 
   if (type === 'kpi_group' || type === 'kpi_card') {
-    const cards = (c.kpis ?? c.cards ?? [c]) as Record<string, unknown>[]
+    const cards = [...((c.kpis ?? c.cards ?? [c]) as Record<string, unknown>[])]
+    const previousActual = cards.find(card => /actual/i.test(String(card.key ?? card.label ?? '')) && card.comparison_value != null)
+    if (previousActual) cards.push({ label: 'Previous actual', value: previousActual.comparison_value, unit: previousActual.unit })
+    const tone = (card: Record<string, unknown>) => {
+      const name = String(card.key ?? card.label ?? '').toLowerCase()
+      const adverse = (/delay/.test(name) && Number(card.value) > 0)
+        || (/variance/.test(name) && Number(card.value) < 0)
+        || /delayed|behind|critical|at risk/i.test(String(card.value ?? ''))
+      if (adverse) return { background: '#fff1f1', color: '#c74256' }
+      if (/previous/.test(name)) return { background: '#f5f7fc', color: '#183456' }
+      if (/actual/.test(name)) return { background: '#ebfbf5', color: '#159b75' }
+      if (/planned/.test(name)) return { background: '#f4efff', color: '#7654c9' }
+      return { background: '#f5f7fc', color: '#183456' }
+    }
     return <div className="a3-kpis" style={{ gridTemplateColumns: `repeat(${Math.max(1, cards.length)}, minmax(0, 1fr))` }}>
-      {cards.map((card, i) => <div key={String(card.key ?? i)} className="a3-kpi" style={{ background: ['#f4f0ff', '#ebfaf5', '#fff1f2', '#f3f6fc'][i % 4] }}>
+      {cards.map((card, i) => <div key={String(card.key ?? i)} className="a3-kpi" style={{ background: tone(card).background }}>
         <span>{String(card.label ?? card.title ?? '')}</span>
-        <strong style={{ color: ['#7c54d9', '#0aaf94', '#e54567', '#183456'][i % 4] }}>
+        <strong style={{ color: tone(card).color }}>
           {card.value == null ? '—' : typeof card.value === 'number' ? fmtNum(card.value, Number.isInteger(card.value) ? 0 : 2) : String(card.value)}
           {card.unit != null && <small> {String(card.unit)}</small>}
         </strong>
-        {card.comparison_value != null && <small>Previous: {typeof card.comparison_value === 'number' ? fmtNum(card.comparison_value, 2) : String(card.comparison_value)}</small>}
+        {card.comparison_value != null && card !== previousActual && <small>Previous: {typeof card.comparison_value === 'number' ? fmtNum(card.comparison_value, 2) : String(card.comparison_value)}</small>}
       </div>)}
     </div>
   }
@@ -4158,13 +4182,31 @@ function A3Widget({ widget }: { widget: DashboardWidget }) {
   if (type === 'trade_schedule_gantt') {
     const trades = (c.trades ?? []) as Record<string, unknown>[]
     if (!trades.length) return noData
-    return <div className="a3-trades">{trades.slice(0, 8).map((trade, i) => {
+    const selectedCodes = region?.presentation_selection?.selected_trade_codes
+    const selected = selectedCodes?.length
+      ? selectedCodes.flatMap(code => trades.filter(trade => trade.trade_code === code)) : trades
+    const shown = selected.slice(0, region?.presentation_selection?.maximum_items ?? 8)
+    const date = (value: unknown) => typeof value === 'string' ? Date.parse(value) : NaN
+    const dates = trades.flatMap(trade => {
+      const planned = trade.planned as Record<string, unknown> | undefined
+      const actual = trade.actual as Record<string, unknown> | undefined
+      return [date(planned?.start), date(planned?.finish), date(actual?.start), date(actual?.finish)]
+    }).filter(Number.isFinite)
+    if (!dates.length) return <div className="a3-empty">Trade dates not available</div>
+    const start = Math.min(...dates)
+    const finish = Math.max(...dates)
+    const span = Math.max(1, finish - start)
+    return <div className="a3-trades">{shown.map((trade, i) => {
       const planned = trade.planned as Record<string, unknown> | undefined
       const actual = trade.actual as Record<string, unknown> | undefined
       return <div key={i}><span>{String(trade.trade_name ?? trade.trade_label ?? trade.trade_code ?? '')}</span><div>
-        {[planned, actual].map((value, j) => <div key={j} className="a3-trade-track"><div style={{ width: `${Math.max(0, Math.min(100, Number(value?.cumulative_percent_complete ?? 0)))}%`, background: palette[j] }} /></div>)}
+        {[planned, actual].map((value, j) => {
+          const from = date(value?.start), to = date(value?.finish)
+          return <div key={j} className="a3-trade-track">{Number.isFinite(from) && Number.isFinite(to) && <div style={{ marginLeft: `${(from - start) / span * 100}%`, width: `${Math.max(0.5, (to - from) / span * 100)}%`, background: palette[j] }} />}</div>
+        })}
       </div></div>
-    })}{trades.length > 8 && <small>Showing 8 of {trades.length} trades — full schedule in dashboard.</small>}</div>
+    })}<small>{new Date(start).toISOString().slice(0, 10)} — {new Date(finish).toISOString().slice(0, 10)} · Planned / actual dates</small>
+    <small>{shown.length} of {trades.length} trades. In-progress actual finish is latest recorded activity finish.</small></div>
   }
 
   if (type === 'photo_gallery') {
@@ -4184,8 +4226,9 @@ type A3PageProps = {
   widgets: DashboardWidget[]
 }
 
-function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
+function A3PrintDashboardPage({ structure, widgets }: A3PageProps) {
   const tok = useContext(DesignContext)
+  const isPrinting = usePrintMode()
 
   const a3 = structure.a3_layout
   const ctx = a3?.dashboard_context
@@ -4204,6 +4247,10 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
     return m
   }, [widgets])
 
+  // Keep the screen as lightweight as before: mount compact charts only for
+  // the print lifecycle. The stable shell lets preparePrint flush their mount.
+  if (!isPrinting) return <CompactContext.Provider value={true}><div className="a3-page a3-print-sheet" style={{ height: '297mm' }} /></CompactContext.Provider>
+
   const dataDate = ctx?.data_date ?? structure.data_date ?? ''
   const weekNum  = ctx?.week_num  ?? structure.week_num  ?? ''
   const title    = ctx?.dashboard_title ?? structure.dashboard_title ?? 'Weekly Project Dashboard'
@@ -4212,13 +4259,21 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
   const layoutRows: { weight: number; used: number }[] = []
   const placements = regions.map(region => {
     const columns = Math.max(1, Math.min(12, region.column_span || 4))
+    const explicitRow = region.global_grid_row != null ? region.global_grid_row - 2
+      : region.grid_row != null && region.band ? region.grid_row - 1 + (region.band === 'main' ? 1 : region.band === 'bottom' ? 4 : 0) : null
+    if (explicitRow != null && explicitRow >= 0) {
+      while (layoutRows.length <= explicitRow) layoutRows.push({ weight: 0, used: 0 })
+      layoutRows[explicitRow].weight = Math.max(layoutRows[explicitRow].weight, region.height_mm ?? 42)
+      layoutRows[explicitRow].used += columns
+      return explicitRow + 1
+    }
     let row = layoutRows.length - 1
     if (row < 0 || layoutRows[row].used + columns > 12) {
       layoutRows.push({ weight: 0, used: 0 })
       row++
     }
     layoutRows[row].used += columns
-    layoutRows[row].weight = Math.max(layoutRows[row].weight, region.row_span || 2)
+    layoutRows[row].weight = Math.max(layoutRows[row].weight, region.height_mm ?? ((region.row_span || 2) <= 2 ? 30 : 42))
     return row + 1
   })
 
@@ -4250,8 +4305,8 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
         On screen this renders as a normal scrollable preview.
       */}
       <div
-        className="a3-page"
-        style={{ background: '#f7f7fc', padding: '12px', height: 1040, display: 'flex', flexDirection: 'column' }}
+        className="a3-page a3-print-sheet"
+        style={{ background: '#f6f7fb', padding: '12mm', height: '297mm', display: 'flex', flexDirection: 'column' }}
       >
         {/* ── Header bar ──────────────────────────────────────────────────────── */}
         <div
@@ -4293,7 +4348,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                   <div
                     key={region.region_id ?? ri}
                     className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
-                    style={{ borderColor: tok('subtle_border', '#d5dced'), padding: '6px 8px', minWidth: 0, minHeight: 0, gridRow: placements[ri] }}
+                    style={{ borderColor: tok('subtle_border', '#d5dced'), padding: '6px 8px', minWidth: 0, minHeight: 0, gridRow: placements[ri], gridColumn: region.grid_column ? `${region.grid_column} / span ${region.column_span}` : undefined }}
                   >
                     {/* Region title */}
                     <p
@@ -4312,7 +4367,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                       </div>
                     ) : regionWidgets.length === 1 ? (
                       <div data-widget-body className="a3-widget-slot">
-                        <A3Widget widget={
+                        <A3Widget region={region} widget={
                           region.presentation_mode === 'full_width_compact_line_chart' ||
                           region.presentation_mode === 'compact_multi_series_line_chart' ||
                           region.presentation_mode === 'compact_line_chart'
@@ -4330,10 +4385,10 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
                             {w.widget_title && (
                               <p className="text-[8px] font-semibold uppercase tracking-wider mb-1"
                                  style={{ color: tok('muted_text', '#94a3b8') }}>
-                                {w.widget_title}
+                                {w.widget_title}{/bar_chart/.test(w.widget_type ?? '') ? ' · Latest up to 9 observations' : ''}
                               </p>
                             )}
-                            <div className="a3-widget-slot"><A3Widget widget={w} /></div>
+                            <div className="a3-widget-slot"><A3Widget region={region} widget={w} /></div>
                           </div>
                         ))}
                       </div>
@@ -4365,6 +4420,176 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
     </CompactContext.Provider>
   )
 }
+
+function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
+  const tok = useContext(DesignContext)
+
+  const a3 = structure.a3_layout
+  const ctx = a3?.dashboard_context
+  const footerCfg = a3?.footer
+
+  // Read regions from a3_layout, skip header/footer metadata regions (no widget_ids)
+  const nonWidgetIds = new Set(a3?.planning_metadata?.non_widget_region_ids ?? [])
+  const regions: A3Region[] = [...(a3?.layout?.regions ?? [])]
+    .sort((a, b) => (a.region_order ?? 0) - (b.region_order ?? 0))
+    .filter(r => !nonWidgetIds.has(r.region_id) && r.widget_ids.length > 0)
+
+  // Map widget_id → DashboardWidget (fetched row)
+  const widgetById = useMemo(() => {
+    const m: Record<string, DashboardWidget> = {}
+    for (const w of widgets) { if (w.widget_id) m[w.widget_id] = w }
+    return m
+  }, [widgets])
+
+  const dataDate = ctx?.data_date ?? structure.data_date ?? ''
+  const weekNum  = ctx?.week_num  ?? structure.week_num  ?? ''
+  const title    = ctx?.dashboard_title ?? structure.dashboard_title ?? 'Weekly Project Dashboard'
+  const reportType = ctx?.report_type ?? 'Weekly Progress Report'
+
+  // Column span → Tailwind grid-cols-12 span class
+  const spanClass = (span: number | undefined): string => {
+    switch (span) {
+      case 1:  return 'col-span-1'
+      case 2:  return 'col-span-2'
+      case 3:  return 'col-span-3'
+      case 4:  return 'col-span-4'
+      case 5:  return 'col-span-5'
+      case 6:  return 'col-span-6'
+      case 7:  return 'col-span-7'
+      case 8:  return 'col-span-8'
+      case 9:  return 'col-span-9'
+      case 10: return 'col-span-10'
+      case 11: return 'col-span-11'
+      case 12: return 'col-span-12'
+      default: return 'col-span-4'
+    }
+  }
+
+  return (
+    <CompactContext.Provider value={true}>
+      {/*
+        No CSS transform — the browser already sets the print viewport to the
+        injected @page size (420mm × 297mm A3 landscape).  We just need the
+        content to flow inside 100% of that width at compact heights.
+        On screen this renders as a normal scrollable preview.
+      */}
+      <div
+        className="a3-screen-page"
+        style={{ background: tok('canvas', '#f1f5f9'), padding: '0 0 8px 0' }}
+      >
+        {/* ── Header bar ──────────────────────────────────────────────────────── */}
+        <div
+          className="flex items-center justify-between px-5 py-2 mb-2"
+          style={{ background: tok('primary', '#1d4ed8'), color: tok('text_on_primary', '#ffffff') }}
+        >
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            <div>
+              <p className="text-xs font-bold tracking-wide">{title}</p>
+              <p className="text-[9px] opacity-75">{reportType} — A3 Executive Summary</p>
+            </div>
+          </div>
+          <div className="text-right">
+            {dataDate && <p className="text-[11px] font-semibold">Data Date: {dataDate}</p>}
+            {weekNum   && <p className="text-[9px] opacity-75">Week {weekNum}</p>}
+          </div>
+        </div>
+
+        {/* ── Widget grid — driven entirely by a3_layout.layout.regions ───────── */}
+        <div className="px-3">
+          {!a3 ? (
+            <p className="text-xs text-gray-400 italic p-4">
+              No A3 layout configured for this report. Please ensure the a3_layout column is populated.
+            </p>
+          ) : regions.length === 0 ? (
+            <p className="text-xs text-gray-400 italic p-4">
+              No widget regions found in the A3 layout.
+            </p>
+          ) : (
+            <div className="grid grid-cols-12 gap-2">
+              {regions.map((region, ri) => {
+                const regionWidgets = region.widget_ids.map(id => widgetById[id]).filter(Boolean) as DashboardWidget[]
+
+                return (
+                  <div
+                    key={region.region_id ?? ri}
+                    className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
+                    style={{ borderColor: tok('subtle_border', '#e2e8f0'), padding: '6px 8px', minWidth: 0 }}
+                  >
+                    {/* Region title */}
+                    <p
+                      className="text-[8px] font-bold uppercase tracking-widest mb-1.5 leading-tight flex-shrink-0"
+                      style={{ color: tok('muted_text', '#94a3b8') }}
+                    >
+                      {region.title}
+                    </p>
+
+                    {/* Render each widget in the region */}
+                    {regionWidgets.length === 0 ? (
+                      <div className="flex items-center justify-center h-10 text-gray-300">
+                        <span className="text-[9px] italic">
+                          Widget{region.widget_ids.length > 1 ? 's' : ''} not loaded
+                        </span>
+                      </div>
+                    ) : regionWidgets.length === 1 ? (
+                      <div data-widget-body>
+                        <WidgetInner widget={
+                          region.presentation_mode === 'full_width_compact_line_chart' ||
+                          region.presentation_mode === 'compact_multi_series_line_chart' ||
+                          region.presentation_mode === 'compact_line_chart'
+                            ? { ...regionWidgets[0], widget_type: 'line_chart' }
+                            : regionWidgets[0]
+                        } />
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {regionWidgets.map((w, wi) => (
+                          <div key={w.widget_id ?? wi} data-widget-body>
+                            {wi > 0 && (
+                              <div className="border-t my-1" style={{ borderColor: tok('subtle_border', '#e2e8f0') }} />
+                            )}
+                            {w.widget_title && (
+                              <p className="text-[8px] font-semibold uppercase tracking-wider mb-1"
+                                 style={{ color: tok('muted_text', '#94a3b8') }}>
+                                {w.widget_title}
+                              </p>
+                            )}
+                            <WidgetInner widget={w} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer bar ──────────────────────────────────────────────────────── */}
+        {(footerCfg?.show_data_date || footerCfg?.show_report_id || footerCfg?.show_project_id || footerCfg?.show_design_version) && (
+          <div
+            className="flex items-center justify-between px-5 py-1.5 mt-2 mx-3 rounded-lg"
+            style={{ background: tok('subtle_border', '#e2e8f0'), color: tok('text_secondary', '#64748b') }}
+          >
+            <div className="flex gap-4 text-[8px]">
+              {footerCfg?.show_project_id  && ctx?.project_id    && <span>Project: {ctx.project_id}</span>}
+              {footerCfg?.show_report_id   && ctx?.report_id     && <span>Report: {ctx.report_id}</span>}
+            </div>
+            <div className="flex gap-4 text-[8px]">
+              {footerCfg?.show_data_date      && dataDate        && <span>Data Date: {dataDate}</span>}
+              {footerCfg?.show_design_version && ctx?.design_version && <span>Design v{ctx.design_version}</span>}
+            </div>
+          </div>
+        )}
+      </div>
+    </CompactContext.Provider>
+  )
+}
+
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -4684,6 +4909,7 @@ export function ReportDashboardForm({
         ) : (
           <div className="a3-print-root">
             <A3WeeklyDashboardPage structure={selectedStructure} widgets={widgets} />
+            <A3PrintDashboardPage structure={selectedStructure} widgets={widgets} />
           </div>
         )}
       </DataDateContext.Provider>

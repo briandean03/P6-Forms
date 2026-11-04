@@ -630,3 +630,18 @@ html.a3-printing [data-trade-row] .truncate {
 .a3-donut-legend > div { display: flex; align-items: center; gap: 4px; margin-block: 3px; }
 .a3-donut-legend i { width: 6px; height: 6px; flex-shrink: 0; }
 .a3-donut-legend strong { margin-left: auto; }
+
+/* The screen dashboard retains its original rendering. Only the print lifecycle
+   reveals the fixed physical sheet and its compact reference-style widgets. */
+.a3-print-sheet { display: none !important; }
+html.a3-printing .a3-print-sheet { display: flex !important; }
+html.a3-printing .a3-screen-page { display: none !important; }
+.a3-print-sheet .a3-heading { height: 12mm; padding: 0 0 1.5mm; margin-bottom: 1.5mm; }
+.a3-print-sheet .a3-footer { height: 8mm; padding: 0; margin-top: 1.5mm; }
+.a3-print-sheet .a3-region-grid { gap: 1.5mm; }
+.a3-print-sheet .a3-region-title { font-size: 8pt; }
+.a3-print-sheet .a3-kpi > strong { font-size: 12.4pt; }
+@media print {
+  .a3-screen-page { display: none !important; }
+  .a3-print-sheet { display: flex !important; }
+}
