@@ -1250,7 +1250,7 @@ function fitRenderedPrint(el: HTMLElement): void {
     (w - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4 / bounds.width,
     (h - 2 * DASHBOARD_MARGIN_MM) * 96 / 25.4 / bounds.height,
     1,
-  ) * 0.98
+  ) * 0.995
   el.style.zoom = String(Number(el.style.zoom || 1) * factor)
 }
 
@@ -4295,7 +4295,7 @@ function A3PrintDashboardPage({ structure, widgets }: A3PageProps) {
       */}
       <div
         className="a3-page a3-print-sheet"
-        style={{ background: tok('canvas', '#f1f5f9'), padding: '12mm', height: '297mm', display: 'flex', flexDirection: 'column' }}
+        style={{ background: tok('canvas', '#f1f5f9'), padding: '3mm', height: '297mm', display: 'flex', flexDirection: 'column' }}
       >
         {/* ── Header bar ──────────────────────────────────────────────────────── */}
         <div

@@ -645,3 +645,12 @@ html.a3-printing .a3-screen-page { display: none !important; }
   .a3-screen-page { display: none !important; }
   .a3-print-sheet { display: flex !important; }
 }
+
+/* Keep the PDF edge clear; the screen dashboard retains its canvas colour. */
+html.a3-printing body,
+html.a3-printing #root,
+html.a3-printing .a3-print-root,
+html.a3-printing .a3-print-sheet { background: #fff !important; }
+@media print {
+  .a3-print-sheet { background: #fff !important; }
+}
