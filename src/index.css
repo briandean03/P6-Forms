@@ -717,3 +717,48 @@ html.a3-printing .dashboard-design .dashboard-panel { box-shadow: none !importan
 .dashboard-design .text-red-500, .dashboard-design .text-red-600 { color: var(--design-critical); }
 .dashboard-design .text-amber-600 { color: var(--design-warning); }
 .dashboard-design .text-green-600 { color: var(--design-success); }
+
+/* Weekly report styles are supplied by the selected schema's approved design. */
+.weekly-report-themed .weekly-report-section,
+.weekly-report-themed .weekly-report-toc { background: var(--wr-page-background) !important; color: var(--wr-dark-neutral); }
+.weekly-report-themed .weekly-report-cover { background: var(--wr-cover-bg) !important; color: var(--wr-dark-neutral) !important; border-left: 6pt solid var(--wr-primary); }
+.weekly-report-themed .weekly-report-cover h1 { color: var(--wr-primary) !important; }
+.weekly-report-themed .weekly-report-cover h2 { color: var(--wr-secondary) !important; }
+.weekly-report-themed .weekly-report-cover strong { color: var(--wr-dark-neutral) !important; }
+.weekly-report-themed .weekly-report-cover span,
+.weekly-report-themed .weekly-report-cover > div:first-child { color: var(--wr-medium-neutral) !important; }
+.weekly-report-themed .weekly-report-cover > div:last-child { border-color: var(--wr-light-neutral) !important; }
+.weekly-report-themed .weekly-report-section > div:first-child { border-left: var(--wr-section-accent) solid var(--wr-primary); padding-left: 8pt; border-bottom-color: var(--wr-light-neutral); }
+.weekly-report-themed .weekly-report-section h2,
+.weekly-report-themed .weekly-report-toc h2 { color: var(--wr-primary); font-size: var(--wr-h1-font); }
+.weekly-report-themed .weekly-report-section h3 { color: var(--wr-primary); font-size: var(--wr-h2-font); }
+.weekly-report-themed .wr-block p { color: var(--wr-dark-neutral); font-size: var(--wr-body-font); margin-bottom: var(--wr-paragraph-gap); }
+.weekly-report-themed .wr-kpi-grid { grid-template-columns: repeat(var(--wr-kpi-columns), minmax(0, 1fr)) !important; }
+.weekly-report-themed .wr-kpi-card { background: var(--wr-kpi-bg) !important; border-color: var(--wr-kpi-border) !important; border-radius: var(--wr-kpi-radius) !important; padding: var(--wr-kpi-padding) !important; min-height: var(--wr-kpi-min-height); }
+.weekly-report-themed .wr-kpi-card > span:first-child { font-size: var(--wr-kpi-label-font); color: var(--wr-medium-neutral); }
+.weekly-report-themed .wr-kpi-value { font-size: var(--wr-kpi-value-font); }
+.weekly-report-themed [data-status="adverse"] { color: var(--wr-negative); }
+.weekly-report-themed [data-status="positive"] { color: var(--wr-positive); }
+.weekly-report-themed [data-status="caution"] { color: var(--wr-warning); }
+.weekly-report-themed .wr-block-table { margin-bottom: var(--wr-table-gap); }
+.weekly-report-themed table th { background: var(--wr-table-header) !important; color: var(--wr-table-header-text) !important; font-size: var(--wr-table-header-font) !important; }
+.weekly-report-themed table td { color: var(--wr-dark-neutral); font-size: var(--wr-table-body-font) !important; }
+.weekly-report-themed table th,
+.weekly-report-themed table td { padding: var(--wr-table-padding) !important; border-color: var(--wr-table-border) !important; }
+.weekly-report-themed table tbody tr:nth-child(even) { background: var(--wr-table-stripe) !important; }
+.weekly-report-themed .wr-callout > p:first-child { color: var(--wr-callout-title, var(--wr-dark-neutral)); }
+.weekly-report-themed .wr-block:has(figure) { margin-bottom: var(--wr-chart-gap); }
+.weekly-report-themed .text-indigo-600,
+.weekly-report-themed .text-indigo-500 { color: var(--wr-primary); }
+.weekly-report-themed .bg-indigo-600 { background: var(--wr-primary); }
+@media screen and (max-width: 640px) { .weekly-report-themed .wr-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
+@media print {
+  html.weekly-report-printing .weekly-report-themed .weekly-report-cover { background: var(--wr-cover-bg) !important; }
+  html.weekly-report-printing .weekly-report-themed .weekly-report-section table td { font-size: var(--wr-table-body-font) !important; }
+  html.weekly-report-printing .weekly-report-themed .weekly-report-section table th { font-size: var(--wr-table-header-font) !important; }
+}
+.weekly-report-themed table td[data-numeric="true"] { text-align: right; }
+.weekly-report-themed table tbody tr { height: var(--wr-table-row-height); }
+.weekly-report-themed table thead tr { height: var(--wr-table-head-height); }
+.weekly-report-themed table td, .weekly-report-themed table th { border-bottom-width: var(--wr-table-border-width); }
+@media print { .weekly-report-themed table thead { display: var(--wr-table-head-display) !important; } }
