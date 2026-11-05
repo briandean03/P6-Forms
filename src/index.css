@@ -663,3 +663,57 @@ html.a3-printing .a3-print-sheet { background: #fff !important; }
 
 /* Preserve main's screen preview shadow without applying it to the PDF. */
 .a3-screen-page { box-shadow: 0 18px 65px rgba(31, 40, 80, 0.2); }
+
+/* Dashboard design_specification supplies visual tokens; a3_layout retains
+   control of grid positions, row heights and the user-selected print inset. */
+.dashboard-design .dashboard-panel {
+  background: var(--design-surface-primary) !important;
+  border-color: var(--design-subtle-border) !important;
+  border-radius: var(--design-widget-radius) !important;
+}
+.dashboard-design .a3-screen-page .dashboard-panel { padding: var(--design-widget-padding) !important; }
+.dashboard-design .dashboard-panel-title,
+.dashboard-design .a3-region-title {
+  color: var(--design-text-primary) !important;
+  font-size: var(--design-widget-title-size) !important;
+  font-weight: var(--design-widget-title-weight) !important;
+}
+.dashboard-design .dashboard-kpi-label {
+  color: var(--design-text-secondary) !important;
+  font-size: var(--design-kpi-label-size) !important;
+  font-weight: var(--design-kpi-label-weight) !important;
+}
+.dashboard-design .dashboard-kpi-value {
+  color: var(--design-text-primary) !important;
+  font-size: var(--design-kpi-value-size) !important;
+  font-weight: var(--design-kpi-value-weight) !important;
+}
+.dashboard-design .dashboard-kpi-card,
+.dashboard-design .a3-kpi { border-radius: var(--design-kpi-radius) !important; }
+.dashboard-design .recharts-cartesian-axis-tick text { fill: var(--design-chart-axis-label); font-family: inherit; }
+.dashboard-design .recharts-cartesian-grid line { stroke: var(--design-chart-gridline); }
+.dashboard-design .a3-screen-page .recharts-cartesian-axis-tick text { font-size: var(--design-chart-axis-label-size); }
+.dashboard-design .a3-screen-page .recharts-legend-wrapper { font-size: var(--design-chart-legend-size) !important; }
+.dashboard-design .a3-screen-page table td { font-size: var(--design-table-body-size) !important; color: var(--design-text-primary); }
+.dashboard-design .a3-screen-page table th { font-size: var(--design-table-header-size) !important; color: var(--design-text-secondary); }
+.dashboard-design .a3-screen-page { background: var(--design-canvas) !important; }
+.dashboard-design .a3-print-sheet .a3-region-title { font-size: var(--design-print-section-title) !important; }
+.dashboard-design .a3-print-sheet .a3-kpi > span { font-size: var(--design-print-kpi-label); color: var(--design-text-secondary); }
+.dashboard-design .a3-print-sheet .a3-kpi > strong { font-size: var(--design-print-kpi-value); color: var(--design-text-primary) !important; }
+.dashboard-design .a3-print-sheet .a3-kpi small { color: var(--design-text-secondary); }
+.dashboard-design .a3-print-sheet .a3-heading .text-lg { font-size: var(--design-print-page-title); }
+.dashboard-design .a3-print-sheet .a3-record dt,
+.dashboard-design .a3-print-sheet .a3-record dd,
+.dashboard-design .a3-print-sheet .a3-table-summary td { font-size: var(--design-print-table-body); }
+.dashboard-design .a3-print-sheet .a3-table-summary th { font-size: var(--design-print-table-header); }
+.dashboard-design .a3-print-sheet .a3-donut-legend { font-size: var(--design-print-chart-legend); }
+html.a3-printing .dashboard-design .dashboard-panel { box-shadow: none !important; }
+@media print { .dashboard-design .dashboard-panel { box-shadow: none !important; } }
+.dashboard-design .a3-screen-page .recharts-line-curve { stroke-width: var(--design-chart-line-width); }
+.dashboard-design .a3-print-sheet .recharts-line-curve { stroke-width: var(--design-print-line-width); }
+.dashboard-design .a3-screen-page .dashboard-kpi-card { padding: var(--design-kpi-padding) !important; min-height: var(--design-kpi-min-height); }
+.dashboard-design .a3-kpi { background: var(--design-surface-primary) !important; border: 1px solid var(--design-subtle-border); }
+.dashboard-design .a3-screen-page .dashboard-panel { box-shadow: var(--design-card-shadow) !important; }
+.dashboard-design .text-red-500, .dashboard-design .text-red-600 { color: var(--design-critical); }
+.dashboard-design .text-amber-600 { color: var(--design-warning); }
+.dashboard-design .text-green-600 { color: var(--design-success); }

@@ -5,6 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
   ReferenceLine, LabelList,
 } from 'recharts'
+import { dashboardDesignStyle, designObject, designNumber, type DesignSpec } from '@/lib/dashboardDesign'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
@@ -80,6 +81,7 @@ interface A3Layout {
 }
 
 interface DashboardStructure {
+  design_id?: string | null
   structure_id: string
   report_id: string | null
   project_id: string | null
@@ -126,11 +128,14 @@ interface DashboardDesign {
 
 // Builds a token→hex lookup from design_specification.color_tokens
 // e.g. tok('primary') → '#5741DF', tok('surface_primary') → '#FFFFFF'
-function buildTokenResolver(spec: Record<string, unknown>) {
-  const tokens = (spec.color_tokens ?? {}) as Record<string, { hex?: string }>
-  return function tok(name: string, fallback = '#6b7280'): string {
-    return tokens[name]?.hex ?? fallback
+function buildTokenResolver(spec: DesignSpec) {
+  const tokens = designObject(spec.color_tokens)
+  const resolve = (name: string, fallback = '#6b7280'): string => {
+    const token = tokens[name]
+    const value = typeof token === 'string' ? token : designObject(token).hex
+    return typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback
   }
+  return Object.assign(resolve, { spec })
 }
 
 // Default fallback resolver used before design loads (matches current hardcoded values)
@@ -492,8 +497,8 @@ function KpiCard({ item, bare }: { item: KpiItem; bare?: boolean }) {
     : '—'
   const inner = (
     <>
-      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate">{item.label}</span>
-      <span className="text-2xl font-bold mt-1 text-gray-900">
+      <span className="dashboard-kpi-label text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate">{item.label}</span>
+      <span className="dashboard-kpi-value text-2xl font-bold mt-1 text-gray-900">
         {displayValue}
         {item.unit && <span className="text-sm font-normal text-gray-500 ml-1">{item.unit}</span>}
       </span>
@@ -591,15 +596,16 @@ function KpiGroupWidget({ ast }: { ast: Record<string, unknown> }) {
 
 // Selectable KPI group — pill row above, selected card highlighted with ring + accent border
 function KpiGroupSelectable({ items }: { items: KpiItem[] }) {
+  const tok = useContext(DesignContext)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
   // Colour accent per severity — used for the selected card ring and pill active state
   const accentFor = (status: string | null | undefined) => {
-    if (!status) return { ring: '#3b82f6', pill: '#eff6ff', pillText: '#1d4ed8', pillBorder: '#bfdbfe' }
-    if (['critical', 'error', 'behind'].includes(status))  return { ring: '#ef4444', pill: '#fef2f2', pillText: '#b91c1c', pillBorder: '#fecaca' }
-    if (['overdue', 'warning'].includes(status))            return { ring: '#f59e0b', pill: '#fffbeb', pillText: '#b45309', pillBorder: '#fde68a' }
-    if (['ahead', 'ok', 'good', 'on_track'].includes(status)) return { ring: '#10b981', pill: '#f0fdf4', pillText: '#15803d', pillBorder: '#bbf7d0' }
-    return { ring: '#3b82f6', pill: '#eff6ff', pillText: '#1d4ed8', pillBorder: '#bfdbfe' }
+    if (!status) return { ring: tok('primary', '#3b82f6'), pill: tok('alert_info_bg', '#eff6ff'), pillText: '#1d4ed8', pillBorder: '#bfdbfe' }
+    if (['critical', 'error', 'behind'].includes(status))  return { ring: tok('critical', '#ef4444'), pill: tok('negative_bg', '#fef2f2'), pillText: '#b91c1c', pillBorder: '#fecaca' }
+    if (['overdue', 'warning'].includes(status))            return { ring: tok('warning', '#f59e0b'), pill: tok('warning_bg', '#fffbeb'), pillText: '#b45309', pillBorder: '#fde68a' }
+    if (['ahead', 'ok', 'good', 'on_track'].includes(status)) return { ring: tok('success', '#10b981'), pill: tok('positive_bg', '#f0fdf4'), pillText: '#15803d', pillBorder: '#bbf7d0' }
+    return { ring: tok('primary', '#3b82f6'), pill: tok('alert_info_bg', '#eff6ff'), pillText: '#1d4ed8', pillBorder: '#bfdbfe' }
   }
 
   return (
@@ -642,12 +648,13 @@ function KpiGroupSelectable({ items }: { items: KpiItem[] }) {
             <div
               key={i}
               onClick={() => setSelectedIdx(isSelected ? null : i)}
+              className="dashboard-kpi-card"
               style={{
                 cursor: 'pointer',
                 borderRadius: 8,
-                border: isSelected ? `2px solid ${ac.ring}` : '1px solid #e5e7eb',
+                border: isSelected ? `2px solid ${ac.ring}` : `1px solid ${tok('subtle_border', '#e5e7eb')}`,
                 borderTop: isSelected ? `3px solid ${ac.ring}` : undefined,
-                background: isSelected ? ac.pill : '#f8fafc',
+                background: isSelected ? ac.pill : tok('surface_primary', '#f8fafc'),
                 boxShadow: isSelected ? `0 0 0 3px ${ac.ring}22` : undefined,
                 transition: 'all 0.15s',
                 padding: '10px 14px',
@@ -1192,7 +1199,10 @@ type SeriesSpec = { key: string; label: string; color?: string; dashed?: boolean
 // Normalise series from content:
 //   content.series[]: { value_field, name, color?, line_style?, semantic_series? }
 // Falls back to all numeric keys except xKey.
-function normaliseSeries(content: Record<string, unknown>, xKey: string): SeriesSpec[] {
+function useNormalisedSeries(content: Record<string, unknown>, xKey: string): SeriesSpec[] {
+  const tok = useContext(DesignContext)
+  const semanticColors = designObject(tok.spec.semantic_colors)
+  const themePalette = useChartPalette()
   type RawSeries = { value_field?: string; name?: string; color?: string; line_style?: string; semantic_series?: string }
   const raw = content.series as RawSeries[] | null
   if (raw?.length) {
@@ -1201,7 +1211,14 @@ function normaliseSeries(content: Record<string, unknown>, xKey: string): Series
       .map((s, i) => ({
         key:    s.value_field!,
         label:  s.name ?? s.value_field!,
-        color:  s.color ?? (s.semantic_series === 'planned' ? '#3b82f6' : s.semantic_series === 'actual' ? '#10b981' : PALETTE[i % PALETTE.length]),
+        color: (() => {
+          const semantic = s.semantic_series ?? (/planned/i.test(s.name ?? s.value_field ?? '') ? 'planned' : /actual/i.test(s.name ?? s.value_field ?? '') ? 'actual' : '')
+          const rule = designObject(semanticColors[semantic])
+          if (typeof rule.color_token === 'string') return tok(rule.color_token, s.color ?? PALETTE[i % PALETTE.length])
+          if (typeof rule.hex === 'string') return rule.hex
+          if (Object.keys(designObject(tok.spec.chart_styles)).length) return themePalette[i % themePalette.length]
+          return s.color ?? (semantic === 'planned' ? tok('primary', '#3b82f6') : semantic === 'actual' ? tok('mint', '#10b981') : PALETTE[i % PALETTE.length])
+        })(),
         dashed: s.line_style === 'dashed',
       }))
   }
@@ -1210,7 +1227,7 @@ function normaliseSeries(content: Record<string, unknown>, xKey: string): Series
   if (!data?.length) return []
   return Object.keys(data[0])
     .filter(k => k !== xKey && typeof data[0][k] === 'number')
-    .map((k, i) => ({ key: k, label: k.replace(/_/g, ' '), color: PALETTE[i % PALETTE.length] }))
+    .map((k, i) => ({ key: k, label: k.replace(/_/g, ' '), color: themePalette[i % themePalette.length] }))
 }
 
 // ── A3 print scaling — module-level shared state ──────────────────────────────
@@ -1388,7 +1405,7 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const data  = content.data as Record<string, unknown>[] | null
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
   const labelKey = (content.category_label_field ?? xKey) as string
-  const series = normaliseSeries(content, xKey)
+  const series = useNormalisedSeries(content, xKey)
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
   const isPrinting = usePrintMode()
@@ -1515,7 +1532,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
   const xKey      = (content.category_field      ?? 'period_end')   as string
   const labelKey  = (content.category_label_field ?? xKey)           as string
-  const series    = normaliseSeries(content, xKey)
+  const series    = useNormalisedSeries(content, xKey)
   const yUnit     = ((content.y_axis as Record<string, unknown> | null)?.unit ?? '') as string
   const dataDate  = useContext(DataDateContext)
   const isPrinting = usePrintMode()
@@ -1765,7 +1782,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const data  = (content.data ?? chartObj.data) as Record<string, unknown>[] | null
   const merged = chartObj.data ? { ...content, ...chartObj } : content
   const xKey  = (merged.category_field ?? merged.x_key ?? merged.x_axis ?? 'category') as string
-  const series = normaliseSeries(merged, xKey)
+  const series = useNormalisedSeries(merged, xKey)
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const palette = useChartPalette()
@@ -1902,7 +1919,7 @@ function AreaChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const data  = content.data as Record<string, unknown>[] | null
   const xKey  = (content.category_field ?? content.x_key ?? content.x_axis ?? 'period_end') as string
-  const series = normaliseSeries(content, xKey)
+  const series = useNormalisedSeries(content, xKey)
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const dataDate = useContext(DataDateContext)
   const palette  = useChartPalette()
@@ -1988,7 +2005,16 @@ const STATUS_COLORS: Record<string, string> = {
   OPN: '#ef4444', CLS: '#10b981',
 }
 
+function useStatusColor() {
+  const tok = useContext(DesignContext)
+  const token: Record<string, string> = { A: 'success', B: 'primary', C: 'warning', D: 'critical', UR: 'muted_text', OPN: 'critical', CLS: 'success' }
+  return (code: string, explicit?: string) => Object.keys(designObject(tok.spec.color_tokens)).length
+    ? tok(token[code] ?? '', explicit ?? STATUS_COLORS[code] ?? PALETTE[0])
+    : explicit ?? STATUS_COLORS[code] ?? PALETTE[0]
+}
+
 function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
+  const statusColor = useStatusColor()
   const content = getContent(ast)
   type Slice = Record<string, unknown>
   const chartObj = (content.chart ?? {}) as Record<string, unknown>
@@ -2015,7 +2041,7 @@ function DonutChartWidget({ ast }: { ast: Record<string, unknown> }) {
         d.percent_of_categorized ??
         0
       ) as number
-      const color = (d.color as string | undefined) ?? STATUS_COLORS[code] ?? PALETTE[0]
+      const color = statusColor(code, d.color as string | undefined)
       return { name, code, value, pct, color }
     })
     .filter(d => d.value > 0)
@@ -4089,6 +4115,9 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
 // A3 has a fixed physical canvas. Its widgets must fit their cells rather than
 // forcing the entire sheet (including every label) to shrink to screen heights.
 function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Region }) {
+  const statusColor = useStatusColor()
+  const tok = useContext(DesignContext)
+  const printTypography = designObject(designObject(tok.spec.print_specification).typography)
   const content = getContent(widget.widget_ast ?? {})
   const nested = content.chart as Record<string, unknown> | undefined
   const c = nested ? { ...content, ...nested } : content
@@ -4101,7 +4130,7 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
   const weekly = type.includes('bar_chart') && /period|week/.test(String(c.category_field ?? ''))
   const data = weekly ? allData.slice(-9) : allData
   const xKey = String(c.category_field ?? c.x_key ?? c.x_axis ?? 'category')
-  const series = normaliseSeries(c, xKey)
+  const series = useNormalisedSeries(c, xKey)
   const empty = (c.empty_state ?? {}) as { heading?: string; message?: string }
   const noData = <div className="a3-empty"><strong>{empty.heading ?? 'No data available'}</strong>{empty.message && <span>{empty.message}</span>}</div>
 
@@ -4109,7 +4138,7 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
     if (!data.length) return noData
     const isLine = type === 'line_chart' || type === 'area_chart'
     const horizontal = type === 'horizontal_bar_chart'
-    const axisTick = { fontSize: 8 }
+    const axisTick = { fontSize: designNumber(printTypography.chart_axis_label_pt, 6) * 96 / 72, fill: tok('chart_axis_label', '#64748b') }
     const category = (value: unknown) => {
       const text = String(value ?? '')
       return /^\d{4}-\d{2}-\d{2}/.test(text) ? fmtDate(text) : text
@@ -4121,12 +4150,12 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
       label={{ value: 'Data Date', position: 'insideTopRight', fontSize: 8, fill: '#ef4444', dy: 4, dx: -4 }}
     /> : null
     const axes = <>
-      <CartesianGrid stroke="#e2e8f0" vertical={false} />
+      <CartesianGrid stroke={tok('chart_gridline', '#e2e8f0')} vertical={false} />
       <XAxis type={horizontal ? 'number' : 'category'} dataKey={horizontal ? undefined : xKey}
         tick={axisTick} tickFormatter={horizontal ? fmtAxis : category} minTickGap={32} height={12} />
       <YAxis type={horizontal ? 'category' : 'number'} dataKey={horizontal ? xKey : undefined}
         tick={axisTick} tickFormatter={horizontal ? undefined : fmtAxis} width={horizontal ? 72 : 38} />
-      <Legend verticalAlign="top" height={12} iconSize={7} wrapperStyle={{ fontSize: 9 }} />
+      <Legend verticalAlign="top" height={16} iconSize={7} wrapperStyle={{ fontSize: designNumber(printTypography.chart_legend_pt, 6.75) * 96 / 72 }} />
     </>
     return <ResponsiveContainer width="100%" height="100%" minHeight={0}>
       {isLine ? <LineChart data={data} margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
@@ -4147,7 +4176,7 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
     const values = slices.map(slice => ({
       name: String(slice.status_label ?? slice.label ?? slice.name ?? slice.status_code ?? slice.code ?? ''),
       value: Number(slice.count ?? slice.value ?? 0),
-      color: (slice.color as string | undefined) ?? STATUS_COLORS[String(slice.status_code ?? slice.code ?? '')] ?? PALETTE[0],
+      color: statusColor(String(slice.status_code ?? slice.code ?? ''), slice.color as string | undefined),
     }))
     return <div className="a3-donut">
       <div className="a3-donut-chart"><ResponsiveContainer width="100%" height="100%" minHeight={0}>
@@ -4362,7 +4391,7 @@ function A3PrintDashboardPage({ structure, widgets }: A3PageProps) {
                 return (
                   <div
                     key={region.region_id ?? ri}
-                    className={`${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
+                    className={`dashboard-panel ${spanClass(region.column_span)} bg-white rounded-lg border shadow-sm flex flex-col`}
                     style={{ borderColor: tok('subtle_border', '#d5dced'), padding: '6px 8px', minWidth: 0, minHeight: 0, gridRow: placements[ri], gridColumn: region.grid_column ? `${region.grid_column} / span ${region.column_span}` : undefined }}
                   >
                     {/* Region title */}
@@ -4594,6 +4623,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
           return (
             <div
               key={region.region_id ?? ri}
+              className="dashboard-panel"
               style={{
                 gridRow,
                 gridColumn: `${gridColStart} / ${gridColEnd}`,
@@ -4609,7 +4639,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
               }}
             >
               {/* Panel title */}
-              <div style={{
+              <div className="dashboard-panel-title" style={{
                 fontSize: '8pt', fontWeight: 800, color: tok('text_primary', '#22314b'),
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 flexShrink: 0, marginBottom: '2mm', lineHeight: 1.2,
@@ -4665,7 +4695,7 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
 
 // The week list only needs light columns; the heavy JSON is fetched for the selected week only
 const STRUCTURE_LIST_COLS = 'structure_id, report_id, project_id, week_num, data_date, dashboard_title, processing_status, is_approved'
-const STRUCTURE_FULL_COLS = STRUCTURE_LIST_COLS + ', structure_plan, a3_layout'
+const STRUCTURE_FULL_COLS = STRUCTURE_LIST_COLS + ', design_id, structure_plan, a3_layout'
 const NO_WIDGETS: DashboardWidget[] = []
 
 // JSON columns may arrive as strings (or double-encoded) from Supabase — parse safely
@@ -4736,35 +4766,6 @@ export function ReportDashboardForm({
   const [tok, setTok] = useState<ReturnType<typeof buildTokenResolver>>(() => DEFAULT_TOK)
   const { notification, showError, hideNotification } = useNotification()
 
-  // Fetch the approved dashboard design and build a token resolver from it.
-  useEffect(() => {
-    if (!schemaName || schemaName === 'public') return
-    const load = async () => {
-      try {
-        const db = schemaClient(schemaName)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (db as any)
-          .from('dbp6_0008_dashboard_designs')
-          .select('design_id, design_name, design_version, design_specification, is_approved, is_default')
-          .eq('is_approved', true)
-          .order('is_default', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (!error && data) {
-          const row = data as DashboardDesign
-          const spec = typeof row.design_specification === 'string'
-            ? (() => { try { return JSON.parse(row.design_specification as unknown as string) } catch { return {} } })()
-            : (row.design_specification ?? {})
-          setTok(() => buildTokenResolver(spec))
-        }
-        if (error) console.warn('[ReportDashboard] design fetch error:', error.message)
-      } catch (err) {
-        console.warn('[ReportDashboard] design fetch failed:', err)
-      }
-    }
-    load()
-  }, [schemaName])
-
   // Fetch the week list. Only light columns — the heavy JSON (structure_plan / a3_layout)
   // is fetched for the selected week only, in parallel with its widgets (effect below).
   useEffect(() => {
@@ -4812,6 +4813,7 @@ export function ReportDashboardForm({
       setLoadingWidgets(true)
       setWidgets([])
       setSelectedStructure(null)
+      setTok(() => DEFAULT_TOK)
       try {
         const db = schemaClient(schemaName)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4830,6 +4832,22 @@ export function ReportDashboardForm({
         if (structRes.error) throw structRes.error
         if (widgetRes.error) throw widgetRes.error
         const sRow = structRes.data as DashboardStructure | null
+        let designQuery = anyDb.from('dbp6_0008_dashboard_designs')
+          .select('design_id, design_name, design_version, design_specification, is_approved, is_default')
+        const layout = parseJsonCol(sRow?.a3_layout) as A3Layout | null
+        const designId = sRow?.design_id ?? layout?.dashboard_context?.design_id
+        // A linked design is authoritative, even if not the schema's default.
+        // Fall back to an approved default only when no design was linked.
+        designQuery = designId ? designQuery.eq('design_id', designId)
+          : designQuery.eq('is_approved', true).eq('is_default', true)
+        const designResult = await designQuery.maybeSingle()
+        if (cancelled) return
+        if (designResult.error || !designResult.data) {
+          showError(designId ? `Linked dashboard design ${designId} could not be loaded. Showing fallback styling.` : 'No default dashboard design is available. Showing fallback styling.')
+        } else {
+          const spec = parseJsonCol((designResult.data as DashboardDesign).design_specification)
+          setTok(() => buildTokenResolver(designObject(spec)))
+        }
         setSelectedStructure(sRow ? {
           ...sRow,
           structure_plan: parseJsonCol(sRow.structure_plan) as DashboardStructure['structure_plan'],
@@ -4937,6 +4955,7 @@ export function ReportDashboardForm({
     return (
       <DesignContext.Provider value={tok}>
       <DataDateContext.Provider value={reportDataDate}>
+      <div className="dashboard-design" style={dashboardDesignStyle(tok.spec, tok)}>
         {notification && <Notification type={notification.type} message={notification.message} onClose={hideNotification} />}
 
         {/* A3 toolbar — hidden on print */}
@@ -4982,6 +5001,7 @@ export function ReportDashboardForm({
             <A3PrintDashboardPage structure={selectedStructure} widgets={widgets} />
           </div>
         )}
+      </div>
       </DataDateContext.Provider>
       </DesignContext.Provider>
     )
