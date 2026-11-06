@@ -1090,16 +1090,26 @@ export function WeeklyReportForm({
 
   const selectedWeek = weekOptions.find(o => o.report_id === selectedReportId)
 
+  // Always render appendices after all regular sections, regardless of section_order from the DB.
+  const sortedSections = useMemo(() =>
+    [...sections].sort((a, b) => {
+      const aIsAppendix = (a.type ?? '').toLowerCase() === 'appendix' ? 1 : 0
+      const bIsAppendix = (b.type ?? '').toLowerCase() === 'appendix' ? 1 : 0
+      if (aIsAppendix !== bIsAppendix) return aIsAppendix - bIsAppendix
+      return (a.section_order ?? 0) - (b.section_order ?? 0)
+    }),
+  [sections])
+
   const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return sections
+    if (!searchQuery.trim()) return sortedSections
     const q = searchQuery.toLowerCase()
-    return sections.filter(
+    return sortedSections.filter(
       s =>
         (s.title ?? '').toLowerCase().includes(q) ||
         (s.semantic_role ?? '').toLowerCase().includes(q) ||
         (s.section_id ?? '').toLowerCase().includes(q),
     )
-  }, [sections, searchQuery])
+  }, [sortedSections, searchQuery])
 
   return (
     <WeeklyDesignContext.Provider value={design}>
@@ -1208,7 +1218,7 @@ export function WeeklyReportForm({
               >
                 Contents
               </a>
-              {sections
+              {sortedSections
                 .filter(s => s.include_in_toc !== false)
                 .map(s => (
                   <a
@@ -1264,7 +1274,7 @@ export function WeeklyReportForm({
                 />
               )}
 
-              {sections.length > 0 && <TableOfContents sections={sections} />}
+              {sections.length > 0 && <TableOfContents sections={sortedSections} />}
 
               {filteredSections.map(section => (
                 <SectionCard key={section.section_id} section={section} />
