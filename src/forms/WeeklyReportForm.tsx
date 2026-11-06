@@ -250,7 +250,8 @@ function buildChart(
           dataKey={s.name}
           stroke={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
           strokeWidth={designNumber(design.charts?.line_width_pt, 1.5) * 96 / 72}
-          dot={{ r: n <= 12 ? designNumber(design.charts?.marker_size_pt, 1.875) * 96 / 72 : 1.5, strokeWidth: 0 }}
+          strokeDasharray="none"
+          dot={n === 1 ? { r: 2.5, fill: weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length]), strokeWidth: 0 } : false}
           activeDot={print ? false : undefined}
           isAnimationActive={false}
         />
