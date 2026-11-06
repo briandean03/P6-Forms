@@ -667,6 +667,60 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
       break
     }
 
+    case 'image_gallery': {
+      // content.images[] or content.photos[] — each item may have image_url/photo_url,
+      // image_reference/filename, work_area/location_or_area, photo_date/photo_date_display, caption
+      const rawItems =
+        (c.images ?? c.photos ?? []) as Record<string, unknown>[]
+      if (rawItems.length === 0) {
+        node = (
+          <div className="py-4 px-4 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 italic">
+            No photographs available
+          </div>
+        )
+      } else {
+        node = (
+          <div className={rawItems.length === 1 ? '' : 'grid grid-cols-2 gap-3'}>
+            {rawItems.map((photo, pi) => {
+              const url = String(photo.image_url ?? photo.photo_url ?? '')
+              const ref = photo.image_reference ?? photo.filename ?? null
+              const area = photo.work_area ?? photo.location_or_area ?? null
+              const date = photo.photo_date ?? photo.photo_date_display ?? null
+              const caption = photo.caption ?? photo.caption_or_description ?? null
+              return (
+                <figure key={pi}>
+                  {url ? (
+                    <img
+                      src={url}
+                      alt={String(caption ?? area ?? ref ?? 'Progress photograph')}
+                      className="w-full rounded-lg border border-gray-200 object-cover max-h-96"
+                      loading="lazy"
+                      onError={e => {
+                        ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <div className="py-4 px-4 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 italic">
+                      Photograph URL unavailable
+                    </div>
+                  )}
+                  {(ref != null || area != null || date != null || caption != null) && (
+                    <figcaption className="text-[11px] text-gray-400 mt-1 text-center">
+                      {[ref, area, date, caption]
+                        .filter(v => v != null)
+                        .map(String)
+                        .join(' · ')}
+                    </figcaption>
+                  )}
+                </figure>
+              )
+            })}
+          </div>
+        )
+      }
+      break
+    }
+
     default: {
       // Catch-all for any remaining *_table types not explicitly listed above
       if (type.endsWith('_table') || type.endsWith('table')) {
