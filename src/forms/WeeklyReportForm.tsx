@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react'
 import {
   BarChart,
   Bar,
@@ -11,10 +11,14 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts'
+import { selectWeeklyDesign, normaliseWeeklyDesign, weeklyColor, weeklySeriesColor, weeklyDesignStyle, weeklyStatusStyle, weeklyCalloutStyle, weeklyPage, weeklyPrintCss, type WeeklyDesign, type WeeklyDesignRow } from '@/lib/weeklyReportDesign'
+import { designNumber } from '@/lib/dashboardDesign'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+
+const WeeklyDesignContext = createContext<WeeklyDesign>({})
 
 // ── TypeScript interfaces ───────────────────────────────────────────────────
 
@@ -178,10 +182,11 @@ function xTickInterval(count: number, maxTicks = 8): number {
 
 // Static HTML legend for the print copy — no measurement, so it is correct the moment it is printed
 function PrintLegend({ series, isLine }: { series: ChartSeries[]; isLine: boolean }) {
+  const design = useContext(WeeklyDesignContext)
   return (
-    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: 8 }}>
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: designNumber(design.charts?.legend_size_pt, 6) * 96 / 72 }}>
       {series.map((s, si) => {
-        const color = s.color ?? CHART_COLORS[si % CHART_COLORS.length]
+        const color = weeklySeriesColor(design, s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])
         return (
           <span key={si} className="inline-flex items-center gap-1.5 text-slate-600">
             <span
@@ -205,10 +210,10 @@ function buildChart(
   isLine: boolean,
   chartData: Record<string, unknown>[],
   series: ChartSeries[],
-  opts: { print: boolean; width?: number; height?: number },
+  opts: { print: boolean; width?: number; height?: number; design: WeeklyDesign },
 ): React.ReactElement {
-  const { print, width, height } = opts
-  const fs = print ? 8 : 10
+  const { print, width, height, design } = opts
+  const fs = designNumber(design.charts?.axis_label_size_pt, print ? 6 : 7.5) * 96 / 72
   const n = chartData.length
   const dense = n > 6
   const dims = width && height ? { width, height } : {}
@@ -220,7 +225,7 @@ function buildChart(
   // NOTE: passed as a keyed array (not a fragment) so Recharts registers each child and
   // reserves space for the legend instead of drawing it over the plot area.
   const axes = [
-    <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#e5e7eb" />,
+    <CartesianGrid key="grid" strokeDasharray="3 3" stroke={weeklyColor(design, design.charts?.gridline_color, '#e5e7eb')} />,
     <XAxis
       key="x"
       dataKey="name"
@@ -234,7 +239,7 @@ function buildChart(
     ...(print ? [] : [<Tooltip key="tip" />]),
     // The print copy is mounted while display:none, where Recharts would measure the legend as
     // 0px tall and draw it over the plot. Print uses the static <PrintLegend> instead.
-    ...(print ? [] : [<Legend key="legend" verticalAlign="top" height={26} wrapperStyle={{ fontSize: fs + 1 }} />]),
+    ...(print ? [] : [<Legend key="legend" verticalAlign="top" height={26} wrapperStyle={{ fontSize: designNumber(design.charts?.legend_size_pt, 8) * 96 / 72 }} />]),
   ]
   return isLine ? (
     <LineChart {...common}>
@@ -244,9 +249,9 @@ function buildChart(
           key={si}
           type="monotone"
           dataKey={s.name}
-          stroke={s.color ?? CHART_COLORS[si % CHART_COLORS.length]}
-          strokeWidth={2}
-          dot={n <= 12 ? { r: 2.5, strokeWidth: 0 } : false}
+          stroke={weeklySeriesColor(design, s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
+          strokeWidth={designNumber(design.charts?.line_width_pt, 1.5) * 96 / 72}
+          dot={n <= 12 ? { r: designNumber(design.charts?.marker_size_pt, 1.875) * 96 / 72, strokeWidth: 0 } : false}
           activeDot={print ? false : undefined}
           isAnimationActive={false}
         />
@@ -259,7 +264,7 @@ function buildChart(
         <Bar
           key={si}
           dataKey={s.name}
-          fill={s.color ?? CHART_COLORS[si % CHART_COLORS.length]}
+          fill={weeklySeriesColor(design, s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
           radius={[2, 2, 0, 0]}
           maxBarSize={48}
           isAnimationActive={false}
@@ -327,7 +332,7 @@ function resolveColumns(columns: (string | TableColumn)[] | undefined): TableCol
 
 // ── Block renderer ──────────────────────────────────────────────────────────
 
-function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.ReactNode {
+function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}): React.ReactNode {
   const { type, content: c, source_references } = block
 
   const footnotes =
@@ -386,7 +391,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
                 <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate">
                   {card.label ?? ''}
                 </span>
-                <span className={`text-2xl font-bold mt-1 break-all ${statusClass}`}>
+                <span className={`wr-kpi-value text-2xl font-bold mt-1 break-all ${statusClass}`} data-status={card.status ?? 'neutral'} style={weeklyStatusStyle(design, card.status)}>
                   {fmtVal(card.value, card.unit)}
                   {card.unit && (
                     <span className="text-sm font-normal text-gray-500 ml-1">
@@ -425,7 +430,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
         return point
       })
       const isLine = (cc.chart_type ?? 'bar').toLowerCase() === 'line'
-      const printW = isLandscape ? PRINT_CHART_WIDTH_LANDSCAPE : PRINT_CHART_WIDTH_PORTRAIT
+      const printW = Object.keys(design).length ? Math.floor(weeklyPage(design, isLandscape).contentWidth * 96 / 72) - 8 : isLandscape ? PRINT_CHART_WIDTH_LANDSCAPE : PRINT_CHART_WIDTH_PORTRAIT
       node = (
         <figure className="m-0" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
           {cc.title && (
@@ -436,13 +441,13 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
           {/* Screen copy — responsive, hidden when printing */}
           <div className="print:hidden">
             <ResponsiveContainer width="100%" height={SCREEN_CHART_HEIGHT}>
-              {buildChart(isLine, chartData, series, { print: false })}
+              {buildChart(isLine, chartData, series, { print: false, design })}
             </ResponsiveContainer>
           </div>
           {/* Print copy — fixed size, static, hidden on screen */}
           <div className="hidden print:block print-chart mx-auto" style={{ width: printW }}>
             <PrintLegend series={series} isLine={isLine} />
-            {buildChart(isLine, chartData, series, { print: true, width: printW, height: PRINT_CHART_HEIGHT })}
+            {buildChart(isLine, chartData, series, { print: true, width: printW, height: PRINT_CHART_HEIGHT, design })}
           </div>
           {cc.qualification && (
             <p className="text-[11px] text-gray-400 italic mt-1">{cc.qualification}</p>
@@ -531,7 +536,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
         CALLOUT_SEVERITY_CLASSES[severity] ??
         (type === 'finding' ? 'border-violet-500 bg-violet-50' : 'border-amber-400 bg-amber-50')
       node = (
-        <div className={`wr-callout border-l-4 rounded-r-lg px-4 py-3 ${borderCls}`}>
+        <div className={`wr-callout border-l-4 rounded-r-lg px-4 py-3 ${borderCls}`} style={weeklyCalloutStyle(design, c.callout_type ?? c.category ?? ({ warning: 'schedule_concern', critical: 'risk', info: 'management_attention' } as Record<string, string>)[severity] ?? block.design_style)}>
           {c.title != null && (
             <p className="text-sm font-semibold text-slate-800 mb-1">{String(c.title)}</p>
           )}
@@ -615,7 +620,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
                         return (
                           <td
                             key={col.key}
-                            className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
+                            data-numeric={typeof row[col.key] === 'number'} className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
                           >
                             {fmtVal(row[col.key], isPercent ? '%' : null)}
                           </td>
@@ -667,6 +672,60 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
       break
     }
 
+    case 'image_gallery': {
+      // content.images[] or content.photos[] — each item may have image_url/photo_url,
+      // image_reference/filename, work_area/location_or_area, photo_date/photo_date_display, caption
+      const rawItems =
+        (c.images ?? c.photos ?? []) as Record<string, unknown>[]
+      if (rawItems.length === 0) {
+        node = (
+          <div className="py-4 px-4 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 italic">
+            No photographs available
+          </div>
+        )
+      } else {
+        node = (
+          <div className={rawItems.length === 1 ? '' : 'grid grid-cols-2 gap-3'}>
+            {rawItems.map((photo, pi) => {
+              const url = String(photo.image_url ?? photo.photo_url ?? '')
+              const ref = photo.image_reference ?? photo.filename ?? null
+              const area = photo.work_area ?? photo.location_or_area ?? null
+              const date = photo.photo_date ?? photo.photo_date_display ?? null
+              const caption = photo.caption ?? photo.caption_or_description ?? null
+              return (
+                <figure key={pi}>
+                  {url ? (
+                    <img
+                      src={url}
+                      alt={String(caption ?? area ?? ref ?? 'Progress photograph')}
+                      className="w-full rounded-lg border border-gray-200 object-cover max-h-96"
+                      loading="lazy"
+                      onError={e => {
+                        ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <div className="py-4 px-4 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 italic">
+                      Photograph URL unavailable
+                    </div>
+                  )}
+                  {(ref != null || area != null || date != null || caption != null) && (
+                    <figcaption className="text-[11px] text-gray-400 mt-1 text-center">
+                      {[ref, area, date, caption]
+                        .filter(v => v != null)
+                        .map(String)
+                        .join(' · ')}
+                    </figcaption>
+                  )}
+                </figure>
+              )
+            })}
+          </div>
+        )
+      }
+      break
+    }
+
     default: {
       // Catch-all for any remaining *_table types not explicitly listed above
       if (type.endsWith('_table') || type.endsWith('table')) {
@@ -710,7 +769,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false): React.R
                         {specs.map(col => (
                           <td
                             key={col.key}
-                            className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
+                            data-numeric={typeof row[col.key] === 'number'} className="px-3 py-2 text-slate-700 [overflow-wrap:anywhere]"
                           >
                             {fmtVal(row[col.key])}
                           </td>
@@ -865,8 +924,9 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
 }
 
 function SectionCard({ section }: { section: WeeklyReportSection }) {
+  const design = useContext(WeeklyDesignContext)
   const blocks = section.section_ast?.blocks ?? []
-  const badge = resolveNumbering(section.numbering, section.section_id)
+  const badge = design.sections?.numbering_enabled === false ? '' : resolveNumbering(section.numbering, section.section_id)
   // Only use the orientation field from the DB — portrait sections with tables
   // stay portrait (handled by table styling: 7.5pt, word-wrap, auto layout).
   const printLandscape = section.orientation === 'landscape'
@@ -900,7 +960,7 @@ function SectionCard({ section }: { section: WeeklyReportSection }) {
         {blocks.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No content blocks in this section.</p>
         ) : (
-          blocks.map((block, idx) => renderBlock(block, idx, printLandscape))
+          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design))
         )}
       </div>
     </section>
@@ -923,10 +983,16 @@ export function WeeklyReportForm({
   const [sections, setSections] = useState<WeeklyReportSection[]>([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [loadingReport, setLoadingReport] = useState(false)
+  const [loadedReportId, setLoadedReportId] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
 
   const { notification, hideNotification, showError } = useNotification()
   const _printAreaRef = useRef<HTMLDivElement>(null)
+  const [designRows, setDesignRows] = useState<WeeklyDesignRow[]>([])
+  const scopeKey = `${schemaName}:${projectTextId}`
+  const [loadedScope, setLoadedScope] = useState('')
+  const designRow = useMemo(() => selectWeeklyDesign(loadedScope === scopeKey ? designRows : [], projectTextId, selectedReportId), [designRows, loadedScope, scopeKey, projectTextId, selectedReportId])
+  const design = useMemo(() => normaliseWeeklyDesign(designRow), [designRow])
 
   // Add the weekly-report-printing class while this form is mounted so that
   // Ctrl+P also picks up the correct print CSS (not just the Print button).
@@ -937,122 +1003,119 @@ export function WeeklyReportForm({
     }
   }, [])
 
-  // Fetch available week/report options from Supabase
+  // Queries are scoped to the selected schema and project. Clear the previous
+  // report immediately and ignore late responses when projects/schemas switch.
   useEffect(() => {
-    if (!projectTextId || !schemaName || schemaName === 'public') return
-
+    let cancelled = false
+    setWeekOptions([])
+    setSelectedReportId('')
+    setSections([])
+    setDesignRows([])
+    setLoadedScope('')
+    if (!projectTextId || !schemaName || schemaName === 'public') {
+      setLoadingOptions(false)
+      setLoadedScope(scopeKey)
+      return () => { cancelled = true }
+    }
     async function fetchOptions() {
       setLoadingOptions(true)
       const db = schemaClient(schemaName)
       try {
-        const { data, error } = await (db as unknown as {
-          from: (table: string) => {
-            select: (cols: string) => {
-              eq: (col: string, val: string) => {
-                order: (col: string, opts: { ascending: boolean }) => Promise<{
-                  data: { report_id: string; week_num: number; data_date: string }[] | null
-                  error: { message: string } | null
-                }>
-              }
-            }
-          }
-        })
-          .from('dbp6_0008_weekly_report_sections')
-          .select('report_id, week_num, data_date')
-          .eq('project_id', projectTextId)
-          .order('data_date', { ascending: false })
-
-        if (error) throw new Error(error.message)
-
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const client = db as any
+        const [options, projectDesigns, sharedDesigns] = await Promise.all([
+          client.from('dbp6_0008_weekly_report_sections').select('report_id, week_num, data_date').eq('project_id', projectTextId).order('data_date', { ascending: false }),
+          client.from('dbp6_0008_weekly_report_design').select('*').eq('project_id', projectTextId).eq('is_active', true).eq('is_approved', true),
+          client.from('dbp6_0008_weekly_report_design').select('*').is('project_id', null).eq('is_active', true).eq('is_approved', true),
+        ])
+        if (cancelled) return
+        if (options.error) throw new Error(options.error.message)
         const seen = new Set<string>()
         const opts: WeekOption[] = []
-        for (const row of data ?? []) {
-          if (!seen.has(row.report_id)) {
-            seen.add(row.report_id)
-            const formattedDate = row.data_date
-              ? new Date(row.data_date).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })
-              : ''
-            opts.push({
-              report_id: row.report_id,
-              week_num: row.week_num,
-              data_date: row.data_date,
-              label: `Week ${row.week_num ?? '?'} — ${formattedDate}`,
-            })
-          }
+        for (const row of options.data ?? []) {
+          if (seen.has(row.report_id)) continue
+          seen.add(row.report_id)
+          const date = row.data_date ? new Date(row.data_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
+          opts.push({ report_id: row.report_id, week_num: row.week_num, data_date: row.data_date, label: `Week ${row.week_num ?? '?'} — ${date}` })
         }
+        if (projectDesigns.error || sharedDesigns.error) showError('Weekly report design could not be loaded. Using fallback styling.')
+        setDesignRows([...(projectDesigns.data ?? []), ...(sharedDesigns.data ?? [])])
         setWeekOptions(opts)
-        if (opts.length > 0) setSelectedReportId(opts[0].report_id)
+        setSelectedReportId(opts[0]?.report_id ?? '')
+        setLoadedScope(scopeKey)
       } catch (err) {
-        showError(
-          'Failed to load report list: ' +
-            (err instanceof Error ? err.message : String(err)),
-        )
-        setWeekOptions([])
+        if (!cancelled) {
+          showError('Failed to load report list: ' + (err instanceof Error ? err.message : String(err)))
+          setLoadedScope(scopeKey)
+        }
       } finally {
-        setLoadingOptions(false)
+        if (!cancelled) setLoadingOptions(false)
       }
     }
-
-    fetchOptions()
+    void fetchOptions()
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectTextId, schemaName])
+  }, [projectTextId, schemaName, scopeKey])
 
-  // Fetch sections for the selected report from Supabase
   useEffect(() => {
-    if (!selectedReportId) return
-    if (!schemaName || schemaName === 'public') return
-    const db = schemaClient(schemaName)
-
+    let cancelled = false
+    setSections([])
+    if (!selectedReportId || loadedScope !== scopeKey || !schemaName || schemaName === 'public') {
+      setLoadingReport(false)
+      setLoadedReportId('')
+      return () => { cancelled = true }
+    }
     async function fetchSections() {
       setLoadingReport(true)
+      setLoadedReportId('')
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (db as any)
-          .from('dbp6_0008_weekly_report_sections')
-          .select('*')
-          .eq('report_id', selectedReportId)
+        const { data, error } = await (schemaClient(schemaName) as any)
+          .from('dbp6_0008_weekly_report_sections').select('*')
+          .eq('report_id', selectedReportId).eq('project_id', projectTextId)
           .order('section_order', { ascending: true })
-
+        if (cancelled) return
         if (error) throw new Error(error.message)
-        setSections(
-          ((data ?? []) as WeeklyReportSection[]).map(s => ({
-            ...s,
-            section_ast: parseSectionAst(s.section_ast),
-          })),
-        )
+        setSections(((data ?? []) as WeeklyReportSection[]).map(section => ({ ...section, section_ast: parseSectionAst(section.section_ast) })))
       } catch (err) {
-        showError(
-          'Failed to load report sections: ' +
-            (err instanceof Error ? err.message : String(err)),
-        )
-        setSections([])
+        if (!cancelled) showError('Failed to load report sections: ' + (err instanceof Error ? err.message : String(err)))
       } finally {
-        setLoadingReport(false)
+        if (!cancelled) { setLoadingReport(false); setLoadedReportId(selectedReportId) }
       }
     }
-
-    fetchSections()
-  }, [selectedReportId, schemaName])
+    void fetchSections()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedReportId, schemaName, projectTextId, loadedScope, scopeKey])
 
   const selectedWeek = weekOptions.find(o => o.report_id === selectedReportId)
 
+  // Always render appendices after all regular sections, regardless of section_order from the DB.
+  const sortedSections = useMemo(() =>
+    [...sections].sort((a, b) => {
+      const aIsAppendix = (a.type ?? '').toLowerCase() === 'appendix' ? 1 : 0
+      const bIsAppendix = (b.type ?? '').toLowerCase() === 'appendix' ? 1 : 0
+      if (aIsAppendix !== bIsAppendix) return aIsAppendix - bIsAppendix
+      return (a.section_order ?? 0) - (b.section_order ?? 0)
+    }),
+  [sections])
+
   const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return sections
+    if (!searchQuery.trim()) return sortedSections
     const q = searchQuery.toLowerCase()
-    return sections.filter(
+    return sortedSections.filter(
       s =>
         (s.title ?? '').toLowerCase().includes(q) ||
         (s.semantic_role ?? '').toLowerCase().includes(q) ||
         (s.section_id ?? '').toLowerCase().includes(q),
     )
-  }, [sections, searchQuery])
+  }, [sortedSections, searchQuery])
 
   return (
-    <div className="min-h-full">
+    <WeeklyDesignContext.Provider value={design}>
+    <div className="weekly-report-themed min-h-full" style={weeklyDesignStyle(design)}>
+      <style>{weeklyPrintCss(design, { projectId: projectTextId, dataDate: selectedWeek?.data_date ?? '' })}</style>
+      {!designRow && sections.length > 0 && <p className="no-print text-xs text-amber-700 mb-3">No approved active design matches this report. Using fallback styling.</p>}
       {notification && (
         <Notification
           type={notification.type}
@@ -1155,7 +1218,7 @@ export function WeeklyReportForm({
               >
                 Contents
               </a>
-              {sections
+              {sortedSections
                 .filter(s => s.include_in_toc !== false)
                 .map(s => (
                   <a
@@ -1174,7 +1237,7 @@ export function WeeklyReportForm({
 
         {/* Print-target report area */}
         <div ref={_printAreaRef} className="flex-1 min-w-0">
-          {loadingReport ? (
+          {loadingReport || loadingOptions || loadedScope !== scopeKey || loadedReportId !== selectedReportId ? (
             <div className="py-16">
               <LoadingSpinner />
             </div>
@@ -1211,7 +1274,7 @@ export function WeeklyReportForm({
                 />
               )}
 
-              {sections.length > 0 && <TableOfContents sections={sections} />}
+              {sections.length > 0 && <TableOfContents sections={sortedSections} />}
 
               {filteredSections.map(section => (
                 <SectionCard key={section.section_id} section={section} />
@@ -1221,5 +1284,6 @@ export function WeeklyReportForm({
         </div>
       </div>
     </div>
+    </WeeklyDesignContext.Provider>
   )
 }
