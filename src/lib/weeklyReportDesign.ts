@@ -40,7 +40,9 @@ export function weeklyColor(design: WeeklyDesign, value: unknown, fallback: stri
 
 export function weeklySeriesColor(design: WeeklyDesign, name: string, explicit: string | null | undefined, fallback: string): string {
   const key = /planned|baseline/i.test(name) ? 'planned_series_color' : /actual/i.test(name) ? 'actual_series_color' : ''
-  return weeklyColor(design, design.charts?.[key], explicit ?? fallback)
+  const explicitColor = weeklyColor(design, explicit, fallback)
+  const semanticColor = weeklyColor(design, key === 'actual_series_color' ? 'secondary' : key === 'planned_series_color' ? 'primary' : '', explicitColor)
+  return weeklyColor(design, design.charts?.[key], semanticColor)
 }
 
 const pt = (value: unknown, fallback: number) => `${designNumber(value, fallback)}pt`

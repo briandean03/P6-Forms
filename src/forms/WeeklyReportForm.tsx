@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { selectWeeklyDesign, normaliseWeeklyDesign, weeklyColor, weeklySeriesColor, weeklyDesignStyle, weeklyStatusStyle, weeklyCalloutStyle, weeklyPage, weeklyPrintCss, type WeeklyDesign, type WeeklyDesignRow } from '@/lib/weeklyReportDesign'
 import { designNumber } from '@/lib/dashboardDesign'
+import { prepareWeeklyTable, visibleWeeklyColumns, prepareWeeklyChart, type ReportChartSeries } from '@/lib/weeklyReportPresentation'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
@@ -92,12 +93,7 @@ interface KpiCardData {
   source_references?: SourceRef[] | null
 }
 
-interface ChartSeries {
-  name: string
-  data: number[]
-  color?: string | null
-  color_key?: string | null
-}
+type ChartSeries = ReportChartSeries
 
 interface ChartContent {
   chart_type?: string | null
@@ -186,7 +182,7 @@ function PrintLegend({ series, isLine }: { series: ChartSeries[]; isLine: boolea
   return (
     <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: designNumber(design.charts?.legend_size_pt, 6) * 96 / 72 }}>
       {series.map((s, si) => {
-        const color = weeklySeriesColor(design, s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])
+        const color = weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])
         return (
           <span key={si} className="inline-flex items-center gap-1.5 text-slate-600">
             <span
@@ -229,6 +225,7 @@ function buildChart(
     <XAxis
       key="x"
       dataKey="name"
+      allowDuplicatedCategory={false}
       tick={{ fontSize: fs }}
       interval={xTickInterval(n)}
       angle={dense ? -30 : 0}
@@ -248,10 +245,13 @@ function buildChart(
         <Line
           key={si}
           type="monotone"
+          data={s.points ?? chartData}
+          connectNulls={false}
           dataKey={s.name}
-          stroke={weeklySeriesColor(design, s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
+          stroke={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
           strokeWidth={designNumber(design.charts?.line_width_pt, 1.5) * 96 / 72}
-          dot={n <= 12 ? { r: designNumber(design.charts?.marker_size_pt, 1.875) * 96 / 72, strokeWidth: 0 } : false}
+          strokeDasharray="none"
+          dot={n === 1 ? { r: 2.5, fill: weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length]), strokeWidth: 0 } : false}
           activeDot={print ? false : undefined}
           isAnimationActive={false}
         />
@@ -264,7 +264,7 @@ function buildChart(
         <Bar
           key={si}
           dataKey={s.name}
-          fill={weeklySeriesColor(design, s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
+          fill={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
           radius={[2, 2, 0, 0]}
           maxBarSize={48}
           isAnimationActive={false}
@@ -324,15 +324,15 @@ function fmtVal(v: unknown, unit?: string | null): string {
 
 function resolveColumns(columns: (string | TableColumn)[] | undefined): TableColumn[] {
   if (!columns) return []
-  return columns.map(c => {
+  return visibleWeeklyColumns(columns.map(c => {
     if (typeof c === 'string') return { key: c, label: c.replace(/_/g, ' ') }
     return { key: c.key, label: c.label ?? c.key.replace(/_/g, ' ') }
-  })
+  }))
 }
 
 // ── Block renderer ──────────────────────────────────────────────────────────
 
-function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}): React.ReactNode {
+function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}, sectionContext = ''): React.ReactNode {
   const { type, content: c, source_references } = block
 
   const footnotes =
@@ -420,15 +420,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
 
     case 'chart': {
       const cc = c as unknown as ChartContent
-      const categories = cc.categories ?? []
-      const series = cc.series ?? []
-      const chartData = categories.map((cat, ci) => {
-        const point: Record<string, unknown> = { name: cat }
-        series.forEach(s => {
-          point[s.name] = s.data[ci] ?? null
-        })
-        return point
-      })
+      const { chartData, series } = prepareWeeklyChart(cc.categories ?? [], cc.series ?? [])
       const isLine = (cc.chart_type ?? 'bar').toLowerCase() === 'line'
       const printW = Object.keys(design).length ? Math.floor(weeklyPage(design, isLandscape).contentWidth * 96 / 72) - 8 : isLandscape ? PRINT_CHART_WIDTH_LANDSCAPE : PRINT_CHART_WIDTH_PORTRAIT
       node = (
@@ -579,8 +571,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
     case 'resource_table':
     case 'milestone_table': {
       const tc = c as unknown as TableContent
-      const specs = resolveColumns(tc.columns)
-      const rows = (tc.rows ?? []) as Record<string, unknown>[]
+      const { columns: specs, rows } = prepareWeeklyTable(resolveColumns(tc.columns), (tc.rows ?? []) as Record<string, unknown>[], `${sectionContext} ${tc.title ?? ''}`)
       node = (
         <div>
           {tc.title && (
@@ -730,8 +721,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
       // Catch-all for any remaining *_table types not explicitly listed above
       if (type.endsWith('_table') || type.endsWith('table')) {
         const tc = c as unknown as TableContent
-        const specs = resolveColumns(tc.columns)
-        const rows = (tc.rows ?? []) as Record<string, unknown>[]
+        const { columns: specs, rows } = prepareWeeklyTable(resolveColumns(tc.columns), (tc.rows ?? []) as Record<string, unknown>[], `${sectionContext} ${tc.title ?? ''}`)
         node = (
           <div>
             {tc.title && (
@@ -960,7 +950,7 @@ function SectionCard({ section }: { section: WeeklyReportSection }) {
         {blocks.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No content blocks in this section.</p>
         ) : (
-          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design))
+          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design, `${section.title ?? ''} ${section.semantic_role ?? ''}`))
         )}
       </div>
     </section>
