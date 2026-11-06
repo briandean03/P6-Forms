@@ -32,3 +32,8 @@ test('token strings never become invalid SVG colours', () => {
   expect(weeklySeriesColor({},'Actual','actual','#123456')).toBe('#123456')
   expect(weeklySeriesColor({colors:{primary:'#112233'}},'Planned','planned','#123456')).toBe('#112233')
 })
+
+test('preserves status distribution categories and count metrics', () => {
+  expect(visibleWeeklyColumns([{ key: 'status_code', label: 'Status Code' }, { key: 'count', label: 'Count' }])).toHaveLength(2)
+  expect(visibleWeeklyColumns([{ key: 'status_count' }, { key: 'status_a_count' }, { key: 'status_b' }, { key: 'status', label: 'Activity Status' }]).map(column => column.key)).toEqual(['status_count', 'status_a_count', 'status_b'])
+})

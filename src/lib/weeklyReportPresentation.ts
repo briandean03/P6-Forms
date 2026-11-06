@@ -1,12 +1,17 @@
 export type WeeklyTableColumn = { key: string; label?: string | null }
 const compact = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
 export function visibleWeeklyColumns(columns: WeeklyTableColumn[]): WeeklyTableColumn[] {
-  return columns.filter(column => ![column.key, column.label ?? ''].some(value => {
-    const name = compact(value)
-    return name.includes('wbs') || name.includes('status') || name.includes('criticalpath')
+  const statusSummary = columns.some(column => [column.key, column.label ?? ''].some(value => ['count', 'statuscount', 'recordcount'].includes(compact(value))))
+  return columns.filter(column => {
+    const names = [column.key, column.label ?? ''].map(compact)
+    const statusMetric = names.some(name => name.includes('status') && (/count|total|percent|pct/.test(name) || /^status(?:a|b|c|d|ur)$/.test(name)))
+    const statusCategory = statusSummary && !names.some(name => name.includes('activitystatus')) && names.some(name => ['status', 'statuscode', 'statuslabel', 'statusname'].includes(name))
+    return !names.some(name => {
+    return name.includes('wbs') || (name.includes('status') && !statusMetric && !statusCategory) || name.includes('criticalpath')
       || ['critical', 'iscritical', 'criticalflag'].includes(name)
       || name.includes('longestpath') || name.includes('floatpath') || name.includes('floatorder')
-  }))
+    })
+  })
 }
 
 const PHASES = [
