@@ -44,6 +44,7 @@ type TabKey =
   | 'pdfupload'
   | 'inspectionreports'
   | 'weekly_report'
+  | 'online_weekly_dashboard'
 
 interface NavItem {
   key: TabKey
@@ -233,6 +234,15 @@ const navSections: NavSection[] = [
           </svg>
         ),
       },
+      {
+        key: 'online_weekly_dashboard',
+        label: 'Online Weekly Dashboard',
+        icon: (
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+        ),
+      },
     ],
   },
 ]
@@ -251,7 +261,7 @@ interface ProjectInfo {
 }
 
 function App() {
-  const [view, setView] = useState<'home' | 'app' | 'report'>('home')
+  const [view, setView] = useState<'home' | 'app'>('home')
   const [activeTab, setActiveTab] = useState<TabKey>('engineering')
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
@@ -442,6 +452,14 @@ function App() {
             schemaName={selectedSchemaName}
           />
         )
+      case 'online_weekly_dashboard':
+        return (
+          <ReportDashboardForm
+            projectId={selectedProjectId}
+            projectTextId={projectTextId}
+            schemaName={selectedSchemaName}
+          />
+        )
       default:
         return null
     }
@@ -524,53 +542,6 @@ function App() {
             </div>
           )}
         </div>
-      </div>
-    )
-  }
-
-  if (view === 'report') {
-    return (
-      <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
-        {notification && (
-          <Notification
-            type={notification.type}
-            message={notification.message}
-            onClose={hideNotification}
-          />
-        )}
-        <header className="bg-white border-b border-gray-200 flex-shrink-0">
-          <div className="px-6 py-2 border-b border-gray-100">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setView('app')}
-                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Back
-              </button>
-              <div className="h-4 w-px bg-gray-300" />
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-gray-500">Project:</span>
-                <span className="text-sm font-semibold text-gray-900">{selectedProject?.projectname || '—'}</span>
-              </div>
-            </div>
-          </div>
-          <div className="px-6 py-2">
-            <h2 className="text-2xl font-bold text-gray-900 text-center">Generate Report</h2>
-          </div>
-        </header>
-        <main className="flex-1 overflow-y-auto px-6 py-6">
-          <ReportDashboardForm
-            projectId={selectedProjectId}
-            projectTextId={selectedProject?.textProjectId || ''}
-            schemaName={selectedSchemaName}
-          />
-        </main>
-        <footer className="bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0">
-          <p className="text-center text-xs text-gray-400">P6 Project Controls Data Management</p>
-        </footer>
       </div>
     )
   }
@@ -770,15 +741,6 @@ function App() {
                 <span className="text-sm font-semibold text-gray-900">{selectedProject?.projectname || '—'}</span>
               </div>
               <div className="ml-auto flex items-center gap-2">
-                <button
-                  onClick={() => setView('report')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                  </svg>
-                  Online Dashboard
-                </button>
                 <button
                   onClick={() => setShowRunUpdateConfirm(true)}
                   disabled={runUpdateLoading || !selectedProject?.textProjectId}
