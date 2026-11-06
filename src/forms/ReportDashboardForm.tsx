@@ -2707,7 +2707,7 @@ function ExecutiveOverviewPage({
       {/* ══════════════════════════════════════════════════════════════════════
           PAGE TITLE BLOCK
       ══════════════════════════════════════════════════════════════════════ */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 24px 16px', marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -3295,7 +3295,7 @@ function ProgressAnalysisPage({ page, pageIdx, pageWidgets }: ProgressPageProps)
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
 
       {/* ── Page title block — matches Executive Overview style ──────────────── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 24px 16px', marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -3510,7 +3510,7 @@ function ScheduleIntelligencePage({ page, pageIdx, pageWidgets }: SchedulePagePr
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
 
       {/* ── Page title block — matches Executive Overview style ──────────────── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 24px 16px', marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -3715,7 +3715,7 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
 
       {/* ── Page title block — matches Executive Overview style ──────────────── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 24px 16px', marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -3893,7 +3893,7 @@ function ResourcesManpowerPage({ page, pageIdx, pageWidgets }: ResourcesPageProp
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
 
       {/* ── Page title block ─────────────────────────────────────────────────── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 24px 16px', marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -4056,7 +4056,7 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
     <div style={{ fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color: '#1e293b', background: '#f1f5f9', minHeight: '100%' }}>
 
       {/* ── Page title block ─────────────────────────────────────────────────── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '18px 24px 16px' }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 24px 16px', marginBottom: 4 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
