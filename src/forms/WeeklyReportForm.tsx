@@ -14,7 +14,7 @@ import {
 } from 'recharts'
 import { selectWeeklyDesign, normaliseWeeklyDesign, weeklyColor, weeklySeriesColor, weeklyDesignStyle, weeklyStatusStyle, weeklyCalloutStyle, weeklyPage, weeklyPrintCss, type WeeklyDesign, type WeeklyDesignRow } from '@/lib/weeklyReportDesign'
 import { designNumber } from '@/lib/dashboardDesign'
-import { prepareWeeklyTable, visibleWeeklyColumns, prepareWeeklyChart, type ReportChartSeries } from '@/lib/weeklyReportPresentation'
+import { prepareWeeklyTable, visibleWeeklyColumns, prepareWeeklyChart, weeklyScheduleDelayHeadline, type ReportChartSeries } from '@/lib/weeklyReportPresentation'
 import { allWeeklyRows, weeklyReportOptions, disciplineLookup, type ReportIndexRow } from '@/lib/weeklyReportData'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
@@ -396,6 +396,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
       node = (
         <div className="wr-kpi-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {cards.map((card, ci) => {
+            const delayHeadline = weeklyScheduleDelayHeadline(card)
             const statusClass =
               KPI_STATUS_COLOR[(card.status ?? 'neutral').toLowerCase()] ??
               'text-slate-800'
@@ -408,8 +409,8 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
                   {card.label ?? ''}
                 </span>
                 <span className={`wr-kpi-value text-2xl font-bold mt-1 break-all ${statusClass}`} data-status={card.status ?? 'neutral'} style={weeklyStatusStyle(design, card.status)}>
-                  {fmtVal(card.value, card.unit)}
-                  {card.unit && (
+                  {delayHeadline ?? fmtVal(card.value, card.unit)}
+                  {!delayHeadline && card.unit && (
                     <span className="text-sm font-normal text-gray-500 ml-1">
                       {card.unit}
                     </span>

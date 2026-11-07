@@ -1,4 +1,17 @@
 export type WeeklyTableColumn = { key: string; label?: string | null }
+export function weeklyScheduleDelayHeadline(card: {
+  label?: string | null
+  value?: string | number | null
+  comparison_label?: string | null
+  comparison_value?: number | null
+}): string | null {
+  if (!/^(overall\s+)?schedule\s+status$/i.test(card.label?.trim() ?? '')
+    || !/^delayed$/i.test(String(card.value ?? '').trim())
+    || !/days?\s+beyond\s+(?:reference|baseline|contractual)\s+completion/i.test(card.comparison_label ?? '')
+    || typeof card.comparison_value !== 'number' || !Number.isFinite(card.comparison_value) || card.comparison_value <= 0) return null
+  return `${card.comparison_value.toLocaleString('en-GB')} ${card.comparison_value === 1 ? 'day' : 'days'} Delayed`
+}
+
 const compact = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
 export function visibleWeeklyColumns(columns: WeeklyTableColumn[]): WeeklyTableColumn[] {
   const statusSummary = columns.some(column => [column.key, column.label ?? ''].some(value => ['count', 'statuscount', 'recordcount'].includes(compact(value))))
