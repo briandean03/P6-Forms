@@ -1,6 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { visibleWeeklyColumns, prepareWeeklyTable, prepareWeeklyChart } from '../src/lib/weeklyReportPresentation'
+import { visibleWeeklyColumns, prepareWeeklyTable, prepareWeeklyChart, weeklyScheduleDelayHeadline } from '../src/lib/weeklyReportPresentation'
 import { weeklySeriesColor } from '../src/lib/weeklyReportDesign'
+
+test('promotes the supplied schedule delay without using unrelated comparison values', () => {
+  const card = { label: 'Overall Schedule Status', value: 'Delayed', comparison_label: 'calendar days beyond reference completion', comparison_value: 143 }
+  expect(weeklyScheduleDelayHeadline(card)).toBe('143 days Delayed')
+  expect(weeklyScheduleDelayHeadline({ ...card, comparison_value: 25 })).toBe('25 days Delayed')
+  expect(weeklyScheduleDelayHeadline({ ...card, comparison_value: 1 })).toBe('1 day Delayed')
+  expect(weeklyScheduleDelayHeadline({ ...card, comparison_value: null })).toBeNull()
+  expect(weeklyScheduleDelayHeadline({ ...card, comparison_label: 'Previous reporting week' })).toBeNull()
+  expect(weeklyScheduleDelayHeadline({ ...card, value: 'On Track' })).toBeNull()
+  expect(weeklyScheduleDelayHeadline({ ...card, label: 'Another KPI' })).toBeNull()
+})
 
 test('hides metadata by key or label without hiding unrelated floats and data', () => {
   const keys = ['activity_id', 'wbs_code', 'WBS Name', 'is_critical', 'is_longest_path', 'float_path_order', 'float_order', 'status', 'total_float', 'planned_percent']

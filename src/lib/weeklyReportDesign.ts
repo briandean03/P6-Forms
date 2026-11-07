@@ -38,7 +38,12 @@ export function weeklyColor(design: WeeklyDesign, value: unknown, fallback: stri
   return typeof resolved === 'string' && /^#[0-9a-f]{3,8}$/i.test(resolved) ? resolved : fallback
 }
 
-export function weeklySeriesColor(design: WeeklyDesign, name: string, explicit: string | null | undefined, fallback: string): string {
+export function weeklySeriesColor(design: WeeklyDesign, name: string, explicit: string | null | undefined, fallback: string, cumulativeProgress = false): string {
+  if (cumulativeProgress && /actual/i.test(name)) {
+    const actual = weeklyColor(design, 'positive', '#159b75')
+    const planned = weeklySeriesColor(design, 'Planned', undefined, '#4f46e5')
+    return actual.toLowerCase() !== planned.toLowerCase() ? actual : planned.toLowerCase() === '#159b75' ? '#d97706' : '#159b75'
+  }
   const key = /planned|baseline/i.test(name) ? 'planned_series_color' : /actual/i.test(name) ? 'actual_series_color' : ''
   const explicitColor = weeklyColor(design, explicit, fallback)
   const semanticColor = weeklyColor(design, key === 'actual_series_color' ? 'secondary' : key === 'planned_series_color' ? 'primary' : '', explicitColor)

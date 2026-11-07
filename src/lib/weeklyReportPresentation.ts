@@ -1,4 +1,17 @@
 export type WeeklyTableColumn = { key: string; label?: string | null }
+export function weeklyScheduleDelayHeadline(card: {
+  label?: string | null
+  value?: string | number | null
+  comparison_label?: string | null
+  comparison_value?: number | null
+}): string | null {
+  if (!/^(overall\s+)?schedule\s+status$/i.test(card.label?.trim() ?? '')
+    || !/^delayed$/i.test(String(card.value ?? '').trim())
+    || !/days?\s+beyond\s+(?:reference|baseline|contractual)\s+completion/i.test(card.comparison_label ?? '')
+    || typeof card.comparison_value !== 'number' || !Number.isFinite(card.comparison_value) || card.comparison_value <= 0) return null
+  return `${card.comparison_value.toLocaleString('en-GB')} ${card.comparison_value === 1 ? 'day' : 'days'} Delayed`
+}
+
 const compact = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
 export function visibleWeeklyColumns(columns: WeeklyTableColumn[]): WeeklyTableColumn[] {
   const statusSummary = columns.some(column => [column.key, column.label ?? ''].some(value => ['count', 'statuscount', 'recordcount'].includes(compact(value))))
@@ -18,8 +31,15 @@ const PHASES = [
   ['MI', 'Milestone'], ['EN', 'Engineering'], ['CO', 'Construction'], ['HO', 'Close-Out / Handing Over'],
   ['AUH', 'Authority Approvals'], ['TC', 'Final Testing and Commissioning'],
 ] as const
-export function prepareWeeklyTable(columns: WeeklyTableColumn[], rows: Record<string, unknown>[], title: string) {
+export function prepareWeeklyTable(columns: WeeklyTableColumn[], rows: Record<string, unknown>[], title: string, disciplines: Record<string, string> = {}) {
   const visible = visibleWeeklyColumns(columns)
+  const disciplineColumn = columns.find(column => ['discipline', 'disciplinecode', 'disciplinename'].includes(compact(column.key)))
+  if (disciplineColumn && /shop.*drawing|dwg/i.test(title) && /discipline/i.test(title)) {
+    return {
+      columns: visible.map(column => column.key === disciplineColumn.key ? { ...column, label: 'Discipline' } : column),
+      rows: rows.map(row => ({ ...row, [disciplineColumn.key]: disciplines[String(row[disciplineColumn.key] ?? '').trim().toUpperCase()] ?? row[disciplineColumn.key] })),
+    }
+  }
   const phaseColumn = columns.find(column => ['phase', 'phasecode', 'phasename', 'dgtphase'].includes(compact(column.key)))
   const comparison = /phase.*progress|progress.*phase/i.test(title)
     || (columns.some(column => /planned/i.test(column.key)) && columns.some(column => /actual/i.test(column.key)))

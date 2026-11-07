@@ -762,3 +762,6 @@ html.a3-printing .dashboard-design .dashboard-panel { box-shadow: none !importan
 .weekly-report-themed table thead tr { height: var(--wr-table-head-height); }
 .weekly-report-themed table td, .weekly-report-themed table th { border-bottom-width: var(--wr-table-border-width); }
 @media print { .weekly-report-themed table thead { display: var(--wr-table-head-display) !important; } }
+/* Centre figures only in the shop-drawing discipline distribution. */
+.weekly-report-themed .wr-discipline-distribution table th:not(:first-child),
+.weekly-report-themed .wr-discipline-distribution table td:not(:first-child) { text-align: center !important; }
