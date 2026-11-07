@@ -18,8 +18,15 @@ const PHASES = [
   ['MI', 'Milestone'], ['EN', 'Engineering'], ['CO', 'Construction'], ['HO', 'Close-Out / Handing Over'],
   ['AUH', 'Authority Approvals'], ['TC', 'Final Testing and Commissioning'],
 ] as const
-export function prepareWeeklyTable(columns: WeeklyTableColumn[], rows: Record<string, unknown>[], title: string) {
+export function prepareWeeklyTable(columns: WeeklyTableColumn[], rows: Record<string, unknown>[], title: string, disciplines: Record<string, string> = {}) {
   const visible = visibleWeeklyColumns(columns)
+  const disciplineColumn = columns.find(column => ['discipline', 'disciplinecode', 'disciplinename'].includes(compact(column.key)))
+  if (disciplineColumn && /shop.*drawing|dwg/i.test(title) && /discipline/i.test(title)) {
+    return {
+      columns: visible.map(column => column.key === disciplineColumn.key ? { ...column, label: 'Discipline' } : column),
+      rows: rows.map(row => ({ ...row, [disciplineColumn.key]: disciplines[String(row[disciplineColumn.key] ?? '').trim().toUpperCase()] ?? row[disciplineColumn.key] })),
+    }
+  }
   const phaseColumn = columns.find(column => ['phase', 'phasecode', 'phasename', 'dgtphase'].includes(compact(column.key)))
   const comparison = /phase.*progress|progress.*phase/i.test(title)
     || (columns.some(column => /planned/i.test(column.key)) && columns.some(column => /actual/i.test(column.key)))

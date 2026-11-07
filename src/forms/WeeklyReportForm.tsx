@@ -10,15 +10,18 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  LabelList,
 } from 'recharts'
 import { selectWeeklyDesign, normaliseWeeklyDesign, weeklyColor, weeklySeriesColor, weeklyDesignStyle, weeklyStatusStyle, weeklyCalloutStyle, weeklyPage, weeklyPrintCss, type WeeklyDesign, type WeeklyDesignRow } from '@/lib/weeklyReportDesign'
 import { designNumber } from '@/lib/dashboardDesign'
 import { prepareWeeklyTable, visibleWeeklyColumns, prepareWeeklyChart, type ReportChartSeries } from '@/lib/weeklyReportPresentation'
+import { allWeeklyRows, weeklyReportOptions, disciplineLookup, type ReportIndexRow } from '@/lib/weeklyReportData'
 import { schemaClient } from '@/lib/supabase'
 import { useNotification } from '@/hooks/useNotification'
 import { Notification } from '@/components/Notification'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 
+const WeeklyMetadataContext = createContext<Record<string, string>>({})
 const WeeklyDesignContext = createContext<WeeklyDesign>({})
 
 // ── TypeScript interfaces ───────────────────────────────────────────────────
@@ -136,6 +139,7 @@ interface WeekOption {
   week_num: number | null
   data_date: string | null
   label: string
+  hasSections?: boolean
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -177,12 +181,12 @@ function xTickInterval(count: number, maxTicks = 8): number {
 }
 
 // Static HTML legend for the print copy — no measurement, so it is correct the moment it is printed
-function PrintLegend({ series, isLine }: { series: ChartSeries[]; isLine: boolean }) {
+function PrintLegend({ series, isLine, cumulativeProgress = false }: { series: ChartSeries[]; isLine: boolean; cumulativeProgress?: boolean }) {
   const design = useContext(WeeklyDesignContext)
   return (
     <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-1" style={{ fontSize: designNumber(design.charts?.legend_size_pt, 6) * 96 / 72 }}>
       {series.map((s, si) => {
-        const color = weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])
+        const color = weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length], cumulativeProgress)
         return (
           <span key={si} className="inline-flex items-center gap-1.5 text-slate-600">
             <span
@@ -206,9 +210,9 @@ function buildChart(
   isLine: boolean,
   chartData: Record<string, unknown>[],
   series: ChartSeries[],
-  opts: { print: boolean; width?: number; height?: number; design: WeeklyDesign },
+  opts: { print: boolean; width?: number; height?: number; design: WeeklyDesign; cumulativeProgress?: boolean },
 ): React.ReactElement {
-  const { print, width, height, design } = opts
+  const { print, width, height, design, cumulativeProgress = false } = opts
   const fs = designNumber(design.charts?.axis_label_size_pt, print ? 6 : 7.5) * 96 / 72
   const n = chartData.length
   const dense = n > 6
@@ -244,17 +248,29 @@ function buildChart(
       {series.map((s, si) => (
         <Line
           key={si}
-          type="monotone"
+          // Smooth each weekly transition without averaging or overshooting its endpoints.
+          type={cumulativeProgress ? 'bumpX' : 'monotone'}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           data={s.points ?? chartData}
           connectNulls={false}
           dataKey={s.name}
-          stroke={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
+          stroke={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length], cumulativeProgress)}
           strokeWidth={designNumber(design.charts?.line_width_pt, 1.5) * 96 / 72}
           strokeDasharray="none"
-          dot={n === 1 ? { r: 2.5, fill: weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length]), strokeWidth: 0 } : false}
+          dot={n === 1 ? { r: 2.5, fill: weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length], cumulativeProgress), strokeWidth: 0 } : false}
           activeDot={print ? false : undefined}
           isAnimationActive={false}
-        />
+        >
+          {cumulativeProgress && <LabelList dataKey={s.name} content={props => {
+            const { x, y, index, value } = props as unknown as { x?: number; y?: number; index?: number; value?: unknown }
+            const count = (s.points ?? chartData).length
+            const step = Math.max(1, Math.ceil(count / (print ? 4 : 6)))
+            if (typeof x !== 'number' || typeof y !== 'number' || typeof value !== 'number' || !Number.isFinite(value) || index == null || (index !== 0 && index !== count - 1 && index % step !== 0)) return null
+            const color = weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length], true)
+            return <text x={x} y={y + (/actual/i.test(s.name) && value !== 0 ? 14 : -8)} textAnchor={index === 0 ? 'start' : index === count - 1 ? 'end' : 'middle'} fill={color} fontSize={print ? 8 : 10} fontWeight={600}>{value.toFixed(2)}%</text>
+          }} />}
+        </Line>
       ))}
     </LineChart>
   ) : (
@@ -264,7 +280,7 @@ function buildChart(
         <Bar
           key={si}
           dataKey={s.name}
-          fill={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length])}
+          fill={weeklySeriesColor(design, s.color_key ?? s.name, s.color, CHART_COLORS[si % CHART_COLORS.length], cumulativeProgress)}
           radius={[2, 2, 0, 0]}
           maxBarSize={48}
           isAnimationActive={false}
@@ -332,7 +348,7 @@ function resolveColumns(columns: (string | TableColumn)[] | undefined): TableCol
 
 // ── Block renderer ──────────────────────────────────────────────────────────
 
-function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}, sectionContext = ''): React.ReactNode {
+function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}, sectionContext = '', disciplines: Record<string, string> = {}): React.ReactNode {
   const { type, content: c, source_references } = block
 
   const footnotes =
@@ -421,7 +437,8 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
     case 'chart': {
       const cc = c as unknown as ChartContent
       const { chartData, series } = prepareWeeklyChart(cc.categories ?? [], cc.series ?? [])
-      const isLine = (cc.chart_type ?? 'bar').toLowerCase() === 'line'
+      const isLine = ['line', 'line_chart'].includes((cc.chart_type ?? 'bar').toLowerCase())
+      const cumulativeProgress = isLine && /cumulative/i.test(`${cc.title ?? ''} ${sectionContext}`) && /progress/i.test(`${cc.title ?? ''} ${sectionContext}`) && series.some(s => /actual/i.test(s.name)) && series.some(s => /planned|baseline/i.test(s.name))
       const printW = Object.keys(design).length ? Math.floor(weeklyPage(design, isLandscape).contentWidth * 96 / 72) - 8 : isLandscape ? PRINT_CHART_WIDTH_LANDSCAPE : PRINT_CHART_WIDTH_PORTRAIT
       node = (
         <figure className="m-0" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
@@ -433,13 +450,13 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
           {/* Screen copy — responsive, hidden when printing */}
           <div className="print:hidden">
             <ResponsiveContainer width="100%" height={SCREEN_CHART_HEIGHT}>
-              {buildChart(isLine, chartData, series, { print: false, design })}
+              {buildChart(isLine, chartData, series, { print: false, design, cumulativeProgress })}
             </ResponsiveContainer>
           </div>
           {/* Print copy — fixed size, static, hidden on screen */}
           <div className="hidden print:block print-chart mx-auto" style={{ width: printW }}>
-            <PrintLegend series={series} isLine={isLine} />
-            {buildChart(isLine, chartData, series, { print: true, width: printW, height: PRINT_CHART_HEIGHT, design })}
+            <PrintLegend series={series} isLine={isLine} cumulativeProgress={cumulativeProgress} />
+            {buildChart(isLine, chartData, series, { print: true, width: printW, height: PRINT_CHART_HEIGHT, design, cumulativeProgress })}
           </div>
           {cc.qualification && (
             <p className="text-[11px] text-gray-400 italic mt-1">{cc.qualification}</p>
@@ -571,7 +588,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
     case 'resource_table':
     case 'milestone_table': {
       const tc = c as unknown as TableContent
-      const { columns: specs, rows } = prepareWeeklyTable(resolveColumns(tc.columns), (tc.rows ?? []) as Record<string, unknown>[], `${sectionContext} ${tc.title ?? ''}`)
+      const { columns: specs, rows } = prepareWeeklyTable(resolveColumns(tc.columns), (tc.rows ?? []) as Record<string, unknown>[], `${sectionContext} ${tc.title ?? ''}`, disciplines)
       node = (
         <div>
           {tc.title && (
@@ -721,7 +738,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
       // Catch-all for any remaining *_table types not explicitly listed above
       if (type.endsWith('_table') || type.endsWith('table')) {
         const tc = c as unknown as TableContent
-        const { columns: specs, rows } = prepareWeeklyTable(resolveColumns(tc.columns), (tc.rows ?? []) as Record<string, unknown>[], `${sectionContext} ${tc.title ?? ''}`)
+        const { columns: specs, rows } = prepareWeeklyTable(resolveColumns(tc.columns), (tc.rows ?? []) as Record<string, unknown>[], `${sectionContext} ${tc.title ?? ''}`, disciplines)
         node = (
           <div>
             {tc.title && (
@@ -791,7 +808,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
     type === 'data_table' ||
     type.endsWith('_table')
   return (
-    <div key={block.block_id ?? idx} className={`wr-block${isTableBlock ? ' wr-block-table' : ''} mb-4`}>
+    <div key={block.block_id ?? idx} className={`wr-block${isTableBlock ? ' wr-block-table' : ''}${isTableBlock && /shop.*drawing|dwg/i.test(`${sectionContext} ${c.title ?? ''}`) && /discipline/i.test(`${sectionContext} ${c.title ?? ''}`) ? ' wr-discipline-distribution' : ''} mb-4`}>
       {node}
       {footnotes}
     </div>
@@ -802,11 +819,13 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
 
 function CoverPage({
   projectTextId,
+  projectName,
   weekNum,
   dataDate,
   reportId,
 }: {
   projectTextId: string
+  projectName: string
   weekNum: number | null
   dataDate: string | null
   reportId: string
@@ -837,7 +856,7 @@ function CoverPage({
       {/* Main title block */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px 0 20px' }}>
         <h1 style={{ fontSize: 40, lineHeight: 1.18, margin: '16px 0 10px', letterSpacing: -1, fontWeight: 800 }}>
-          {projectTextId}
+          {projectName || projectTextId}
         </h1>
         <h2 style={{ fontSize: 18, fontWeight: 400, color: '#dbe2fa', margin: '0 0 0' }}>
           Weekly Progress &amp; Performance Report
@@ -915,6 +934,7 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
 
 function SectionCard({ section }: { section: WeeklyReportSection }) {
   const design = useContext(WeeklyDesignContext)
+  const disciplines = useContext(WeeklyMetadataContext)
   const blocks = section.section_ast?.blocks ?? []
   const badge = design.sections?.numbering_enabled === false ? '' : resolveNumbering(section.numbering, section.section_id)
   // Only use the orientation field from the DB — portrait sections with tables
@@ -950,7 +970,7 @@ function SectionCard({ section }: { section: WeeklyReportSection }) {
         {blocks.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No content blocks in this section.</p>
         ) : (
-          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design, `${section.title ?? ''} ${section.semantic_role ?? ''}`))
+          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design, `${section.title ?? ''} ${section.semantic_role ?? ''}`, disciplines))
         )}
       </div>
     </section>
@@ -960,7 +980,7 @@ function SectionCard({ section }: { section: WeeklyReportSection }) {
 // ── Main component ──────────────────────────────────────────────────────────
 
 export function WeeklyReportForm({
-  projectId: _projectId,
+  projectId,
   projectTextId,
   schemaName,
 }: {
@@ -978,8 +998,10 @@ export function WeeklyReportForm({
 
   const { notification, hideNotification, showError } = useNotification()
   const _printAreaRef = useRef<HTMLDivElement>(null)
+  const [projectName, setProjectName] = useState('')
+  const [disciplines, setDisciplines] = useState<Record<string, string>>({})
   const [designRows, setDesignRows] = useState<WeeklyDesignRow[]>([])
-  const scopeKey = `${schemaName}:${projectTextId}`
+  const scopeKey = `${schemaName}:${projectTextId}:${projectId}`
   const [loadedScope, setLoadedScope] = useState('')
   const designRow = useMemo(() => selectWeeklyDesign(loadedScope === scopeKey ? designRows : [], projectTextId, selectedReportId), [designRows, loadedScope, scopeKey, projectTextId, selectedReportId])
   const design = useMemo(() => normaliseWeeklyDesign(designRow), [designRow])
@@ -1001,6 +1023,8 @@ export function WeeklyReportForm({
     setSelectedReportId('')
     setSections([])
     setDesignRows([])
+    setProjectName('')
+    setDisciplines({})
     setLoadedScope('')
     if (!projectTextId || !schemaName || schemaName === 'public') {
       setLoadingOptions(false)
@@ -1013,21 +1037,26 @@ export function WeeklyReportForm({
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const client = db as any
-        const [options, projectDesigns, sharedDesigns] = await Promise.all([
-          client.from('dbp6_0008_weekly_report_sections').select('report_id, week_num, data_date').eq('project_id', projectTextId).order('data_date', { ascending: false }),
+        const [options, catalogue, projectDesigns, sharedDesigns, project, disciplineRows] = await Promise.all([
+          allWeeklyRows<ReportIndexRow>(() => client.from('dbp6_0008_weekly_report_sections').select('report_id, week_num, data_date').eq('project_id', projectTextId).order('data_date', { ascending: false }).order('id', { ascending: true })),
+          allWeeklyRows<ReportIndexRow>(() => client.from('dbp6_0008_weekly_reports_calculations').select('report_id, week_num, data_date, report_type').eq('project_id', projectTextId).order('data_date', { ascending: false }).order('id', { ascending: true })),
           client.from('dbp6_0008_weekly_report_design').select('*').eq('project_id', projectTextId).eq('is_active', true).eq('is_approved', true),
           client.from('dbp6_0008_weekly_report_design').select('*').is('project_id', null).eq('is_active', true).eq('is_approved', true),
+          client.from('dbp6_0000_projectdata').select('dgt_projectname').eq(projectId ? 'dgt_dbp6bd00projectdataid' : 'dgt_projectid', projectId || projectTextId).maybeSingle(),
+          allWeeklyRows<{ discipline_code: string | null; discipline_name: string | null }>(() => client.from('dbp6_0018_discipline').select('discipline_code, discipline_name').order('discipline_code', { ascending: true }).order('id', { ascending: true })),
         ])
         if (cancelled) return
-        if (options.error) throw new Error(options.error.message)
-        const seen = new Set<string>()
-        const opts: WeekOption[] = []
-        for (const row of options.data ?? []) {
-          if (seen.has(row.report_id)) continue
-          seen.add(row.report_id)
-          const date = row.data_date ? new Date(row.data_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
-          opts.push({ report_id: row.report_id, week_num: row.week_num, data_date: row.data_date, label: `Week ${row.week_num ?? '?'} — ${date}` })
+        if (options.error && catalogue.error) throw new Error(options.error.message)
+        const opts = weeklyReportOptions(catalogue.data ?? [], options.data ?? [])
+        if (catalogue.error || options.error) showError('Some report weeks could not be loaded. Showing the available report records.')
+        let details = project
+        if (!details.error && !details.data && projectId) {
+          details = await client.from('dbp6_0000_projectdata').select('dgt_projectname').eq('dgt_projectid', projectTextId).maybeSingle()
         }
+        if (cancelled) return
+        setProjectName(details.data?.dgt_projectname?.trim() ?? '')
+        setDisciplines(disciplineLookup(disciplineRows.data ?? []))
+        if (details.error || disciplineRows.error) showError('Some project or discipline names could not be loaded. Original identifiers are shown where names are unavailable.')
         if (projectDesigns.error || sharedDesigns.error) showError('Weekly report design could not be loaded. Using fallback styling.')
         setDesignRows([...(projectDesigns.data ?? []), ...(sharedDesigns.data ?? [])])
         setWeekOptions(opts)
@@ -1045,7 +1074,7 @@ export function WeeklyReportForm({
     void fetchOptions()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectTextId, schemaName, scopeKey])
+  }, [projectId, projectTextId, schemaName, scopeKey])
 
   useEffect(() => {
     let cancelled = false
@@ -1103,6 +1132,7 @@ export function WeeklyReportForm({
 
   return (
     <WeeklyDesignContext.Provider value={design}>
+    <WeeklyMetadataContext.Provider value={loadedScope === scopeKey ? disciplines : {}}>
     <div className="weekly-report-themed min-h-full" style={weeklyDesignStyle(design)}>
       <style>{weeklyPrintCss(design, { projectId: projectTextId, dataDate: selectedWeek?.data_date ?? '' })}</style>
       {!designRow && sections.length > 0 && <p className="no-print text-xs text-amber-700 mb-3">No approved active design matches this report. Using fallback styling.</p>}
@@ -1250,7 +1280,7 @@ export function WeeklyReportForm({
               <p className="text-sm mt-1">
                 {weekOptions.length === 0
                   ? 'No weekly reports are available for this project yet.'
-                  : 'The selected report has no sections.'}
+                  : selectedWeek?.hasSections === false ? 'Calculations exist for this week, but report sections have not been generated. Generate the report for the selected week to view its content.' : 'The selected report has no sections.'}
               </p>
             </div>
           ) : (
@@ -1258,6 +1288,7 @@ export function WeeklyReportForm({
               {selectedWeek && (
                 <CoverPage
                   projectTextId={projectTextId}
+                  projectName={projectName}
                   weekNum={selectedWeek.week_num}
                   dataDate={selectedWeek.data_date}
                   reportId={selectedWeek.report_id}
@@ -1274,6 +1305,7 @@ export function WeeklyReportForm({
         </div>
       </div>
     </div>
+    </WeeklyMetadataContext.Provider>
     </WeeklyDesignContext.Provider>
   )
 }
