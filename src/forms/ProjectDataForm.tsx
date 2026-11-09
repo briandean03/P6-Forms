@@ -1,3 +1,4 @@
+import { REPORT_WEBHOOKS, runReportSync, type SyncReport } from '../lib/reportSync'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { schemaClient } from '../lib/supabase'
@@ -107,6 +108,14 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   const [webhookStatus, setWebhookStatus] = useState<Record<string, WebhookStatus>>({
     '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle', '146': 'idle',
   })
+  const [reportSyncRunning, setReportSyncRunning] = useState(false)
+  const [reportSyncSteps, setReportSyncSteps] = useState<Record<string, string>>({})
+  const reportSyncAbort = useRef<AbortController | null>(null)
+  useEffect(() => {
+    setReportSyncRunning(false)
+    setReportSyncSteps({})
+    return () => { reportSyncAbort.current?.abort(); reportSyncAbort.current = null }
+  }, [schemaName, projectId, projectTextId])
   const [reportPolling, setReportPolling] = useState(false)
   const [reportRows, setReportRows] = useState<WeeklyReportRow[]>([])
   const [reportWeek, setReportWeek] = useState<number | null>(null)
@@ -387,7 +396,44 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
     else if (e.key === 'Escape') { setReportEditingCell(null); setReportCellValue('') }
   }
 
+  const handleReportSync = async () => {
+    if (reportSyncAbort.current || Object.values(webhookStatus).includes('loading')) return
+    const controller = new AbortController()
+    reportSyncAbort.current = controller
+    setReportSyncRunning(true)
+    setReportSyncSteps({})
+    try {
+      if (!projectId || !projectTextId || !schemaName || schemaName === 'public') throw new Error('Select a project before generating reports.')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client = schemaClient(schemaName) as any
+      const { data: project, error: projectError } = await client.from('dbp6_0000_projectdata')
+        .select('dgt_current_weeknum').eq('dgt_dbp6bd00projectdataid', projectId).abortSignal(controller.signal).maybeSingle()
+      if (projectError) throw new Error('Cannot read the current project week: ' + projectError.message)
+      if (project?.dgt_current_weeknum == null) throw new Error('The selected project has no current reporting week.')
+      const readReport = async (): Promise<SyncReport | null> => {
+        const { data: report, error } = await client.from('dbp6_0008_weekly_reports_calculations')
+          .select('report_id, updated_at').eq('project_id', projectTextId)
+          .eq('week_num', project.dgt_current_weeknum).eq('report_type', 'Weekly Progress Report')
+          .order('updated_at', { ascending: false }).limit(1).abortSignal(controller.signal).maybeSingle()
+        if (error) throw new Error('Cannot read calculation report metadata: ' + error.message)
+        return report
+      }
+      await runReportSync({ schema: schemaName, projectId: projectTextId, signal: controller.signal, readReport,
+        onStep: (id, status) => { if (!controller.signal.aborted) setReportSyncSteps(prev => ({ ...prev, [id]: status })) },
+      })
+      if (!controller.signal.aborted) showSuccess('All four report workflows accepted the requests. Report generation may still be running.')
+    } catch (error) {
+      if (!controller.signal.aborted) showError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (reportSyncAbort.current === controller) {
+        reportSyncAbort.current = null
+        setReportSyncRunning(false)
+      }
+    }
+  }
+
   const triggerWebhook = async (id: string, url: string, method: 'GET' | 'POST' = 'GET') => {
+    if (reportSyncAbort.current) return
     setWebhookStatus(prev => ({ ...prev, [id]: 'loading' }))
     try {
       if (id === '146') {
@@ -548,7 +594,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
 
   if (loading) return <LoadingSpinner />
 
-  const anyWebhookLoading = Object.values(webhookStatus).some(s => s === 'loading')
+  const anyWebhookLoading = reportSyncRunning || Object.values(webhookStatus).some(s => s === 'loading')
 
   return (
     <div className="space-y-4">
@@ -561,6 +607,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         <h2 className="text-2xl font-bold text-gray-900">Project Data</h2>
         <div className="flex gap-2 items-center">
           <button
+            disabled={reportSyncRunning}
             onClick={() => {
               setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle', '146': 'idle' })
               setWebhookModal(true)
@@ -836,6 +883,19 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
       <Modal isOpen={webhookModal} onClose={() => setWebhookModal(false)} title="Sync / Update Webhooks">
         <div className="space-y-3 py-2">
           <p className="text-sm text-gray-500 mb-4">Trigger an n8n workflow to sync project data.</p>
+          <div className="p-4 rounded-lg border border-indigo-200 bg-indigo-50 space-y-2">
+            <p className="text-sm font-medium">Generate weekly report and dashboard</p>
+            <p className="text-xs text-gray-600">Current project week · 149 → 152 → 151 → 150. Accepted requests may continue processing in n8n.</p>
+            <button onClick={handleReportSync} disabled={anyWebhookLoading}
+              className="px-4 py-2 text-sm rounded bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+              {reportSyncRunning ? 'Running report sequence…' : 'Run report sequence'}
+            </button>
+            <ol className="text-xs space-y-1" aria-live="polite">
+              {REPORT_WEBHOOKS.map(step => <li key={step.id}>
+                {step.id}: {step.label}: {reportSyncSteps[step.id] === 'waiting' ? 'Accepted; waiting for calculation report' : reportSyncSteps[step.id] ?? 'Not started'}
+              </li>)}
+            </ol>
+          </div>
           {WEBHOOKS.map(({ id, label, url, ...rest }) => {
             const method = 'method' in rest ? (rest as { method: 'GET' | 'POST' }).method : 'GET'
             const status = webhookStatus[id]
@@ -860,7 +920,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
                   )}
                   {status === 'success' && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                   {status === 'error'   && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>}
-                  {status === 'idle' ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed — Retry'}
+                  {status === 'idle' ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed: Retry'}
                 </button>
               </div>
             )
