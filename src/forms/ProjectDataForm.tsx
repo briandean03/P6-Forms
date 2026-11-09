@@ -892,7 +892,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
             </button>
             <ol className="text-xs space-y-1" aria-live="polite">
               {REPORT_WEBHOOKS.map(step => <li key={step.id}>
-                {step.id} — {step.label}: {reportSyncSteps[step.id] === 'waiting' ? 'Accepted; waiting for calculation report' : reportSyncSteps[step.id] ?? 'Not started'}
+                {step.id}: {step.label}: {reportSyncSteps[step.id] === 'waiting' ? 'Accepted; waiting for calculation report' : reportSyncSteps[step.id] ?? 'Not started'}
               </li>)}
             </ol>
           </div>
@@ -920,7 +920,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
                   )}
                   {status === 'success' && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                   {status === 'error'   && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>}
-                  {status === 'idle' ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed — Retry'}
+                  {status === 'idle' ? 'Run' : status === 'loading' ? 'Running…' : status === 'success' ? 'Success' : 'Failed: Retry'}
                 </button>
               </div>
             )
