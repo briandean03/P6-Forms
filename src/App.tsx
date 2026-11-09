@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useAppNavigation } from '@/lib/appNavigation'
 import { supabase, schemaClient } from '@/lib/supabase'
 import type { ProjectData } from '@/types/database'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -249,6 +250,7 @@ const navSections: NavSection[] = [
 
 // Flat list for label lookup
 const allNavItems: NavItem[] = navSections.flatMap(s => s.items)
+const navigationTabs = allNavItems.map(item => item.key)
 
 interface ProjectInfo {
   id: string
@@ -261,13 +263,11 @@ interface ProjectInfo {
 }
 
 function App() {
-  const [view, setView] = useState<'home' | 'app'>('home')
-  const [activeTab, setActiveTab] = useState<TabKey>('engineering')
+  const { view, activeTab, selectedProjectId, selectedSchemaName, navigate } = useAppNavigation(navigationTabs)
+  const setActiveTab = (tab: TabKey) => navigate({ activeTab: tab })
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
-  const [selectedSchemaName, setSelectedSchemaName] = useState<string>('public')
   const [runUpdateLoading, setRunUpdateLoading] = useState(false)
   const [showRunUpdateConfirm, setShowRunUpdateConfirm] = useState(false)
   const [isDataStale, setIsDataStale] = useState(false)
@@ -343,10 +343,7 @@ function App() {
         .maybeSingle()
       schemaName = (data as { schema_name?: string | null } | null)?.schema_name || 'public'
     }
-    setSelectedSchemaName(schemaName)
-    setSelectedProjectId(projectId)
-    setActiveTab('dashboard')
-    setView('app')
+    navigate({ selectedSchemaName: schemaName, selectedProjectId: projectId, activeTab: 'dashboard', view: 'app' })
     fetchSidebarBadges(projectId, schemaName)
   }
 
@@ -358,7 +355,7 @@ function App() {
 
   const handleBackToHome = () => {
     fetchProjectInfo()
-    setView('home')
+    navigate({ view: 'home', selectedProjectId: '', selectedSchemaName: 'public' })
   }
 
   const handleRunUpdate = async () => {
@@ -493,7 +490,7 @@ function App() {
               <p className="text-lg">No projects found.</p>
               <p className="text-sm mt-1">Go to Project Data to create a new project.</p>
               <button
-                onClick={() => { setSelectedProjectId(''); setView('app'); setActiveTab('projectdata') }}
+                onClick={() => navigate({ selectedProjectId: '', selectedSchemaName: 'public', view: 'app', activeTab: 'projectdata' })}
                 className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
               >
                 Go to Project Data

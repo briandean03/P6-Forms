@@ -1,3 +1,4 @@
+import { replaceSectionLink } from '@/lib/appNavigation'
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react'
 import {
   BarChart,
@@ -1061,7 +1062,7 @@ export function WeeklyReportForm({
         if (projectDesigns.error || sharedDesigns.error) showError('Weekly report design could not be loaded. Using fallback styling.')
         setDesignRows([...(projectDesigns.data ?? []), ...(sharedDesigns.data ?? [])])
         setWeekOptions(opts)
-        setSelectedReportId(opts[0]?.report_id ?? '')
+        setSelectedReportId(opts.find(option => option.report_id === new URL(window.location.href).searchParams.get('report'))?.report_id ?? opts[0]?.report_id ?? '')
         setLoadedScope(scopeKey)
       } catch (err) {
         if (!cancelled) {
@@ -1108,6 +1109,35 @@ export function WeeklyReportForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedReportId, schemaName, projectTextId, loadedScope, scopeKey])
 
+  useEffect(() => {
+    const restore = () => {
+      const requested = new URL(window.location.href).searchParams.get('report')
+      if (requested && weekOptions.some(option => option.report_id === requested)) setSelectedReportId(requested)
+    }
+    window.addEventListener('popstate', restore)
+    return () => window.removeEventListener('popstate', restore)
+  }, [weekOptions])
+
+  useEffect(() => {
+    if (!selectedReportId || loadedReportId !== selectedReportId || loadedScope !== scopeKey) return
+    const url = new URL(window.location.href)
+    url.searchParams.set('report', selectedReportId)
+    window.history.replaceState(window.history.state, '', url)
+    const scrollToHash = () => {
+      let id: string
+      try { id = decodeURIComponent(window.location.hash.slice(1)) } catch { return }
+      if (id) document.getElementById(id)?.scrollIntoView({ block: 'start' })
+    }
+    const frame = requestAnimationFrame(scrollToHash)
+    window.addEventListener('popstate', scrollToHash)
+    window.addEventListener('hashchange', scrollToHash)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('popstate', scrollToHash)
+      window.removeEventListener('hashchange', scrollToHash)
+    }
+  }, [selectedReportId, loadedReportId, loadedScope, scopeKey, sections])
+
   const selectedWeek = weekOptions.find(o => o.report_id === selectedReportId)
 
   // Always render appendices after all regular sections, regardless of section_order from the DB.
@@ -1134,7 +1164,7 @@ export function WeeklyReportForm({
   return (
     <WeeklyDesignContext.Provider value={design}>
     <WeeklyMetadataContext.Provider value={loadedScope === scopeKey ? disciplines : {}}>
-    <div className="weekly-report-themed min-h-full" style={weeklyDesignStyle(design)}>
+    <div onClick={replaceSectionLink} className="weekly-report-themed min-h-full" style={weeklyDesignStyle(design)}>
       <style>{weeklyPrintCss(design, { projectId: projectTextId, dataDate: selectedWeek?.data_date ?? '' })}</style>
       {!designRow && sections.length > 0 && <p className="no-print text-xs text-amber-700 mb-3">No approved active design matches this report. Using fallback styling.</p>}
       {notification && (
@@ -1156,7 +1186,13 @@ export function WeeklyReportForm({
           ) : (
             <select
               value={selectedReportId}
-              onChange={e => setSelectedReportId(e.target.value)}
+              onChange={e => {
+                const url = new URL(window.location.href)
+                url.hash = ''
+                url.searchParams.set('report', e.target.value)
+                window.history.replaceState(window.history.state, '', url)
+                setSelectedReportId(e.target.value)
+              }}
               className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-700"
             >
               {weekOptions.length === 0 ? (
