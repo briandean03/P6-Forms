@@ -54,13 +54,13 @@ test('section clicks replace history; Back/Forward and refresh restore the proje
 })
 
 test('sync sequence disables duplicates and stops visibly at a rejected webhook', async ({ page }) => {
-  const requests: string[] = []
+  const requests: { url: string; body: Record<string, unknown> }[] = []
   let updated = false
   await page.route('https://sample.supabase.co/rest/v1/dbp6_0008_weekly_reports_calculations**', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify({ report_id: 'r54', updated_at: updated ? '2026-01-02' : '2026-01-01' }),
   }))
   await page.route('https://pmc2p2c.app.n8n.cloud/**', async route => {
-    requests.push(route.request().url())
+    requests.push({ url: route.request().url(), body: route.request().postDataJSON() })
     if (requests.length === 1) updated = true
     await new Promise(resolve => setTimeout(resolve, 150))
     await route.fulfill({ status: requests.length === 2 ? 500 : 202, body: 'test response' })
@@ -74,5 +74,5 @@ test('sync sequence disables duplicates and stops visibly at a rejected webhook'
   await expect(page.getByText('Webhook 152 (Independent data sources) returned HTTP 500; expected 202.', { exact: true })).toBeVisible()
   await expect(run).toBeEnabled()
   expect(requests).toHaveLength(2)
-  expect(new URL(requests[1]).searchParams.get('report_id')).toBe('r54')
+  expect(requests[1].body).toEqual({ flow_parameters: { schema: 'test_schema', project_id: 'P2', report_id: 'r54' } })
 })
