@@ -71,7 +71,7 @@ test('sync sequence disables duplicates and stops visibly at a rejected webhook'
   await run.click()
   await expect(page.getByRole('button', { name: 'Running report sequence…' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Run', exact: true }).first()).toBeDisabled()
-  await expect(page.getByText('Webhook 152 (Independent data sources) returned HTTP 500; expected 202.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Webhook 152 (Independent data sources) returned HTTP 500; expected 200 or 202.', { exact: true })).toBeVisible()
   await expect(run).toBeEnabled()
   expect(requests).toHaveLength(2)
   expect(requests[1].body).toEqual({ flow_parameters: { schema: 'test_schema', project_id: 'P2', report_id: 'r54' } })

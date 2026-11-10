@@ -43,13 +43,13 @@ test('posts sequentially in 149/152/151/150 order with the n8n flow_parameters J
   }
 })
 
-for (const status of [200, 204, 400, 500]) test(`stops at a non-202 response (${status})`, async () => {
+for (const status of [204, 400, 500]) test(`stops at an unsupported response (${status})`, async () => {
   const f = fixture(status)
   if (status === 204) f.options.fetchRequest = (async (url, init) => {
     f.calls.push({ url: new URL(String(url)), init })
     return new Response(null, { status })
   }) as typeof fetch
-  await expect(runReportSync(f.options)).rejects.toThrow('expected 202')
+  await expect(runReportSync(f.options)).rejects.toThrow('expected 200 or 202')
   expect(f.calls).toHaveLength(1)
   expect(f.statuses.at(-1)).toBe('149:error')
 })
@@ -97,4 +97,21 @@ test('honours cancellation and metadata errors before calling later workflows', 
   failed.options.readReport = async () => { throw new Error('permission denied') }
   await expect(runReportSync(failed.options)).rejects.toThrow('permission denied')
   expect(failed.calls).toHaveLength(0)
+})
+
+for (const status of [200, 202]) test(`accepts HTTP ${status} for every report webhook`, async () => {
+  const f = fixture(status)
+  expect(await runReportSync(f.options)).toBe('r54')
+  expect(f.calls).toHaveLength(4)
+  expect(f.statuses.filter(state => state.endsWith(':accepted'))).toEqual(['149:accepted', '152:accepted', '151:accepted', '150:accepted'])
+})
+
+test('accepts a mix of 200 and 202 responses with empty bodies', async () => {
+  const f = fixture()
+  f.options.fetchRequest = (async (url, init) => {
+    f.calls.push({ url: new URL(String(url)), init })
+    return new Response('', { status: f.calls.length % 2 ? 200 : 202 })
+  }) as typeof fetch
+  expect(await runReportSync(f.options)).toBe('r54')
+  expect(f.calls).toHaveLength(4)
 })
