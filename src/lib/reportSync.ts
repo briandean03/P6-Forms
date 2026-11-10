@@ -40,14 +40,18 @@ export async function runReportSync(options: {
     for (step of REPORT_WEBHOOKS) {
       signal.throwIfAborted()
       onStep(step.id, 'loading')
-      // Same format as existing project-scoped POST webhook 62: query fields,
-      // no JSON wrapper, no extra authentication/content-type headers.
-      const params = new URLSearchParams({ project_id: projectId, schema, t: Date.now().toString() })
+      // n8n reads these fields from $json.body.flow_parameters.
+      const parameters: Record<string, string> = { schema, project_id: projectId }
       if (step.id !== '149') {
         if (!reportId) throw new Error('No calculation report ID is available.')
-        params.set('report_id', reportId)
+        parameters.report_id = reportId
       }
-      const response = await request(`${step.url}?${params}`, { method: 'POST', signal })
+      const response = await request(step.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flow_parameters: parameters }),
+        signal,
+      })
       if (response.status !== 202) {
         const body = (await response.text()).slice(0, 4000)
         console.error(`[report sync] Webhook ${step.id} rejected`, { status: response.status, response: body })

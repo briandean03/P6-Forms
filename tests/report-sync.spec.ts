@@ -29,17 +29,17 @@ test('restores the project, tab and schema from a section deep link', () => {
   expect(readAppLocation(new URL('https://example.com/'), ['dashboard']).view).toBe('home')
 })
 
-test('posts sequentially in 149/152/151/150 order using the existing project-scoped format', async () => {
+test('posts sequentially in 149/152/151/150 order with the n8n flow_parameters JSON body', async () => {
   const f = fixture()
   expect(await runReportSync(f.options)).toBe('r54')
   expect(f.calls.map(call => call.url.pathname)).toEqual(REPORT_WEBHOOKS.map(step => new URL(step.url).pathname))
   for (const [index, call] of f.calls.entries()) {
     expect(call.init?.method).toBe('POST')
-    expect(call.init?.body).toBeUndefined()
-    expect(call.init?.headers).toBeUndefined()
-    expect(call.url.searchParams.get('schema')).toBe('other_project')
-    expect(call.url.searchParams.get('project_id')).toBe('P2')
-    expect(call.url.searchParams.get('report_id')).toBe(index ? 'r54' : null)
+    expect(call.init?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(call.url.search).toBe('')
+    expect(JSON.parse(String(call.init?.body))).toEqual({ flow_parameters: {
+      schema: 'other_project', project_id: 'P2', ...(index ? { report_id: 'r54' } : {}),
+    } })
   }
 })
 
