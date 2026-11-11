@@ -21,11 +21,17 @@ CREATE TABLE IF NOT EXISTS public.dbp6_0008_report_jobs (
 
 ALTER TABLE public.dbp6_0008_report_jobs ENABLE ROW LEVEL SECURITY;
 
--- Browser clients (authenticated) may read job rows to display status.
+-- Browser clients may read job rows to display status.
 CREATE POLICY "Authenticated read"
   ON public.dbp6_0008_report_jobs
   FOR SELECT
   TO authenticated
+  USING (true);
+
+CREATE POLICY "Anon read"
+  ON public.dbp6_0008_report_jobs
+  FOR SELECT
+  TO anon
   USING (true);
 
 -- No browser writes — only the service-role key (edge functions, pg_cron SECURITY DEFINER) may write.
