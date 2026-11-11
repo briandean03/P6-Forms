@@ -164,7 +164,6 @@ export async function runReportSync(options: {
         // Capture baseline state immediately before polling begins.
         const baselines = await options.beforeStep151(reportId!)
         const beforeWidgetMap = new Map(baselines.widgets.map(w => [w.widget_id, w.updated_at]))
-        const beforeStructureUpdatedAt = baselines.structure?.updated_at ?? null
 
         onStep(step.id, 'waiting')
 
@@ -214,18 +213,16 @@ export async function runReportSync(options: {
             const widgetsDone = freshValidatedIds.size === expectedIds.size
 
             // ── A3 layout readiness ─────────────────────────────────────────────
-            // The layout must be:
-            //   1. Non-null and parseable.
-            //   2. dashboard_context.report_id must match the current reportId (proves it was
-            //      written for this run, not carried over from a previous one).
-            //   3. The structure's updated_at must have changed since the baseline (fresh write).
+            // The layout must be non-null and dashboard_context.report_id must match the
+            // current reportId. Workflow 151 does not update the structure row's updated_at
+            // (the structure is written by an earlier step); freshness is proven by the
+            // report_id match alone.
             const rawLayout = parseJsonField(currentStructure.a3_layout)
             const layout = rawLayout as Record<string, unknown> | null
             const ctx = layout?.dashboard_context as Record<string, unknown> | undefined
-            const layoutMatchesReport = typeof ctx?.report_id === 'string' && ctx.report_id === reportId
-            const layoutIsFresh =
-              currentStructure.updated_at !== beforeStructureUpdatedAt
-            const layoutDone = layout != null && layoutMatchesReport && layoutIsFresh
+            const layoutDone = layout != null
+              && typeof ctx?.report_id === 'string'
+              && ctx.report_id === reportId
 
             // ── Progress update ─────────────────────────────────────────────────
             const detail =
