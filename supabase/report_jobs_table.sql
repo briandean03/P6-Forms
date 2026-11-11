@@ -166,16 +166,16 @@ BEGIN
     IF widgets_done AND layout_done THEN
       -- pg_net is available on all Supabase projects.
       -- net.http_post is fire-and-forget (the response is stored in net._http_response).
+      -- body is jsonb (not text); Content-Type: application/json is the default.
       PERFORM net.http_post(
-        url     := webhook_150,
-        body    := jsonb_build_object(
-                     'flow_parameters', jsonb_build_object(
-                       'schema',     job.schema_name,
-                       'project_id', job.project_id,
-                       'report_id',  job.report_id::text
-                     )
-                   )::text,
-        headers := '{"Content-Type":"application/json"}'::jsonb
+        url  := webhook_150,
+        body := jsonb_build_object(
+                  'flow_parameters', jsonb_build_object(
+                    'schema',     job.schema_name,
+                    'project_id', job.project_id,
+                    'report_id',  job.report_id::text
+                  )
+                )
       );
 
       UPDATE public.dbp6_0008_report_jobs
