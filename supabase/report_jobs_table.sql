@@ -84,7 +84,7 @@ BEGIN
                      CASE WHEN jsonb_typeof(s.structure_plan) = 'string'
                           THEN (s.structure_plan #>> '{}')::jsonb
                           ELSE s.structure_plan
-                     END
+                     END -> 'pages'
                    ) AS page,
                    jsonb_array_elements(page->'widgets') AS w
             WHERE  s.report_id = $1
