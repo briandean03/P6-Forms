@@ -168,23 +168,25 @@ BEGIN
       -- net.http_post is fire-and-forget (the response is stored in net._http_response).
       -- body is jsonb (not text); Content-Type: application/json is the default.
       PERFORM net.http_post(
-        url  := webhook_150,
-        body := jsonb_build_object(
-                  'flow_parameters', jsonb_build_object(
-                    'schema',     job.schema_name,
-                    'project_id', job.project_id,
-                    'report_id',  job.report_id::text
-                  )
-                )
+        url                  := webhook_150,
+        body                 := jsonb_build_object(
+                                  'flow_parameters', jsonb_build_object(
+                                    'schema',     job.schema_name,
+                                    'project_id', job.project_id,
+                                    'report_id',  job.report_id::text
+                                  )
+                                ),
+        timeout_milliseconds := 30000
       );
 
       UPDATE public.dbp6_0008_report_jobs
       SET status = 'completed', updated_at = now()
       WHERE job_id = job.job_id;
 
-      -- Release the in-flight lock row so a future run can dispatch again.
-      DELETE FROM public.dbp6_0008_widget_generation_requests
-      WHERE request_id = job.request_id;
+      -- Lock row cleanup intentionally omitted: deleting the lock row cascades
+      -- (ON DELETE CASCADE) into the job row, preventing React from reading the
+      -- 'completed' status via Realtime. The lock row stays; the UNIQUE constraint
+      -- on (schema_name, project_id, report_id) still prevents duplicate dispatches.
     END IF;
 
   END LOOP;
