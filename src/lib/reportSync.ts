@@ -34,6 +34,7 @@ export async function runReportSync(options: {
   // Testability overrides
   fetchRequest?: typeof fetch
   edgeFunctionUrl?: string
+  waitMs?: number  // poll interval for webhook 149; defaults to 3000
 }): Promise<{ reportId: string; jobId: string }> {
   const { schema, projectId, signal, readReport, onStep } = options
   if (!schema || schema === 'public' || !projectId)
@@ -73,7 +74,7 @@ export async function runReportSync(options: {
       // Other webhooks (149, 152, 150) go directly to n8n and need no auth header.
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       if (step.id === '151') {
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+        const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY
         if (anonKey) headers['Authorization'] = `Bearer ${anonKey}`
       }
 
@@ -99,7 +100,7 @@ export async function runReportSync(options: {
             reportId = report.report_id
             break
           }
-          await new Promise<void>(resolve => setTimeout(resolve, 3000))
+          await new Promise<void>(resolve => setTimeout(resolve, options.waitMs ?? 3000))
         }
         if (!reportId) throw new Error('Calculations were accepted, but no new or updated report became visible for this project and week within two minutes. Check workflow 149 and SELECT access/RLS on weekly_reports_calculations. Later webhooks were not called.')
       }

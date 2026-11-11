@@ -22,7 +22,7 @@ function fixture(status = 202) {
     calls, statuses, controller,
     get jobIdReceived() { return jobIdReceived },
     options: {
-      schema: 'other_project', projectId: 'P2', signal: controller.signal,
+      schema: 'other_project', projectId: 'P2', signal: controller.signal, waitMs: 0,
       readReport: async (): Promise<SyncReport | null> => reads++ === 0 ? old : fresh,
       onStep: (id: string, state: string) => { statuses.push(`${id}:${state}`) },
       onJobCreated: (jobId: string) => { jobIdReceived = jobId },

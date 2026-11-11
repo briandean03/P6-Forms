@@ -125,6 +125,16 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   // server-side progress without any browser polling.
   useEffect(() => {
     if (!reportJobId) return
+
+    function applyJobRow(row: { status: string; progress: string | null; error_message: string | null }) {
+      setReportJobStatus(row)
+      if (row.status === 'completed') {
+        setReportSyncSteps(prev => ({ ...prev, '151': 'accepted', '150': 'accepted' }))
+      } else if (row.status === 'failed') {
+        setReportSyncSteps(prev => ({ ...prev, '151': 'error' }))
+      }
+    }
+
     const channel = supabaseClient
       .channel(`report-job-${reportJobId}`)
       .on('postgres_changes', {
@@ -133,15 +143,19 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         table: 'dbp6_0008_report_jobs',
         filter: `job_id=eq.${reportJobId}`,
       }, (payload) => {
-        const row = payload.new as { status: string; progress: string | null; error_message: string | null }
-        setReportJobStatus(row)
-        if (row.status === 'completed') {
-          setReportSyncSteps(prev => ({ ...prev, '151': 'accepted', '150': 'accepted' }))
-        } else if (row.status === 'failed') {
-          setReportSyncSteps(prev => ({ ...prev, '151': 'error' }))
-        }
+        applyJobRow(payload.new as { status: string; progress: string | null; error_message: string | null })
       })
       .subscribe()
+
+    // Fetch current row immediately after subscribing to handle the race condition
+    // where the job reached 'completed' before the Realtime channel connected.
+    supabaseClient
+      .from('dbp6_0008_report_jobs')
+      .select('status, progress, error_message')
+      .eq('job_id', reportJobId)
+      .single()
+      .then(({ data }) => { if (data) applyJobRow(data) })
+
     return () => { supabaseClient.removeChannel(channel) }
   }, [reportJobId])
   const [reportPolling, setReportPolling] = useState(false)
