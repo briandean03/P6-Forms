@@ -87,6 +87,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const requestId: string = (lockRow as { request_id: string }).request_id
 
+  // Insert a job row for pg_cron to pick up and drive to completion.
+  const { data: jobRow, error: jobErr } = await supabase
+    .from('dbp6_0008_report_jobs')
+    .insert({
+      request_id: requestId,
+      schema_name: p.schema,
+      project_id: p.project_id,
+      report_id: p.report_id,
+    })
+    .select('job_id')
+    .single()
+
+  if (jobErr) {
+    // Clean up the lock row to avoid a stranded lock with no corresponding job.
+    await supabase.from('dbp6_0008_widget_generation_requests').delete().eq('request_id', requestId)
+    return jsonResponse({ error: jobErr.message }, 500)
+  }
+
+  const jobId: string = (jobRow as { job_id: string }).job_id
+
   // Dispatch to n8n in the background.
   // fetch() does not throw for HTTP-level errors (e.g. 500, 524) — always check res.status.
   // The lock is NOT released here regardless of n8n's response:
@@ -113,5 +133,5 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // @ts-ignore — EdgeRuntime is injected by the Supabase edge runtime
   if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(bg)
 
-  return jsonResponse({ request_id: requestId }, 202)
+  return jsonResponse({ request_id: requestId, job_id: jobId }, 202)
 })

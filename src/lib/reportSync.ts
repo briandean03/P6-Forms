@@ -7,29 +7,6 @@ export const REPORT_WEBHOOKS = [
 
 export type SyncReport = { report_id: string; updated_at: string | null }
 
-// Widget row returned during the step-151 polling loop.
-export type SyncWidget = {
-  widget_id: string
-  processing_status: string
-  updated_at: string
-  widget_ast: unknown   // raw column value — may arrive as a JSON-encoded string from Supabase
-}
-
-// Structure row returned during the step-151 polling loop.
-// expectedWidgetIds must be extracted from structure_plan.pages[].widgets[].widget_id
-// by the caller (ProjectDataForm) before returning this object.
-export type SyncStructure = {
-  structure_id: string
-  a3_layout: unknown   // raw column value — may arrive as a JSON-encoded string from Supabase
-  updated_at: string
-  expectedWidgetIds: string[]
-}
-
-export type Webhook151Baselines = {
-  widgets: SyncWidget[]
-  structure: SyncStructure | null
-}
-
 type StepStatus = 'loading' | 'accepted' | 'waiting' | 'error'
 
 // Safely decodes a JSON column that may arrive as a plain object, a JSON string,
@@ -45,54 +22,37 @@ export function parseJsonField(raw: unknown): unknown {
   return null
 }
 
-function pause(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    signal.throwIfAborted()
-    const abort = () => { clearTimeout(timer); reject(signal.reason) }
-    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms)
-    signal.addEventListener('abort', abort, { once: true })
-  })
-}
-
 export async function runReportSync(options: {
   schema: string
   projectId: string
   signal: AbortSignal
   readReport: () => Promise<SyncReport | null>
-  // Required for step 151 — called at polling time to read current widget rows.
-  readWidgets: (reportId: string) => Promise<SyncWidget[]>
-  // Required for step 151 — called at polling time to read current structure row.
-  // Must return expectedWidgetIds parsed from structure_plan.
-  readStructure: (reportId: string) => Promise<SyncStructure | null>
-  // Required for step 151 — called immediately before dispatching 151 to capture baselines.
-  beforeStep151: (reportId: string) => Promise<Webhook151Baselines>
-  // Required for step 151 — called in all exit paths to release the in-flight lock.
-  releaseLock: (requestId: string) => Promise<void>
   onStep: (id: string, status: StepStatus) => void
-  // Optional: receives human-readable progress strings during step-151 polling.
-  onProgress?: (id: string, detail: string) => void
+  // Called with the job_id returned by the edge function so the caller can
+  // subscribe to Realtime updates on dbp6_0008_report_jobs.
+  onJobCreated?: (jobId: string) => void
   // Testability overrides
   fetchRequest?: typeof fetch
-  wait?: (ms: number, signal: AbortSignal) => Promise<void>
   edgeFunctionUrl?: string
-}) {
+}): Promise<{ reportId: string; jobId: string }> {
   const { schema, projectId, signal, readReport, onStep } = options
   if (!schema || schema === 'public' || !projectId)
     throw new Error('Select a project with its own schema before generating reports.')
 
   const request = options.fetchRequest ?? fetch
-  const wait = options.wait ?? pause
   const edgeFunctionUrl =
     options.edgeFunctionUrl ??
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invoke-webhook-151`
 
   let step: typeof REPORT_WEBHOOKS[number] = REPORT_WEBHOOKS[0]
+  let reportId: string | undefined
+  let jobId: string | undefined
+
   try {
     onStep(step.id, 'loading')
     // Snapshot first: never pass an old report to later steps just because 149
     // accepted the request. updated_at is maintained by the calculations table.
     const before = await readReport()
-    let reportId: string | undefined
 
     for (step of REPORT_WEBHOOKS) {
       signal.throwIfAborted()
@@ -139,129 +99,39 @@ export async function runReportSync(options: {
             reportId = report.report_id
             break
           }
-          await wait(3000, signal)
+          await new Promise<void>(resolve => setTimeout(resolve, 3000))
         }
         if (!reportId) throw new Error('Calculations were accepted, but no new or updated report became visible for this project and week within two minutes. Check workflow 149 and SELECT access/RLS on weekly_reports_calculations. Later webhooks were not called.')
       }
 
-      // ── Webhook 151: poll until all expected widget outputs and A3 layout are ready ─
+      // ── Webhook 151: hand off to server-side orchestration ────────────────────────
+      // The edge function inserts a lock row and a job row, dispatches n8n in the
+      // background, and returns { request_id, job_id } immediately. pg_cron handles
+      // the readiness polling and webhook 150 dispatch server-side.
       if (step.id === '151') {
-        // Verify all required callbacks were supplied — fail immediately if not.
-        if (!options.readWidgets || !options.readStructure || !options.beforeStep151 || !options.releaseLock)
-          throw new Error('readWidgets, readStructure, beforeStep151, and releaseLock are required for step 151.')
-
-        // Extract the request_id the edge function returned in the 202 body.
         let requestId151: string | undefined
+        let jobId151: string | undefined
         try {
-          const responseBody = await response.json() as { request_id?: string }
+          const responseBody = await response.json() as { request_id?: string; job_id?: string }
           requestId151 = responseBody.request_id
-        } catch {
-          // Non-JSON 202 response — cannot track the lock
-        }
+          jobId151 = responseBody.job_id
+        } catch { /* non-JSON 202 response */ }
         if (!requestId151)
           throw new Error('Edge function (invoke-webhook-151) did not return a request_id in the response body.')
+        if (!jobId151)
+          throw new Error('Edge function (invoke-webhook-151) did not return a job_id in the response body.')
 
-        // Capture baseline state immediately before polling begins.
-        const baselines = await options.beforeStep151(reportId!)
-        const beforeWidgetMap = new Map(baselines.widgets.map(w => [w.widget_id, w.updated_at]))
-
-        onStep(step.id, 'waiting')
-
-        // 500 polls × 3 s = 25 minutes maximum wait.
-        const POLL_ATTEMPTS = 500
-        let confirmed = false
-        let lastDetail = ''
-
-        try {
-          for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
-            signal.throwIfAborted()
-
-            // Re-evaluate both widgets and structure together on every poll.
-            // Do not permanently latch partial readiness from an earlier iteration.
-            const [currentWidgets, currentStructure] = await Promise.all([
-              options.readWidgets(reportId!),
-              options.readStructure(reportId!),
-            ])
-
-            // ── Widget readiness ────────────────────────────────────────────────
-            // Expected widget IDs come from structure_plan.pages[].widgets[].widget_id,
-            // already resolved and returned in SyncStructure.expectedWidgetIds by the caller.
-            // The structure row may not exist yet while 151 is still running — treat as not-ready
-            // and keep polling. Only fail at the end if the deadline expires.
-            if (!currentStructure || currentStructure.expectedWidgetIds.length === 0) {
-              const detail = 'Waiting for approved structure with widget plan…'
-              if (detail !== lastDetail) { options.onProgress?.(step.id, detail); lastDetail = detail }
-              await wait(3000, signal)
-              continue
-            }
-            const expectedIds = new Set(currentStructure.expectedWidgetIds)
-
-            // Build a deduplicated map: widget_id → best row (prefer validated + fresh)
-            // to guard against a repeated update to one widget inflating the count.
-            const freshValidatedIds = new Set<string>()
-            for (const w of currentWidgets) {
-              if (!expectedIds.has(w.widget_id)) continue
-              if (w.processing_status !== 'validated') continue
-              // Must be freshly written since the baseline — same updated_at means no new generation.
-              if (w.updated_at === beforeWidgetMap.get(w.widget_id)) continue
-              // widget_ast must be a usable non-empty object.
-              const ast = parseJsonField(w.widget_ast)
-              if (ast == null || typeof ast !== 'object' || Array.isArray(ast)) continue
-              if (Object.keys(ast as object).length === 0) continue
-              freshValidatedIds.add(w.widget_id)
-            }
-            const widgetsDone = freshValidatedIds.size === expectedIds.size
-
-            // ── A3 layout readiness ─────────────────────────────────────────────
-            // The layout must be non-null and dashboard_context.report_id must match the
-            // current reportId. Workflow 151 does not update the structure row's updated_at
-            // (the structure is written by an earlier step); freshness is proven by the
-            // report_id match alone.
-            const rawLayout = parseJsonField(currentStructure.a3_layout)
-            const layout = rawLayout as Record<string, unknown> | null
-            const ctx = layout?.dashboard_context as Record<string, unknown> | undefined
-            const layoutDone = layout != null
-              && typeof ctx?.report_id === 'string'
-              && ctx.report_id === reportId
-
-            // ── Progress update ─────────────────────────────────────────────────
-            const detail =
-              `Widget outputs ready: ${freshValidatedIds.size} of ${expectedIds.size}` +
-              (layoutDone ? '; A3 layout ready.' : '; waiting for A3 layout.')
-            if (detail !== lastDetail) {
-              options.onProgress?.(step.id, detail)
-              lastDetail = detail
-            }
-
-            if (widgetsDone && layoutDone) {
-              confirmed = true
-              break
-            }
-
-            await wait(3000, signal)
-          }
-        } finally {
-          // Release the in-flight lock in ALL exit paths: confirmed, timed out, aborted, or error.
-          await options.releaseLock(requestId151).catch(err =>
-            console.error('[report sync] Failed to release webhook 151 lock', requestId151, err))
-        }
-
-        if (!confirmed) {
-          throw new Error(
-            'Readiness could not be confirmed: the required widget outputs ' +
-            '(processing_status = validated, fresh updated_at, non-empty widget_ast) ' +
-            'and/or the structure a3_layout (dashboard_context.report_id matching) ' +
-            'did not appear within twenty-five minutes. ' +
-            'Check workflow 151 and SELECT access/RLS on ' +
-            'dbp6_0008_dashboard_widgets and dbp6_0008_dashboard_structures. ' +
-            'Webhook 150 was not called.'
-          )
-        }
+        jobId = jobId151
+        options.onJobCreated?.(jobId151)
+        // No polling loop. pg_cron picks up the job row and drives 151→150 server-side.
+        // Webhook 150 will NOT be dispatched by this function — break out of the loop.
+        onStep(step.id, 'accepted')
+        break
       }
 
       onStep(step.id, 'accepted')
     }
-    return reportId!
+    return { reportId: reportId!, jobId: jobId! }
   } catch (error) {
     if (!signal.aborted) {
       onStep(step.id, 'error')

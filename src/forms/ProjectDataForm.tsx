@@ -1,7 +1,7 @@
-import { REPORT_WEBHOOKS, runReportSync, parseJsonField, type SyncReport, type SyncWidget, type SyncStructure, type Webhook151Baselines } from '../lib/reportSync'
+import { REPORT_WEBHOOKS, runReportSync, type SyncReport } from '../lib/reportSync'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { schemaClient } from '../lib/supabase'
+import { supabase, schemaClient } from '../lib/supabase'
 import { ProjectData } from '../types/database'
 import { useNotification } from '../hooks/useNotification'
 import { Notification } from '../components/Notification'
@@ -110,14 +110,40 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   })
   const [reportSyncRunning, setReportSyncRunning] = useState(false)
   const [reportSyncSteps, setReportSyncSteps] = useState<Record<string, string>>({})
-  const [reportSyncProgress, setReportSyncProgress] = useState<Record<string, string>>({})
+  const [reportJobId, setReportJobId] = useState<string | null>(null)
+  const [reportJobStatus, setReportJobStatus] = useState<{ status: string; progress: string | null; error_message: string | null } | null>(null)
   const reportSyncAbort = useRef<AbortController | null>(null)
   useEffect(() => {
     setReportSyncRunning(false)
     setReportSyncSteps({})
-    setReportSyncProgress({})
+    setReportJobId(null)
+    setReportJobStatus(null)
     return () => { reportSyncAbort.current?.abort(); reportSyncAbort.current = null }
   }, [schemaName, projectId, projectTextId])
+
+  // Subscribe to Realtime updates on the report job row so the UI reflects
+  // server-side progress without any browser polling.
+  useEffect(() => {
+    if (!reportJobId) return
+    const channel = supabase
+      .channel(`report-job-${reportJobId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'dbp6_0008_report_jobs',
+        filter: `job_id=eq.${reportJobId}`,
+      }, (payload) => {
+        const row = payload.new as { status: string; progress: string | null; error_message: string | null }
+        setReportJobStatus(row)
+        if (row.status === 'completed') {
+          setReportSyncSteps(prev => ({ ...prev, '151': 'accepted', '150': 'accepted' }))
+        } else if (row.status === 'failed') {
+          setReportSyncSteps(prev => ({ ...prev, '151': 'error' }))
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [reportJobId])
   const [reportPolling, setReportPolling] = useState(false)
   const [reportRows, setReportRows] = useState<WeeklyReportRow[]>([])
   const [reportWeek, setReportWeek] = useState<number | null>(null)
@@ -422,87 +448,13 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         return report
       }
 
-      // ── Webhook 151 callbacks ───────────────────────────────────────────────────
-
-      // Returns current widget rows for the report (read during polling loop).
-      const readWidgets = async (reportId: string): Promise<SyncWidget[]> => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client as any)
-          .from('dbp6_0008_dashboard_widgets')
-          .select('widget_id, processing_status, updated_at, widget_ast')
-          .eq('project_id', projectTextId)
-          .eq('report_id', reportId)
-          .abortSignal(controller.signal)
-        if (error) throw new Error('Cannot read widget status: ' + error.message)
-        return (data ?? []) as SyncWidget[]
-      }
-
-      // Returns the approved structure row for the report, with expectedWidgetIds already
-      // extracted from structure_plan.pages[].widgets[].widget_id (read during polling loop).
-      const readStructure = async (reportId: string): Promise<SyncStructure | null> => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client as any)
-          .from('dbp6_0008_dashboard_structures')
-          .select('structure_id, project_id, report_id, a3_layout, updated_at, structure_plan')
-          .eq('project_id', projectTextId)
-          .eq('report_id', reportId)
-          .eq('is_approved', true)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .abortSignal(controller.signal)
-          .maybeSingle()
-        if (error) throw new Error('Cannot read structure status: ' + error.message)
-        if (!data) return null
-        // Parse structure_plan (may arrive as a JSON-encoded string from Supabase).
-        const rawPlan = parseJsonField(data.structure_plan)
-        const plan = rawPlan as { pages?: Array<{ widgets?: Array<{ widget_id: string }> }> } | null
-        const expectedWidgetIds = (plan?.pages ?? [])
-          .flatMap((p: { widgets?: Array<{ widget_id: string }> }) => p.widgets ?? [])
-          .map((w: { widget_id: string }) => w.widget_id)
-          .filter(Boolean)
-        return {
-          structure_id: data.structure_id,
-          a3_layout: data.a3_layout,
-          updated_at: data.updated_at,
-          expectedWidgetIds,
-        }
-      }
-
-      // Captures the baseline state of widgets and structure immediately before 151 is dispatched.
-      const beforeStep151 = async (reportId: string): Promise<Webhook151Baselines> => {
-        const [widgets, structure] = await Promise.all([
-          readWidgets(reportId),
-          readStructure(reportId),
-        ])
-        return { widgets, structure }
-      }
-
-      // Releases the in-flight lock via the release-webhook-151-lock edge function.
-      // Called by runReportSync in all exit paths (confirmed, timed out, aborted).
-      const releaseLock = async (requestId: string): Promise<void> => {
-        const releaseFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/release-webhook-151-lock`
-        try {
-          const res = await fetch(releaseFnUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({ request_id: requestId }),
-          })
-          if (!res.ok) console.error('[report sync] Lock release returned non-OK status', res.status)
-        } catch (err) {
-          console.error('[report sync] Lock release fetch failed', err)
-        }
-      }
-
       await runReportSync({
         schema: schemaName, projectId: projectTextId, signal: controller.signal,
-        readReport, readWidgets, readStructure, beforeStep151, releaseLock,
+        readReport,
         onStep: (id, status) => { if (!controller.signal.aborted) setReportSyncSteps(prev => ({ ...prev, [id]: status })) },
-        onProgress: (id, detail) => { if (!controller.signal.aborted) setReportSyncProgress(prev => ({ ...prev, [id]: detail })) },
+        onJobCreated: (jobId) => { setReportJobId(jobId) },
       })
-      if (!controller.signal.aborted) showSuccess('All four report workflows accepted the requests. Report generation may still be running.')
+      if (!controller.signal.aborted) showSuccess('Workflows 149 and 152 accepted. Widget generation is running on the server — step 150 will fire automatically.')
     } catch (error) {
       if (!controller.signal.aborted) showError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -968,8 +920,9 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
             <p className="text-sm font-medium">Generate weekly report and dashboard</p>
             <p className="text-xs text-gray-600">Current project week · 149 → 152 → 151 → 150. Accepted requests may continue processing in n8n.</p>
             {reportSyncRunning && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                Keep this window open — webhook 150 will run automatically after widget outputs are confirmed.
+              <p className="text-xs text-gray-500">
+                Widget generation is running on the server — you can safely close this window.
+                Step 150 will run automatically when all widget outputs are confirmed.
               </p>
             )}
             <button onClick={handleReportSync} disabled={anyWebhookLoading}
@@ -985,8 +938,11 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
                 return (
                   <li key={step.id}>
                     {step.id}: {step.label}: {status === 'waiting' ? waitLabel : status ?? 'Not started'}
-                    {step.id === '151' && reportSyncProgress['151'] && (
-                      <span className="block text-gray-500 pl-2">{reportSyncProgress['151']}</span>
+                    {step.id === '151' && reportJobStatus?.progress && (
+                      <span className="block text-gray-500 pl-2">{reportJobStatus.progress}</span>
+                    )}
+                    {step.id === '151' && reportJobStatus?.error_message && (
+                      <span className="block text-red-500 pl-2">{reportJobStatus.error_message}</span>
                     )}
                   </li>
                 )
