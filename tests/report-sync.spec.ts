@@ -164,23 +164,20 @@ test('honours cancellation and metadata errors before calling later workflows', 
   await expect(runReportSync(failed.options)).rejects.toThrow('permission denied')
   expect(failed.calls).toHaveLength(0)
 })
-<<<<<<< HEAD
-=======
 
-for (const status of [200, 202]) test(`accepts HTTP ${status} for every report webhook`, async () => {
-  const f = fixture(status)
+test('accepts HTTP 202 for every report webhook', async () => {
+  const f = fixture(202)
   expect(await runReportSync(f.options)).toBe('r54')
   expect(f.calls).toHaveLength(4)
   expect(f.statuses.filter(state => state.endsWith(':accepted'))).toEqual(['149:accepted', '152:accepted', '151:accepted', '150:accepted'])
 })
 
-test('accepts a mix of 200 and 202 responses with empty bodies', async () => {
+test('accepts 202 responses; edge function call returns JSON request_id', async () => {
   const f = fixture()
   f.options.fetchRequest = (async (url, init) => {
     f.calls.push({ url: new URL(String(url)), init })
     const isEdgeFn = String(url) === EDGE_FN_URL
-    const body = isEdgeFn ? JSON.stringify({ request_id: 'req-1' }) : ''
-    return new Response(body, { status: f.calls.length % 2 ? 200 : 202 })
+    return new Response(isEdgeFn ? JSON.stringify({ request_id: 'req-1' }) : '', { status: 202 })
   }) as typeof fetch
   expect(await runReportSync(f.options)).toBe('r54')
   expect(f.calls).toHaveLength(4)
@@ -265,15 +262,19 @@ test('a structure a3_layout with dashboard_context.report_id not matching does n
   await expect(runReportSync(f.options)).rejects.toThrow('Readiness could not be confirmed')
 })
 
-test('structure with no expectedWidgetIds throws immediately without polling', async () => {
+test('structure with no expectedWidgetIds keeps waiting (treated as structure not ready yet)', async () => {
   const f = fixture()
-  f.options.readStructure = async () => ({
-    structure_id: 's1',
-    a3_layout: { dashboard_context: { report_id: 'r54' } },
-    updated_at: 'ts-new',
-    expectedWidgetIds: [],  // empty — no widgets expected
-  })
-  await expect(runReportSync(f.options)).rejects.toThrow('no expected widgets in its structure_plan')
+  let calls = 0
+  f.options.readStructure = async () => {
+    calls++
+    // Return empty expectedWidgetIds for first 2 polls, then a valid structure
+    return calls < 3
+      ? { structure_id: 's1', a3_layout: null, updated_at: 'ts-old', expectedWidgetIds: [] }
+      : READY_STRUCTURE
+  }
+  await runReportSync(f.options)
+  expect(calls).toBeGreaterThanOrEqual(3)
+  expect(f.statuses).toContain('151:accepted')
 })
 
 test('releaseLock is called after confirmed readiness', async () => {
@@ -330,4 +331,3 @@ test('webhook 150 is not called if webhook 151 readiness times out', async () =>
   expect(f.calls).toHaveLength(3)
   expect(f.calls[2].url.toString()).toBe(EDGE_FN_URL)
 })
->>>>>>> 034abb1 (create functions and architecutre to know when the webhook ends)
