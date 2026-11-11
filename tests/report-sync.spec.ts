@@ -238,7 +238,7 @@ test('a widget with matching updated_at as baseline does not count as freshly ge
   }
   f.options.readStructure = async () => READY_STRUCTURE  // layout is always ready
   await expect(runReportSync(f.options)).rejects.toThrow('Readiness could not be confirmed')
-  expect(attempt).toBe(200)  // exhausted all polls
+  expect(attempt).toBe(500)  // exhausted all polls
   expect(f.statuses.at(-1)).toBe('151:error')
 })
 

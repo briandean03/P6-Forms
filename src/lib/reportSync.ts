@@ -167,8 +167,8 @@ export async function runReportSync(options: {
 
         onStep(step.id, 'waiting')
 
-        // 200 polls × 3 s = 10 minutes maximum wait.
-        const POLL_ATTEMPTS = 200
+        // 500 polls × 3 s = 25 minutes maximum wait.
+        const POLL_ATTEMPTS = 500
         let confirmed = false
         let lastDetail = ''
 
@@ -250,8 +250,8 @@ export async function runReportSync(options: {
           throw new Error(
             'Readiness could not be confirmed: the required widget outputs ' +
             '(processing_status = validated, fresh updated_at, non-empty widget_ast) ' +
-            'and/or the structure a3_layout (dashboard_context.report_id matching and ' +
-            'updated_at fresher than baseline) did not appear within ten minutes. ' +
+            'and/or the structure a3_layout (dashboard_context.report_id matching) ' +
+            'did not appear within twenty-five minutes. ' +
             'Check workflow 151 and SELECT access/RLS on ' +
             'dbp6_0008_dashboard_widgets and dbp6_0008_dashboard_structures. ' +
             'Webhook 150 was not called.'
