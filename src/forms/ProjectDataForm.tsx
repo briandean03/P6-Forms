@@ -1,7 +1,7 @@
 import { REPORT_WEBHOOKS, runReportSync, type SyncReport } from '../lib/reportSync'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase, schemaClient } from '../lib/supabase'
+import { supabase as supabaseClient, schemaClient } from '../lib/supabase'
 import { ProjectData } from '../types/database'
 import { useNotification } from '../hooks/useNotification'
 import { Notification } from '../components/Notification'
@@ -125,7 +125,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   // server-side progress without any browser polling.
   useEffect(() => {
     if (!reportJobId) return
-    const channel = supabase
+    const channel = supabaseClient
       .channel(`report-job-${reportJobId}`)
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -142,7 +142,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         }
       })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { supabaseClient.removeChannel(channel) }
   }, [reportJobId])
   const [reportPolling, setReportPolling] = useState(false)
   const [reportRows, setReportRows] = useState<WeeklyReportRow[]>([])
@@ -430,7 +430,6 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
     reportSyncAbort.current = controller
     setReportSyncRunning(true)
     setReportSyncSteps({})
-    setReportSyncProgress({})
     try {
       if (!projectId || !projectTextId || !schemaName || schemaName === 'public') throw new Error('Select a project before generating reports.')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
