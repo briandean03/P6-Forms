@@ -1,4 +1,4 @@
-import { REPORT_WEBHOOKS, runReportSync, type SyncReport } from '../lib/reportSync'
+import { REPORT_WEBHOOKS, runReportSync, parseJsonField, type SyncReport, type SyncWidget, type SyncStructure, type Webhook151Baselines } from '../lib/reportSync'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { schemaClient } from '../lib/supabase'
@@ -110,10 +110,12 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
   })
   const [reportSyncRunning, setReportSyncRunning] = useState(false)
   const [reportSyncSteps, setReportSyncSteps] = useState<Record<string, string>>({})
+  const [reportSyncProgress, setReportSyncProgress] = useState<Record<string, string>>({})
   const reportSyncAbort = useRef<AbortController | null>(null)
   useEffect(() => {
     setReportSyncRunning(false)
     setReportSyncSteps({})
+    setReportSyncProgress({})
     return () => { reportSyncAbort.current?.abort(); reportSyncAbort.current = null }
   }, [schemaName, projectId, projectTextId])
   const [reportPolling, setReportPolling] = useState(false)
@@ -402,6 +404,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
     reportSyncAbort.current = controller
     setReportSyncRunning(true)
     setReportSyncSteps({})
+    setReportSyncProgress({})
     try {
       if (!projectId || !projectTextId || !schemaName || schemaName === 'public') throw new Error('Select a project before generating reports.')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -418,8 +421,86 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         if (error) throw new Error('Cannot read calculation report metadata: ' + error.message)
         return report
       }
-      await runReportSync({ schema: schemaName, projectId: projectTextId, signal: controller.signal, readReport,
+
+      // ── Webhook 151 callbacks ───────────────────────────────────────────────────
+
+      // Returns current widget rows for the report (read during polling loop).
+      const readWidgets = async (reportId: string): Promise<SyncWidget[]> => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any)
+          .from('dbp6_0008_dashboard_widgets')
+          .select('widget_id, processing_status, updated_at, widget_ast')
+          .eq('project_id', projectTextId)
+          .eq('report_id', reportId)
+          .abortSignal(controller.signal)
+        if (error) throw new Error('Cannot read widget status: ' + error.message)
+        return (data ?? []) as SyncWidget[]
+      }
+
+      // Returns the approved structure row for the report, with expectedWidgetIds already
+      // extracted from structure_plan.pages[].widgets[].widget_id (read during polling loop).
+      const readStructure = async (reportId: string): Promise<SyncStructure | null> => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any)
+          .from('dbp6_0008_dashboard_structures')
+          .select('structure_id, project_id, report_id, a3_layout, updated_at, structure_plan')
+          .eq('project_id', projectTextId)
+          .eq('report_id', reportId)
+          .eq('is_approved', true)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .abortSignal(controller.signal)
+          .maybeSingle()
+        if (error) throw new Error('Cannot read structure status: ' + error.message)
+        if (!data) return null
+        // Parse structure_plan (may arrive as a JSON-encoded string from Supabase).
+        const rawPlan = parseJsonField(data.structure_plan)
+        const plan = rawPlan as { pages?: Array<{ widgets?: Array<{ widget_id: string }> }> } | null
+        const expectedWidgetIds = (plan?.pages ?? [])
+          .flatMap((p: { widgets?: Array<{ widget_id: string }> }) => p.widgets ?? [])
+          .map((w: { widget_id: string }) => w.widget_id)
+          .filter(Boolean)
+        return {
+          structure_id: data.structure_id,
+          a3_layout: data.a3_layout,
+          updated_at: data.updated_at,
+          expectedWidgetIds,
+        }
+      }
+
+      // Captures the baseline state of widgets and structure immediately before 151 is dispatched.
+      const beforeStep151 = async (reportId: string): Promise<Webhook151Baselines> => {
+        const [widgets, structure] = await Promise.all([
+          readWidgets(reportId),
+          readStructure(reportId),
+        ])
+        return { widgets, structure }
+      }
+
+      // Releases the in-flight lock via the release-webhook-151-lock edge function.
+      // Called by runReportSync in all exit paths (confirmed, timed out, aborted).
+      const releaseLock = async (requestId: string): Promise<void> => {
+        const releaseFnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/release-webhook-151-lock`
+        try {
+          const res = await fetch(releaseFnUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ request_id: requestId }),
+          })
+          if (!res.ok) console.error('[report sync] Lock release returned non-OK status', res.status)
+        } catch (err) {
+          console.error('[report sync] Lock release fetch failed', err)
+        }
+      }
+
+      await runReportSync({
+        schema: schemaName, projectId: projectTextId, signal: controller.signal,
+        readReport, readWidgets, readStructure, beforeStep151, releaseLock,
         onStep: (id, status) => { if (!controller.signal.aborted) setReportSyncSteps(prev => ({ ...prev, [id]: status })) },
+        onProgress: (id, detail) => { if (!controller.signal.aborted) setReportSyncProgress(prev => ({ ...prev, [id]: detail })) },
       })
       if (!controller.signal.aborted) showSuccess('All four report workflows accepted the requests. Report generation may still be running.')
     } catch (error) {
@@ -886,14 +967,30 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
           <div className="p-4 rounded-lg border border-indigo-200 bg-indigo-50 space-y-2">
             <p className="text-sm font-medium">Generate weekly report and dashboard</p>
             <p className="text-xs text-gray-600">Current project week · 149 → 152 → 151 → 150. Accepted requests may continue processing in n8n.</p>
+            {reportSyncRunning && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                Keep this window open — webhook 150 will run automatically after widget outputs are confirmed.
+              </p>
+            )}
             <button onClick={handleReportSync} disabled={anyWebhookLoading}
               className="px-4 py-2 text-sm rounded bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed">
               {reportSyncRunning ? 'Running report sequence…' : 'Run report sequence'}
             </button>
             <ol className="text-xs space-y-1" aria-live="polite">
-              {REPORT_WEBHOOKS.map(step => <li key={step.id}>
-                {step.id}: {step.label}: {reportSyncSteps[step.id] === 'waiting' ? 'Accepted; waiting for calculation report' : reportSyncSteps[step.id] ?? 'Not started'}
-              </li>)}
+              {REPORT_WEBHOOKS.map(step => {
+                const status = reportSyncSteps[step.id]
+                const waitLabel = step.id === '151'
+                  ? 'Dispatched; waiting for widget outputs and A3 layout'
+                  : 'Accepted; waiting for calculation report'
+                return (
+                  <li key={step.id}>
+                    {step.id}: {step.label}: {status === 'waiting' ? waitLabel : status ?? 'Not started'}
+                    {step.id === '151' && reportSyncProgress['151'] && (
+                      <span className="block text-gray-500 pl-2">{reportSyncProgress['151']}</span>
+                    )}
+                  </li>
+                )
+              })}
             </ol>
           </div>
           {WEBHOOKS.map(({ id, label, url, ...rest }) => {
