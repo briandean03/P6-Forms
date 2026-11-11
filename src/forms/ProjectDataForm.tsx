@@ -1,4 +1,5 @@
 import { REPORT_WEBHOOKS, runReportSync, type SyncReport } from '../lib/reportSync'
+import { ReportRequestPanel } from '../components/ReportRequestPanel'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { schemaClient } from '../lib/supabase'
@@ -883,7 +884,9 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
       <Modal isOpen={webhookModal} onClose={() => setWebhookModal(false)} title="Sync / Update Webhooks">
         <div className="space-y-3 py-2">
           <p className="text-sm text-gray-500 mb-4">Trigger an n8n workflow to sync project data.</p>
-          <div className="p-4 rounded-lg border border-indigo-200 bg-indigo-50 space-y-2">
+          {import.meta.env.VITE_SUPABASE_REPORT_REQUESTS === 'true' ? (
+            <ReportRequestPanel schema={schemaName} projectId={projectTextId} disabled={anyWebhookLoading} onBusy={setReportSyncRunning} />
+          ) : <div className="p-4 rounded-lg border border-indigo-200 bg-indigo-50 space-y-2">
             <p className="text-sm font-medium">Generate weekly report and dashboard</p>
             <p className="text-xs text-gray-600">Current project week · 149 → 152 → 151 → 150. Accepted requests may continue processing in n8n.</p>
             <button onClick={handleReportSync} disabled={anyWebhookLoading}
@@ -895,7 +898,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
                 {step.id}: {step.label}: {reportSyncSteps[step.id] === 'waiting' ? 'Accepted; waiting for calculation report' : reportSyncSteps[step.id] ?? 'Not started'}
               </li>)}
             </ol>
-          </div>
+          </div>}
           {WEBHOOKS.map(({ id, label, url, ...rest }) => {
             const method = 'method' in rest ? (rest as { method: 'GET' | 'POST' }).method : 'GET'
             const status = webhookStatus[id]
