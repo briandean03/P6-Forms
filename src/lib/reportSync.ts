@@ -123,10 +123,10 @@ export async function runReportSync(options: {
         body: JSON.stringify({ flow_parameters: parameters }),
         signal,
       })
-      if (response.status !== 200 && response.status !== 202) {
+      if (response.status !== 202) {
         const body = (await response.text()).slice(0, 4000)
         console.error(`[report sync] Webhook ${step.id} rejected`, { status: response.status, response: body })
-        throw new Error(`Webhook ${step.id} (${step.label}) returned HTTP ${response.status}; expected 200 or 202.`)
+        throw new Error(`Webhook ${step.id} (${step.label}) returned HTTP ${response.status}; expected 202.`)
       }
 
       // ── Webhook 149: poll until a new/updated calculation report appears ──────────
@@ -187,11 +187,13 @@ export async function runReportSync(options: {
             // ── Widget readiness ────────────────────────────────────────────────
             // Expected widget IDs come from structure_plan.pages[].widgets[].widget_id,
             // already resolved and returned in SyncStructure.expectedWidgetIds by the caller.
+            // The structure row may not exist yet while 151 is still running — treat as not-ready
+            // and keep polling. Only fail at the end if the deadline expires.
             if (!currentStructure || currentStructure.expectedWidgetIds.length === 0) {
-              throw new Error(
-                'Readiness could not be confirmed: the approved structure for this report ' +
-                'has no expected widgets in its structure_plan.'
-              )
+              const detail = 'Waiting for approved structure with widget plan…'
+              if (detail !== lastDetail) { options.onProgress?.(step.id, detail); lastDetail = detail }
+              await wait(3000, signal)
+              continue
             }
             const expectedIds = new Set(currentStructure.expectedWidgetIds)
 
