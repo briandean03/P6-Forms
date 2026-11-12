@@ -130,6 +130,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
       setReportJobStatus(row)
       if (row.status === 'completed') {
         setReportSyncSteps(prev => ({ ...prev, '151': 'accepted', '150': 'accepted' }))
+        showSuccess('Report ready')
       } else if (row.status === 'failed') {
         setReportSyncSteps(prev => ({ ...prev, '151': 'error' }))
       }
@@ -467,7 +468,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         onStep: (id, status) => { if (!controller.signal.aborted) setReportSyncSteps(prev => ({ ...prev, [id]: status })) },
         onJobCreated: (jobId) => { setReportJobId(jobId) },
       })
-      if (!controller.signal.aborted) showSuccess('Workflows 149 and 152 accepted. Widget generation is running on the server — step 150 will fire automatically.')
+      if (!controller.signal.aborted) showSuccess('Workflows 149, 149B and 152 accepted. Widget generation is running on the server — step 150 will fire automatically.')
     } catch (error) {
       if (!controller.signal.aborted) showError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -931,7 +932,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
           <p className="text-sm text-gray-500 mb-4">Trigger an n8n workflow to sync project data.</p>
           <div className="p-4 rounded-lg border border-indigo-200 bg-indigo-50 space-y-2">
             <p className="text-sm font-medium">Generate weekly report and dashboard</p>
-            <p className="text-xs text-gray-600">Current project week · 149 → 152 → 151 → 150. Accepted requests may continue processing in n8n.</p>
+            <p className="text-xs text-gray-600">Current project week · 149 → 149B → 152 → 151 → 150. Accepted requests may continue processing in n8n.</p>
             {reportSyncRunning && (
               <p className="text-xs text-gray-500">
                 Widget generation is running on the server — you can safely close this window.

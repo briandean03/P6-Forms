@@ -1,8 +1,9 @@
 export const REPORT_WEBHOOKS = [
-  { id: '149', label: 'Calculations', url: 'https://pmc2p2c.app.n8n.cloud/webhook/5de723d8-6d7e-4439-aa88-2a13a1a45536' },
-  { id: '152', label: 'Independent data sources', url: 'https://pmc2p2c.app.n8n.cloud/webhook/d5182053-5237-4c1a-acb2-3719de3b9d59' },
-  { id: '151', label: 'Widget generator', url: 'https://pmc2p2c.app.n8n.cloud/webhook/c89518bf-c14f-4c4a-8711-1d506c39600c' },
-  { id: '150', label: 'WR sections generator', url: 'https://pmc2p2c.app.n8n.cloud/webhook/912a4eb3-39cf-4f60-8a33-426406bee45c' },
+  { id: '149',  label: 'Calculations',             url: 'https://pmc2p2c.app.n8n.cloud/webhook/5de723d8-6d7e-4439-aa88-2a13a1a45536' },
+  { id: '149B', label: 'Calculations B',            url: 'https://pmc2p2c.app.n8n.cloud/webhook/0c581589-f98f-45c0-be57-a219f360731f' },
+  { id: '152',  label: 'Independent data sources', url: 'https://pmc2p2c.app.n8n.cloud/webhook/d5182053-5237-4c1a-acb2-3719de3b9d59' },
+  { id: '151',  label: 'Widget generator',          url: 'https://pmc2p2c.app.n8n.cloud/webhook/c89518bf-c14f-4c4a-8711-1d506c39600c' },
+  { id: '150',  label: 'WR sections generator',     url: 'https://pmc2p2c.app.n8n.cloud/webhook/912a4eb3-39cf-4f60-8a33-426406bee45c' },
 ] as const
 
 export type SyncReport = { report_id: string; updated_at: string | null }
