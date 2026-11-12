@@ -61,8 +61,15 @@ export interface ReportChartSeries {
   points?: Record<string, unknown>[]
 }
 export function prepareWeeklyChart(categories: string[], series: ReportChartSeries[]) {
-  const labels = [...categories]
-  const normalised = series.map(item => {
+  const sourceCategories = Array.isArray(categories) ? categories : []
+  const labels = [...sourceCategories]
+  const sourceSeries = Array.isArray(series) ? series : []
+  // Older/partial report JSON can contain a series without its data array.
+  // Omit that series rather than throwing or inventing zero-valued data.
+  const usableSeries = sourceSeries.filter(item => item != null
+    && typeof item === 'object' && typeof item.name === 'string' && Array.isArray(item.data))
+  const missingSeries = !Array.isArray(series) || usableSeries.length !== sourceSeries.length
+  const normalised = usableSeries.map(item => {
     const points = item.data.some(value => value != null && typeof value === 'object')
       ? item.data.filter((value): value is { x: string | number; y: number | null } => value != null && typeof value === 'object')
         .map(value => {
@@ -72,7 +79,7 @@ export function prepareWeeklyChart(categories: string[], series: ReportChartSeri
         }) : undefined
     return { ...item, points }
   })
-  if (!categories.length && labels.every(label => /^\d{4}-\d{2}-\d{2}/.test(label))) labels.sort()
+  if (!sourceCategories.length && labels.every(label => /^\d{4}-\d{2}-\d{2}/.test(label))) labels.sort()
   const chartData = labels.map((name, index) => {
     const row: Record<string, unknown> = { name }
     for (const item of normalised) {
@@ -80,5 +87,5 @@ export function prepareWeeklyChart(categories: string[], series: ReportChartSeri
     }
     return row
   })
-  return { chartData, series: normalised }
+  return { chartData, series: normalised, missingSeries }
 }

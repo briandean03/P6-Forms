@@ -438,7 +438,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
 
     case 'chart': {
       const cc = c as unknown as ChartContent
-      const { chartData, series } = prepareWeeklyChart(cc.categories ?? [], cc.series ?? [])
+      const { chartData, series, missingSeries } = prepareWeeklyChart(cc.categories ?? [], cc.series ?? [])
       const isLine = ['line', 'line_chart'].includes((cc.chart_type ?? 'bar').toLowerCase())
       const cumulativeProgress = isLine && /cumulative/i.test(`${cc.title ?? ''} ${sectionContext}`) && /progress/i.test(`${cc.title ?? ''} ${sectionContext}`) && series.some(s => /actual/i.test(s.name)) && series.some(s => /planned|baseline/i.test(s.name))
       const printW = Object.keys(design).length ? Math.floor(weeklyPage(design, isLandscape).contentWidth * 96 / 72) - 8 : isLandscape ? PRINT_CHART_WIDTH_LANDSCAPE : PRINT_CHART_WIDTH_PORTRAIT
@@ -449,6 +449,10 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
               {cc.title}
             </p>
           )}
+          {missingSeries && <p className="text-xs text-amber-700 mb-2">Some chart series are missing a valid data array in this report and cannot be displayed.</p>}
+          {series.length === 0 || chartData.length === 0 ? (
+            <p className="text-xs text-gray-400 italic py-4">No chart data available for this section.</p>
+          ) : <>
           {/* Screen copy — responsive, hidden when printing */}
           <div className="print:hidden">
             <ResponsiveContainer width="100%" height={SCREEN_CHART_HEIGHT}>
@@ -460,6 +464,7 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
             <PrintLegend series={series} isLine={isLine} cumulativeProgress={cumulativeProgress} />
             {buildChart(isLine, chartData, series, { print: true, width: printW, height: PRINT_CHART_HEIGHT, design, cumulativeProgress })}
           </div>
+          </>}
           {cc.qualification && (
             <p className="text-[11px] text-gray-400 italic mt-1">{cc.qualification}</p>
           )}
