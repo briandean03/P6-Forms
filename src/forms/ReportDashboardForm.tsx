@@ -1187,6 +1187,35 @@ function ChartFilters({
   )
 }
 
+// Online KPI charts use explicit multi-select pills; other charts keep their filters.
+function KpiChartOptions({ options, selected, onChange }: {
+  options: { value: string; label: string }[]
+  selected: string[]
+  onChange: (values: string[]) => void
+}) {
+  const tok = useContext(DesignContext)
+  const values = selected.filter(value => options.some(option => option.value === value))
+  if (!options.length) return null
+  const pill = (active: boolean): React.CSSProperties => ({
+    fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 99,
+    border: `1px solid ${active ? tok('primary', '#5741DF') : '#e2e8f0'}`,
+    background: active ? tok('sidebar_active_bg', '#eff6ff') : '#f8fafc',
+    color: active ? tok('primary', '#5741DF') : '#64748b',
+    cursor: 'pointer', transition: 'all 0.15s',
+  })
+  return <div className="no-print chart-filters flex flex-wrap items-center gap-1.5 mt-2" role="group" aria-label="Select KPIs to display">
+    <span className="text-[11px] text-gray-500 mr-1">KPIs:</span>
+    <button type="button" aria-pressed={values.length === 0} style={pill(values.length === 0)} onClick={() => onChange([])}>All</button>
+    {options.map(option => {
+      const active = values.includes(option.value)
+      return <button key={option.value} type="button" aria-pressed={active} style={pill(active)}
+        onClick={() => onChange(active ? values.filter(value => value !== option.value) : [...values, option.value])}>
+        {option.label}
+      </button>
+    })}
+  </div>
+}
+
 function applyFilters(data: Record<string, unknown>[], active: Record<string, string>) {
   return Object.entries(active).reduce((acc, [k, v]) => {
     if (!v) return acc
@@ -1776,7 +1805,7 @@ function SCurveLineChartWidget({ ast }: { ast: Record<string, unknown> }) {
 
 // bar_chart / grouped_bar_chart / stacked_bar_chart
 // Some grouped_bar_chart records nest data under content.chart.data instead of content.data
-function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unknown>; horizontal?: boolean; stacked?: boolean }) {
+function BarChartWidget({ ast, horizontal, stacked, multiKpi = false }: { ast: Record<string, unknown>; horizontal?: boolean; stacked?: boolean; multiKpi?: boolean }) {
   const content = getContent(ast)
   const chartObj = (content.chart ?? {}) as Record<string, unknown>
   const data  = (content.data ?? chartObj.data) as Record<string, unknown>[] | null
@@ -1785,6 +1814,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const series = useNormalisedSeries(merged, xKey)
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
+  const [selectedKpis, setSelectedKpis] = useState<string[]>([])
   const palette = useChartPalette()
   const dataDate = useContext(DataDateContext)
   const isPrintingBar = usePrintMode()
@@ -1793,7 +1823,27 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
 
   // Hooks must run on every render — keep them above the early returns below
   const filterFields = useMemo(() => (data?.length ? detectFilterFields(data, [xKey]) : []), [data, xKey])
-  const filtered = useMemo(() => (data?.length ? applyFilters(data, activeFilters) : []), [data, activeFilters])
+  const kpiKey = useMemo(() => ['kpi_code', 'kpi', 'kpi_id', xKey]
+    .find(key => data?.some(row => row[key] != null && String(row[key]) !== '')) ?? xKey, [data, xKey])
+  const kpiOptions = useMemo(() => {
+    const options = new Map<string, string>()
+    for (const row of data ?? []) {
+      if (row[kpiKey] == null || String(row[kpiKey]) === '') continue
+      const value = String(row[kpiKey])
+      const label = row.kpi_name ?? row.kpi_label ?? (xKey !== kpiKey ? row[xKey] : null) ?? value
+      if (!options.has(value)) options.set(value, String(label))
+    }
+    return [...options].map(([value, label]) => ({ value, label }))
+  }, [data, kpiKey, xKey])
+  const filtered = useMemo(() => {
+    if (!data?.length) return []
+    if (!multiKpi) return applyFilters(data, activeFilters)
+    const selected = selectedKpis.filter(value => kpiOptions.some(option => option.value === value))
+    return selected.length ? data.filter(row => selected.includes(String(row[kpiKey] ?? ''))) : data
+  }, [data, multiKpi, activeFilters, selectedKpis, kpiOptions, kpiKey])
+  const controls = multiKpi
+    ? <KpiChartOptions options={kpiOptions} selected={selectedKpis} onChange={setSelectedKpis} />
+    : <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
 
   if (!data?.length) {
     const emptyState = (content.empty_state ?? chartObj.empty_state) as { heading?: string; message?: string } | null
@@ -1823,6 +1873,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
       : Math.max(220, sliced.length * 36)
     return (
       <div style={{ width: '100%', minWidth: 0 }}>
+        {multiKpi && controls}
         {/* Fixed-height box reserves the chart's space in the layout, so the chart
             (including its legend) can never spill outside the surrounding card */}
         <div className="print-chart" style={{ width: '100%', height: hHeight + 40 }}>
@@ -1840,7 +1891,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
+        {!multiKpi && controls}
       </div>
     )
   }
@@ -1868,6 +1919,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
   const vHeight = BAR_MARGIN_TOP + BAR_LEGEND_H + barPlotH + barXAxisHeight + BAR_MARGIN_BOT
   return (
     <div style={{ width: '100%', minWidth: 0 }}>
+      {multiKpi && controls}
       {/* Fixed-height box reserves the chart's space in the layout, so the chart
           (including its legend) can never spill outside the surrounding card */}
       <div className="print-chart" style={{ width: '100%', height: vHeight + 12 }}>
@@ -1909,7 +1961,7 @@ function BarChartWidget({ ast, horizontal, stacked }: { ast: Record<string, unkn
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <ChartFilters fields={filterFields} active={activeFilters} setActive={setActiveFilters} />
+      {!multiKpi && controls}
     </div>
   )
 }
@@ -3999,8 +4051,8 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
         case 'kpi_group':          return <KpiGroupWidget ast={ast} />
         case 'line_chart':         return <LineChartWidget ast={ast} />
         case 'bar_chart':
-        case 'grouped_bar_chart':  return <BarChartWidget ast={ast} />
-        case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked />
+        case 'grouped_bar_chart':  return <BarChartWidget ast={ast} multiKpi />
+        case 'stacked_bar_chart':  return <BarChartWidget ast={ast} stacked multiKpi />
         case 'data_table':         return <DataTableWidget ast={ast} />
         case 'exception_table':    return <ExceptionTableWidget ast={ast} />
         default:                   return <SmartFallback ast={ast} type={type} />
@@ -4090,11 +4142,8 @@ function KpiPerformancePage({ page, pageIdx, pageWidgets }: KpiPageProps) {
         {/* ── ROW 3: Planned vs Actual KPI Quantities Cumulative — full-width grouped bar chart */}
         <WidgetCard widget={wgt039} height={280} />
 
-        {/* ── ROW 4: Weekly KPI bar chart (left half) + balanced right slot ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <WidgetCard widget={wgt040} height={280} />
-          <div />
-        </div>
+        {/* ── ROW 4: Weekly KPI bar chart: full width, matching WGT-039 ────── */}
+        <WidgetCard widget={wgt040} height={280} />
 
         {/* ── ROW 5: KPI Variances exception table — full-width ─────────────── */}
         <TableCard widget={wgt041} />
