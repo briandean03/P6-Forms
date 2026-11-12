@@ -85,10 +85,10 @@ export async function runReportSync(options: {
         body: JSON.stringify({ flow_parameters: parameters }),
         signal,
       })
-      if (response.status !== 202) {
+      if (response.status !== 200 && response.status !== 202) {
         const body = (await response.text()).slice(0, 4000)
         console.error(`[report sync] Webhook ${step.id} rejected`, { status: response.status, response: body })
-        throw new Error(`Webhook ${step.id} (${step.label}) returned HTTP ${response.status}; expected 202.`)
+        throw new Error(`Webhook ${step.id} (${step.label}) returned HTTP ${response.status}; expected 200 or 202.`)
       }
 
       // ── Webhook 149: poll until a new/updated calculation report appears ──────────
