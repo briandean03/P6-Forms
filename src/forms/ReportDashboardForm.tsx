@@ -4796,11 +4796,13 @@ export function ReportDashboardForm({
   projectTextId,
   schemaName,
   a3Mode = false,
+  targetReportId,
 }: {
   projectId: string
   projectTextId: string
   schemaName: string
   a3Mode?: boolean
+  targetReportId?: string
 }) {
   void projectId
 
@@ -4834,6 +4836,7 @@ export function ReportDashboardForm({
           .select(STRUCTURE_LIST_COLS)
           .order('data_date', { ascending: false })
         if (projectTextId) query = query.eq('project_id', projectTextId)
+        if (targetReportId) query = query.eq('report_id', targetReportId)
         const { data, error } = await query
         if (cancelled) return
         if (error) throw new Error(error.message)
@@ -4851,7 +4854,7 @@ export function ReportDashboardForm({
     load()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schemaName, projectTextId])
+  }, [schemaName, projectTextId, targetReportId])
 
   // Fetch the selected week's full structure AND its widgets in parallel.
   // `cancelled` drops stale responses when the user switches weeks quickly.

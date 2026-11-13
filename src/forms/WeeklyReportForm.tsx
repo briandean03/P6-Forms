@@ -1131,10 +1131,12 @@ export function WeeklyReportForm({
   projectId,
   projectTextId,
   schemaName,
+  targetReportId,
 }: {
   projectId: string
   projectTextId: string
   schemaName: string
+  targetReportId?: string
 }) {
   const [weekOptions, setWeekOptions] = useState<WeekOption[]>([])
   const [selectedReportId, setSelectedReportId] = useState<string>('')
@@ -1196,6 +1198,7 @@ export function WeeklyReportForm({
         if (cancelled) return
         if (options.error && catalogue.error) throw new Error(options.error.message)
         const opts = weeklyReportOptions(catalogue.data ?? [], options.data ?? [])
+          .filter(option => !targetReportId || option.report_id === targetReportId)
         if (catalogue.error || options.error) showError('Some report weeks could not be loaded. Showing the available report records.')
         let details = project
         if (!details.error && !details.data && projectId) {
@@ -1222,7 +1225,7 @@ export function WeeklyReportForm({
     void fetchOptions()
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, projectTextId, schemaName, scopeKey])
+  }, [projectId, projectTextId, schemaName, scopeKey, targetReportId])
 
   useEffect(() => {
     let cancelled = false
