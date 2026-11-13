@@ -1,5 +1,5 @@
 import { replaceSectionLink } from '@/lib/appNavigation'
-import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useMemo, useRef, createContext, useContext, useCallback } from 'react'
 import {
   BarChart,
   Bar,
@@ -347,9 +347,88 @@ function resolveColumns(columns: (string | TableColumn)[] | undefined): TableCol
   }))
 }
 
+// ── Inline text editing ──────────────────────────────────────────────────────
+
+type EditableTextProps = {
+  value: string
+  onChange: (next: string) => void
+  multiline?: boolean
+  className?: string
+  style?: React.CSSProperties
+  as?: 'span' | 'p' | 'h2' | 'h3' | 'h4' | 'li'
+}
+
+function EditableText({ value, onChange, multiline = false, className = '', style, as: Tag = 'span' }: EditableTextProps) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null)
+
+  // Keep draft in sync when parent value changes (e.g. week switch)
+  useEffect(() => { setDraft(value) }, [value])
+
+  function startEdit() {
+    setDraft(value)
+    setEditing(true)
+  }
+
+  function commit() {
+    setEditing(false)
+    if (draft !== value) onChange(draft)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!multiline && e.key === 'Enter') { e.preventDefault(); commit() }
+    if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+  }
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  if (editing) {
+    return multiline ? (
+      <textarea
+        ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+        rows={Math.max(2, draft.split('\n').length)}
+        className={`w-full resize-y rounded border border-blue-400 bg-blue-50/60 px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-400 ${className}`}
+        style={style}
+      />
+    ) : (
+      <input
+        ref={inputRef as React.RefObject<HTMLInputElement>}
+        type="text"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+        className={`w-full rounded border border-blue-400 bg-blue-50/60 px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-400 ${className}`}
+        style={style}
+      />
+    )
+  }
+
+  return (
+    <Tag
+      className={`group/et relative cursor-text rounded hover:bg-blue-50/50 hover:outline hover:outline-1 hover:outline-blue-200 transition-colors ${className}`}
+      style={style}
+      onClick={startEdit}
+      title="Click to edit"
+    >
+      {value || <span className="italic text-gray-400">—</span>}
+      <span className="no-print absolute -top-2 -right-2 opacity-0 group-hover/et:opacity-100 transition-opacity pointer-events-none bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px]">✎</span>
+    </Tag>
+  )
+}
+
 // ── Block renderer ──────────────────────────────────────────────────────────
 
-function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}, sectionContext = '', disciplines: Record<string, string> = {}): React.ReactNode {
+type BlockChangeCallback = (patch: Partial<ASTBlock['content']>) => void
+
+function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: WeeklyDesign = {}, sectionContext = '', disciplines: Record<string, string> = {}, onBlockChange?: BlockChangeCallback): React.ReactNode {
   const { type, content: c, source_references } = block
 
   const footnotes =
@@ -376,7 +455,13 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
   switch (type) {
     case 'paragraph':
       node = (
-        <p className="text-sm text-slate-700 leading-relaxed">{String(c.text ?? '')}</p>
+        <EditableText
+          as="p"
+          value={String(c.text ?? '')}
+          onChange={v => onBlockChange?.({ text: v })}
+          multiline
+          className="text-sm text-slate-700 leading-relaxed"
+        />
       )
       break
 
@@ -477,11 +562,21 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
       const items = (c.items ?? []) as (string | { text: string })[]
       node = (
         <ul className="list-disc pl-5 space-y-1">
-          {items.map((item, ii) => (
-            <li key={ii} className="text-sm text-slate-700">
-              {typeof item === 'string' ? item : item.text ?? ''}
-            </li>
-          ))}
+          {items.map((item, ii) => {
+            const txt = typeof item === 'string' ? item : item.text ?? ''
+            return (
+              <EditableText
+                key={ii}
+                as="li"
+                value={txt}
+                onChange={v => {
+                  const next = items.map((it, i) => i === ii ? (typeof it === 'string' ? v : { ...it, text: v }) : it)
+                  onBlockChange?.({ items: next })
+                }}
+                className="text-sm text-slate-700"
+              />
+            )
+          })}
         </ul>
       )
       break
@@ -491,11 +586,21 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
       const items = (c.items ?? []) as (string | { text: string })[]
       node = (
         <ol className="list-decimal pl-5 space-y-1">
-          {items.map((item, ii) => (
-            <li key={ii} className="text-sm text-slate-700">
-              {typeof item === 'string' ? item : item.text ?? ''}
-            </li>
-          ))}
+          {items.map((item, ii) => {
+            const txt = typeof item === 'string' ? item : item.text ?? ''
+            return (
+              <EditableText
+                key={ii}
+                as="li"
+                value={txt}
+                onChange={v => {
+                  const next = items.map((it, i) => i === ii ? (typeof it === 'string' ? v : { ...it, text: v }) : it)
+                  onBlockChange?.({ items: next })
+                }}
+                className="text-sm text-slate-700"
+              />
+            )
+          })}
         </ol>
       )
       break
@@ -554,10 +659,21 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
       node = (
         <div className={`wr-callout border-l-4 rounded-r-lg px-4 py-3 ${borderCls}`} style={weeklyCalloutStyle(design, c.callout_type ?? c.category ?? ({ warning: 'schedule_concern', critical: 'risk', info: 'management_attention' } as Record<string, string>)[severity] ?? block.design_style)}>
           {c.title != null && (
-            <p className="text-sm font-semibold text-slate-800 mb-1">{String(c.title)}</p>
+            <EditableText
+              as="p"
+              value={String(c.title)}
+              onChange={v => onBlockChange?.({ title: v })}
+              className="text-sm font-semibold text-slate-800 mb-1"
+            />
           )}
           {c.text != null && (
-            <p className="text-sm text-slate-700 leading-relaxed">{String(c.text)}</p>
+            <EditableText
+              as="p"
+              value={String(c.text)}
+              onChange={v => onBlockChange?.({ text: v })}
+              multiline
+              className="text-sm text-slate-700 leading-relaxed"
+            />
           )}
         </div>
       )
@@ -566,19 +682,39 @@ function renderBlock(block: ASTBlock, idx: number, isLandscape = false, design: 
 
     case 'timeline': {
       const items = (c.items ?? []) as TimelineItem[]
+      function patchTimeline(ti: number, patch: Partial<TimelineItem>) {
+        const next = items.map((it, i) => i === ti ? { ...it, ...patch } : it)
+        onBlockChange?.({ items: next })
+      }
       node = (
         <div className="relative pl-6 space-y-4 border-l-2 border-slate-200 ml-2">
           {items.map((item, ti) => (
             <div key={ti} className="relative">
               <span className="absolute -left-[29px] top-1 w-4 h-4 rounded-full bg-indigo-500 border-2 border-white shadow-sm" />
               {item.date && (
-                <p className="text-[11px] font-semibold text-indigo-600 mb-0.5">{item.date}</p>
+                <EditableText
+                  as="p"
+                  value={item.date}
+                  onChange={v => patchTimeline(ti, { date: v })}
+                  className="text-[11px] font-semibold text-indigo-600 mb-0.5"
+                />
               )}
               {item.label && (
-                <p className="text-sm font-medium text-slate-800">{item.label}</p>
+                <EditableText
+                  as="p"
+                  value={item.label}
+                  onChange={v => patchTimeline(ti, { label: v })}
+                  className="text-sm font-medium text-slate-800"
+                />
               )}
               {item.description && (
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{item.description}</p>
+                <EditableText
+                  as="p"
+                  value={item.description}
+                  onChange={v => patchTimeline(ti, { description: v })}
+                  multiline
+                  className="text-xs text-slate-500 mt-0.5 leading-relaxed"
+                />
               )}
             </div>
           ))}
@@ -939,14 +1075,19 @@ function TableOfContents({ sections }: { sections: WeeklyReportSection[] }) {
   )
 }
 
-function SectionCard({ section }: { section: WeeklyReportSection }) {
+function SectionCard({ section, onSectionChange }: { section: WeeklyReportSection; onSectionChange?: (patch: Partial<WeeklyReportSection>) => void }) {
   const design = useContext(WeeklyDesignContext)
   const disciplines = useContext(WeeklyMetadataContext)
   const blocks = section.section_ast?.blocks ?? []
   const badge = design.sections?.numbering_enabled === false ? '' : resolveNumbering(section.numbering, section.section_id)
-  // Only use the orientation field from the DB — portrait sections with tables
-  // stay portrait (handled by table styling: 7.5pt, word-wrap, auto layout).
   const printLandscape = section.orientation === 'landscape'
+
+  function handleBlockChange(blockIdx: number, patch: Partial<ASTBlock['content']>) {
+    const updatedBlocks = blocks.map((b, i) =>
+      i === blockIdx ? { ...b, content: { ...b.content, ...patch } } : b
+    )
+    onSectionChange?.({ section_ast: { blocks: updatedBlocks } })
+  }
 
   return (
     <section
@@ -977,7 +1118,7 @@ function SectionCard({ section }: { section: WeeklyReportSection }) {
         {blocks.length === 0 ? (
           <p className="text-sm text-gray-400 italic">No content blocks in this section.</p>
         ) : (
-          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design, `${section.title ?? ''} ${section.semantic_role ?? ''}`, disciplines))
+          blocks.map((block, idx) => renderBlock(block, idx, printLandscape, design, `${section.title ?? ''} ${section.semantic_role ?? ''}`, disciplines, (patch) => handleBlockChange(idx, patch)))
         )}
       </div>
     </section>
@@ -1142,6 +1283,10 @@ export function WeeklyReportForm({
       window.removeEventListener('hashchange', scrollToHash)
     }
   }, [selectedReportId, loadedReportId, loadedScope, scopeKey, sections])
+
+  const handleSectionChange = useCallback((sectionId: string, patch: Partial<WeeklyReportSection>) => {
+    setSections(prev => prev.map(s => s.section_id === sectionId ? { ...s, ...patch } : s))
+  }, [])
 
   const selectedWeek = weekOptions.find(o => o.report_id === selectedReportId)
 
@@ -1340,7 +1485,11 @@ export function WeeklyReportForm({
               {sections.length > 0 && <TableOfContents sections={sortedSections} />}
 
               {filteredSections.map(section => (
-                <SectionCard key={section.section_id} section={section} />
+                <SectionCard
+                  key={section.section_id}
+                  section={section}
+                  onSectionChange={patch => handleSectionChange(section.section_id, patch)}
+                />
               ))}
             </>
           )}
