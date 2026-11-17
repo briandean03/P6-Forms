@@ -827,7 +827,6 @@ function AlertPanelWidget({ ast }: { ast: Record<string, unknown> }) {
 //   content.headline_metrics[], content.status_distribution.statuses[], content.aging_metrics[]
 function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
-  console.log('[StatusSummaryWidget] full content:', JSON.stringify(content).slice(0, 800))
   const tok = useContext(DesignContext)
 
   type StatusItem = {
@@ -975,8 +974,117 @@ function StatusSummaryWidget({ ast }: { ast: Record<string, unknown> }) {
     )
   }
 
+  // ── movement_groups variant (WGT-049 shape) ────────────────────────────────
+  // content.movement_groups[]: { group_label, group_key, items[]: { label, count, records[] } }
+  // content.summary[]: { label, value, unit, status }
+  type MovGroup = { group_label?: string; group_key?: string; items?: { label?: string; count?: number; records?: unknown[] }[] }
+  const movGroups = content.movement_groups as MovGroup[] | null
+  const summaryItems = content.summary as StatusItem[] | null
+  if (Array.isArray(movGroups) && movGroups.length) {
+    const emptyMov = content.empty_state as { title?: string; message?: string } | null
+    const hasMovData = movGroups.some(g => g.items?.some(item => (item.count ?? 0) > 0))
+    if (!hasMovData && emptyMov?.title) {
+      return (
+        <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-5 text-center space-y-1">
+          <p className="text-xs font-semibold text-gray-500">{emptyMov.title}</p>
+          {emptyMov.message && <p className="text-xs text-gray-400 leading-relaxed">{emptyMov.message}</p>}
+        </div>
+      )
+    }
+    return (
+      <div className="space-y-3">
+        {/* Summary KPIs at top if present */}
+        {Array.isArray(summaryItems) && summaryItems.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            {summaryItems.map((item, i) => {
+              const val = item.value ?? item.count
+              const sColor = severityColor(item.status ?? item.semantic_status)
+              return (
+                <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                  <span className={`text-xl font-bold ${sColor}`}>{val != null ? fmtInt(val as number) : '—'}</span>
+                  <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide leading-tight mt-0.5">{item.label}</span>
+                  {item.unit && <span className="text-[9px] text-gray-400">{item.unit}</span>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {/* Movement groups */}
+        {movGroups.map((grp, gi) => (
+          <div key={gi} className="space-y-1">
+            {grp.group_label && (
+              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">{grp.group_label}</p>
+            )}
+            {(grp.items ?? []).map((item, ii) => {
+              const count = item.count ?? 0
+              return (
+                <div key={ii} className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-1.5">
+                  <span className="text-[11px] text-gray-600 truncate">{item.label}</span>
+                  <span className={`text-sm font-bold ${count > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{fmtInt(count)}</span>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  // ── Safety inspections/observations variant (WGT-047 shape) ───────────────
+  // content.metrics[]: { key, label, value, unit, status }
+  // content.distribution[]: { label, open, closed, total }
+  // content.table: { columns[], rows[] }
+  type DistRow = { label?: string; open?: number; closed?: number; total?: number; status?: string }
+  const safetyMetrics = content.metrics as StatusItem[] | null
+  const distribution  = content.distribution as DistRow[] | null
+  const tableData     = content.table as { columns?: { key: string; label: string }[]; rows?: Record<string, unknown>[] } | null
+  if (Array.isArray(safetyMetrics) && safetyMetrics.length) {
+    return (
+      <div className="space-y-3">
+        {/* Top metrics grid */}
+        <div className="grid grid-cols-2 gap-2">
+          {safetyMetrics.map((item, i) => {
+            const val = item.value ?? item.count
+            const sColor = severityColor(item.status ?? item.semantic_status)
+            return (
+              <div key={i} className="flex flex-col rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                <span className={`text-xl font-bold ${sColor}`}>{val != null ? fmtInt(val as number) : '—'}</span>
+                <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide leading-tight mt-0.5">{item.label}</span>
+                {item.unit && <span className="text-[9px] text-gray-400">{item.unit}</span>}
+              </div>
+            )
+          })}
+        </div>
+        {/* Distribution breakdown */}
+        {Array.isArray(distribution) && distribution.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Distribution</p>
+            {distribution.map((row, i) => {
+              const total = row.total ?? ((row.open ?? 0) + (row.closed ?? 0))
+              const sColor = severityColor(row.status)
+              return (
+                <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 border border-gray-100 px-3 py-1.5 gap-2">
+                  <span className="text-[11px] font-semibold text-gray-600 truncate">{row.label}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0 text-[11px]">
+                    {row.open != null && <span className="text-red-500 font-bold">{fmtInt(row.open)} open</span>}
+                    {row.closed != null && <span className="text-green-600 font-semibold">{fmtInt(row.closed)} closed</span>}
+                    <span className={`font-bold ${sColor}`}>{fmtInt(total)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {/* Detail table if present */}
+        {tableData?.rows && tableData.rows.length > 0 && tableData.columns && (
+          <SortableTable columns={tableData.columns} rows={tableData.rows} />
+        )}
+      </div>
+    )
+  }
+
   // ── Generic / original variant ─────────────────────────────────────────────
-  const raw = (content.items ?? content.statuses ?? content.metrics ?? content.status_counts) as StatusItem[] | null
+  const raw = (content.items ?? content.statuses ?? content.metrics ?? content.status_counts ?? content.kpis) as StatusItem[] | null
   if (!raw?.length) return <NoData />
 
   const breakdownRows = ((content.breakdown as Record<string, unknown> | null)?.rows) as Record<string, unknown>[] | null
@@ -1020,28 +1128,72 @@ function TradeScheduleGanttWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const tok = useContext(DesignContext)
 
-  type Trade = {
+  // Normalised trade shape used internally by the renderer
+  type NormTrade = {
     trade_code: string
     trade_label: string
     trade_name?: string | null
-    planned: { cumulative_percent_complete: number; start?: string | null; finish?: string | null }
-    actual:  { cumulative_percent_complete: number; status?: string; start?: string | null; finish?: string | null }
-    variance: { start_variance_days?: number | null; finish_variance_days?: number | null }
+    trade_status?: string | null
+    plannedPct: number
+    actualPct: number
+    finishVarianceDays?: number | null
+    hasVerifiedActualStart?: boolean
   }
 
-  const trades = Array.isArray(content.trades) ? (content.trades as Trade[]) : []
-  if (!trades.length) return <NoData />
+  // Support two AST shapes:
+  //   Shape A (nested):  content.trades[].planned.cumulative_percent_complete
+  //   Shape B (flat):    content.data[].trade_cumulative_planned_percent_complete
+  const rawTrades  = Array.isArray(content.trades) ? content.trades as Record<string, unknown>[] : []
+  const rawData    = Array.isArray(content.data)   ? content.data   as Record<string, unknown>[] : []
+  const sourceRows = rawTrades.length ? rawTrades : rawData
 
-  const plannedColor = tok('primary',      '#9B8ADC')
-  const actualColor  = tok('mint',         '#4FAE91')
-  const bgTrack      = tok('canvas',       '#f1f5f9')
+  if (!sourceRows.length) return <NoData />
+
+  const trades: NormTrade[] = sourceRows.map(r => {
+    // Shape A
+    const nestedPlanned = r.planned as Record<string, unknown> | undefined
+    const nestedActual  = r.actual  as Record<string, unknown> | undefined
+    const nestedVariance = r.variance as Record<string, unknown> | undefined
+    const plannedPct = Math.min(Number(
+      nestedPlanned?.cumulative_percent_complete ??
+      r.trade_cumulative_planned_percent_complete ?? 0
+    ), 100)
+    const actualPct = Math.min(Number(
+      nestedActual?.cumulative_percent_complete ??
+      r.trade_cumulative_actual_percent_complete ?? 0
+    ), 100)
+    const finishVarianceDays = (nestedVariance?.finish_variance_days ?? r.finish_variance_days ?? null) as number | null
+    return {
+      trade_code:              String(r.trade_code ?? ''),
+      trade_label:             String(r.trade_label ?? r.trade_code ?? ''),
+      trade_name:              (r.trade_name as string | null) ?? null,
+      trade_status:            (r.trade_status as string | null) ?? null,
+      hasVerifiedActualStart:  r.has_verified_actual_start as boolean | undefined,
+      plannedPct,
+      actualPct,
+      finishVarianceDays,
+    }
+  })
+
+  const plannedColor = tok('primary', '#9B8ADC')
+  const actualColor  = tok('mint',    '#4FAE91')
+  const bgTrack      = tok('canvas',  '#f1f5f9')
+
+  // Status badge colour
+  const statusColor = (s: string | null | undefined) => {
+    if (!s) return '#94a3b8'
+    if (s === 'completed') return '#10b981'
+    if (s === 'in_progress') return '#3b82f6'
+    if (s === 'not_started') return '#cbd5e1'
+    return '#94a3b8'
+  }
 
   return (
     <div data-widget="trade-schedule" className="space-y-1.5 overflow-y-auto max-h-96">
       {/* Legend */}
       <div className="flex items-center gap-4 mb-2">
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-2.5 rounded-sm" style={{ background: plannedColor }} />
+          <div className="w-3 h-2.5 rounded-sm" style={{ background: plannedColor, opacity: 0.7 }} />
           <span className="text-[10px] text-gray-500">Planned %</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -1052,33 +1204,43 @@ function TradeScheduleGanttWidget({ ast }: { ast: Record<string, unknown> }) {
 
       {/* Row per trade */}
       {trades.map((trade, i) => {
-        const plannedPct = Math.min(trade.planned?.cumulative_percent_complete ?? 0, 100)
-        const actualPct  = Math.min(trade.actual?.cumulative_percent_complete  ?? 0, 100)
-        const label      = trade.trade_name ?? trade.trade_label ?? trade.trade_code
-        const finVar     = trade.variance?.finish_variance_days
-        const varColor   = finVar == null ? 'text-gray-400' : finVar > 0 ? 'text-red-500' : finVar < 0 ? 'text-green-600' : 'text-gray-500'
+        const label    = trade.trade_name ?? trade.trade_label ?? trade.trade_code
+        const finVar   = trade.finishVarianceDays
+        const varColor = finVar == null ? 'text-gray-400' : finVar > 0 ? 'text-red-500' : finVar < 0 ? 'text-green-600' : 'text-gray-500'
+        const behind   = trade.actualPct < trade.plannedPct - 1
 
         return (
-          <div key={i} data-trade-row className="grid items-center gap-x-2" style={{ gridTemplateColumns: '56px 1fr 40px' }}>
-            {/* Trade label */}
-            <span className="text-[10px] font-semibold text-gray-600 truncate text-right pr-1">{label}</span>
+          <div key={i} data-trade-row className="grid items-center gap-x-2" style={{ gridTemplateColumns: '64px 1fr 52px' }}>
+            {/* Trade label + status dot */}
+            <div className="flex items-center gap-1 justify-end pr-1 min-w-0">
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ background: statusColor(trade.trade_status) }}
+              />
+              <span className="text-[10px] font-semibold text-gray-600 truncate">{label}</span>
+            </div>
 
             {/* Dual progress bars */}
             <div className="space-y-0.5">
               {/* Planned */}
               <div className="w-full rounded-sm overflow-hidden" style={{ height: 6, background: bgTrack }}>
-                <div className="h-full rounded-sm transition-all" style={{ width: `${plannedPct}%`, background: plannedColor, opacity: 0.7 }} />
+                <div className="h-full rounded-sm transition-all" style={{ width: `${trade.plannedPct}%`, background: plannedColor, opacity: 0.7 }} />
               </div>
-              {/* Actual */}
+              {/* Actual — only draw if has verified start */}
               <div className="w-full rounded-sm overflow-hidden" style={{ height: 6, background: bgTrack }}>
-                <div className="h-full rounded-sm transition-all" style={{ width: `${actualPct}%`, background: actualColor }} />
+                {trade.hasVerifiedActualStart !== false && (
+                  <div
+                    className="h-full rounded-sm transition-all"
+                    style={{ width: `${trade.actualPct}%`, background: behind ? tok('critical', '#ef4444') : actualColor }}
+                  />
+                )}
               </div>
             </div>
 
             {/* Percentages */}
             <div className="text-right">
-              <div className="text-[9px] text-gray-400">{fmtNum(plannedPct, 1)}%</div>
-              <div className="text-[9px] font-semibold text-gray-700">{fmtNum(actualPct, 1)}%</div>
+              <div className="text-[9px] text-gray-400">{fmtNum(trade.plannedPct, 1)}%</div>
+              <div className={`text-[9px] font-semibold ${behind ? 'text-red-500' : 'text-gray-700'}`}>{fmtNum(trade.actualPct, 1)}%</div>
               {finVar != null && <div className={`text-[9px] ${varColor}`}>{finVar > 0 ? `+${finVar}d` : `${finVar}d`}</div>}
             </div>
           </div>
@@ -1445,10 +1607,23 @@ function LineChartWidget({ ast }: { ast: Record<string, unknown> }) {
   const filterFields = useMemo(() => (data?.length ? detectFilterFields(data, [xKey, labelKey]) : []), [data, xKey, labelKey])
   const filtered = useMemo(() => (data?.length ? applyFilters(data, activeFilters) : []), [data, activeFilters])
 
-  if (!data?.length) return <NoData />
+  // Check for explicit unavailability before generic NoData
+  const dataAvailability = content.data_availability as { state?: string; message?: string; reason_code?: string } | null
+  if (!data?.length) {
+    if (dataAvailability?.state === 'unavailable' && dataAvailability.message) {
+      return (
+        <div className="flex flex-col items-center justify-center h-24 gap-2 px-4 text-center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7v5m0 4h.01" />
+          </svg>
+          <p className="text-[11px] text-gray-400 leading-snug max-w-xs">{dataAvailability.message}</p>
+        </div>
+      )
+    }
+    return <NoData />
+  }
 
   const sliced = filtered
-  console.log('[LineChartWidget] series:', series, '| first row:', sliced[0], '| xKey:', xKey)
   const chartData = sliced.map(d => ({ ...d, __x: d[labelKey] ?? d[xKey] }))
   const ddLabel = findDataDateLabel(sliced, xKey, labelKey, dataDate)
 
@@ -2659,9 +2834,22 @@ function ExecutiveOverviewPage({
   const ENG_COLORS: Record<string, string> = { A: '#10b981', B: '#3b82f6', C: '#f59e0b', D: '#9ca3af', UR: '#ef4444' }
 
   // ── WGT-006 QA/QC ────────────────────────────────────────────────────────────
-  const qaC       = wgt006 ? getContent(wgt006.widget_ast ?? {}) : null
-  const qaSum     = (qaC?.summary ?? {}) as KR
-  const qaSupMet  = Array.isArray(qaC?.supporting_metrics) ? (qaC!.supporting_metrics as KR[]) : []
+  // AST wraps content inside components[]: components[0] = donut, components[1] = discipline table
+  const qaC         = wgt006 ? getContent(wgt006.widget_ast ?? {}) : null
+  const qaComponents = Array.isArray(qaC?.components) ? (qaC!.components as KR[]) : []
+  const qaDonutComp  = (qaComponents.find(c => c.component_type === 'donut_chart') ?? qaComponents[0]) as KR | undefined
+  const qaTableComp  = (qaComponents.find(c => c.component_type === 'data_table')  ?? qaComponents[1]) as KR | undefined
+  const qaDonutContent = (qaDonutComp?.content ?? qaC ?? {}) as KR
+  const qaTableContent = (qaTableComp?.content ?? {}) as KR
+  // Center metric carries total_documents; open count is the OPN slice
+  const qaCenterMetric = (qaDonutContent.center_metric ?? {}) as KR
+  const qaDonutData    = Array.isArray(qaDonutContent.data) ? (qaDonutContent.data as KR[]) : []
+  const qaOpenCount    = (qaDonutData.find(s => s.status_code === 'OPN' || s.status === 'Open')?.count ?? null) as number | null
+  const qaTotalDocs    = (qaCenterMetric.value ?? null) as number | null
+  const qaTableRows    = Array.isArray(qaTableContent.rows) ? (qaTableContent.rows as KR[]) : []
+  // Legacy flat-shape fallback
+  const qaSum          = (qaC?.summary ?? {}) as KR
+  const qaSupMet       = Array.isArray(qaC?.supporting_metrics) ? (qaC!.supporting_metrics as KR[]) : []
 
   // ── WGT-007 exceptions ────────────────────────────────────────────────────────
   const excC      = wgt007 ? getContent(wgt007.widget_ast ?? {}) : null
@@ -2987,9 +3175,9 @@ function ExecutiveOverviewPage({
         )}
 
         {/* ── Overall Engineering Submissions ────────────────────────────────── */}
-        <div style={{ ...CARD }}>
+        {wgt005 && <div style={{ ...CARD }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <CardHeader title={wgt005?.widget_title ?? 'Overall Engineering Submissions'} widgetId={wgt005?.widget_id} marginBottom={0} />
+            <CardHeader title={wgt005.widget_title ?? 'Overall Engineering Submissions'} widgetId={wgt005.widget_id} marginBottom={0} />
             {engTotal > 0 && (
               <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>
                 Total Register: <strong style={{ color: '#1e293b', fontSize: 14 }}>{engTotal}</strong> transmittals
@@ -3071,7 +3259,7 @@ function ExecutiveOverviewPage({
               )
             })}
           </div>
-        </div>
+        </div>}
 
         {/* ── QA/QC + Exceptions — single-column stacked layout ─────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -3081,28 +3269,39 @@ function ExecutiveOverviewPage({
           <div style={{ ...CARD }}>
             <CardHeader title={wgt006.widget_title ?? 'Overall QA/QC Open vs Closed'} widgetId={wgt006.widget_id} marginBottom={8} />
 
-            {/* Donut chart — reads content.data + content.center_metric */}
-            <DonutChartWidget ast={wgt006.widget_ast ?? {}} />
+            {/* Donut chart — data is in components[0].content */}
+            <DonutChartWidget ast={qaDonutComp ? { content: qaDonutContent } : (wgt006.widget_ast ?? {})} />
 
-            {/* Summary metrics row */}
-            {(qaSum.total_documents != null || qaSum.open_count != null || qaSum.open_over_14_days != null) && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
+            {/* Summary metrics row — total from center_metric, open from OPN slice */}
+            {(qaTotalDocs != null || qaOpenCount != null || qaSum.total_documents != null || qaSum.open_count != null) && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 12 }}>
                 <div style={{ borderRadius: 6, padding: '9px 12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
                   <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Total Documents</p>
-                  <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>{String(qaSum.total_documents ?? '—')}</p>
-                </div>
-                <div style={{ borderRadius: 6, padding: '9px 12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Open</p>
-                  <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>{String(qaSum.open_count ?? '—')}</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: 0, lineHeight: 1 }}>{String(qaTotalDocs ?? qaSum.total_documents ?? '—')}</p>
                 </div>
                 <div style={{ borderRadius: 6, padding: '9px 12px', background: '#fff7ed', border: '1px solid #fed7aa' }}>
-                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Open &gt; 14 Days</p>
-                  <p style={{ fontSize: 22, fontWeight: 800, color: '#ea580c', margin: 0, lineHeight: 1 }}>{String(qaSum.open_over_14_days ?? '—')}</p>
+                  <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Open</p>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#ea580c', margin: 0, lineHeight: 1 }}>{String(qaOpenCount ?? qaSum.open_count ?? '—')}</p>
                 </div>
               </div>
             )}
 
-            {/* Supporting metrics (e.g. overdue alerts) */}
+            {/* Open by discipline breakdown table */}
+            {qaTableRows.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Open by Discipline</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {qaTableRows.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', borderRadius: 6, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>{String(r.discipline ?? r.discipline_code ?? '')}</span>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: '#dc2626' }}>{String(r.open_count ?? '—')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Legacy supporting metrics fallback */}
             {qaSupMet.length > 0 && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                 {qaSupMet.map((m, i) => (
@@ -3703,6 +3902,7 @@ function EngineeringQAPage({ page, pageIdx, pageWidgets }: EngineeringPageProps)
     const inner = (() => {
       switch (type) {
         case 'kpi_group':          return <KpiGroupWidget ast={ast} />
+        case 'status_summary':     return <StatusSummaryWidget ast={ast} />
         case 'donut_chart':
         case 'pie_chart':          return <DonutChartWidget ast={ast} />
         case 'line_chart':         return <LineChartWidget ast={ast} />
@@ -4933,6 +5133,29 @@ export function ReportDashboardForm({
     }
     return m
   }, [widgets])
+
+  // ── Dev diagnostic: warn when a widget's page_id doesn't match any page ──────
+  // This is the #1 cause of silently missing widgets. When a widget is added or
+  // copied in the DB with a stale/wrong page_id it will never appear — no error,
+  // no blank space, just nothing. This warning catches that immediately.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    const knownPageIds = new Set(pages.map(p => p.page_id))
+    for (const w of widgets) {
+      if (w.page_id && !knownPageIds.has(w.page_id)) {
+        console.warn(
+          `[Dashboard] Widget ${w.widget_id} (${w.widget_title ?? 'untitled'}) has page_id="${w.page_id}" ` +
+          `which does not match any page in structure_plan. It will not render. ` +
+          `Known page_ids: ${[...knownPageIds].join(', ')}`
+        )
+      }
+      if (!w.page_id) {
+        console.warn(
+          `[Dashboard] Widget ${w.widget_id} (${w.widget_title ?? 'untitled'}) has no page_id set. It will not render.`
+        )
+      }
+    }
+  }, [widgets, pages])
 
   const handleStructureChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedStructureId(e.target.value)
