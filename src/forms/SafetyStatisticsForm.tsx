@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { schemaClient } from '@/lib/supabase'
 import { Notification } from '@/components/Notification'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { Modal } from '@/components/Modal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useNotification } from '@/hooks/useNotification'
 import { safetyCategories, periodFields, statusFields, metricId, parseSafetyNumber, metricWarning, type SafetyMetric, type MetricValues } from '@/lib/safetyStatistics'
@@ -14,6 +15,7 @@ const OUTPUT = 'dbp6_0009_safety_statistics'
 const headerFields = [['report_no', 'Report no.'], ['project_no', 'Project no.'], ['source_reference', 'Source reference'], ['revision', 'Revision'], ['contractor_name', 'Contractor name'], ['prepared_by', 'Prepared by'], ['reviewed_by', 'Reviewed by'], ['source_file_name', 'Source file name']] as const
 type Header = { id: string; project_id: string; data_date: string; week_num: number; status: 'draft' | 'submitted'; submitted_at: string | null; created_at: string } & Record<typeof headerFields[number][0], string | null>
 type Line = { category: string; metric_key: string } & Partial<Record<typeof periodFields[number] | typeof statusFields[number], number | null>>
+type StatisticsHistory = { statistics_id: string; project_id: string; data_date: string; week_num: number | null; source_reference: string | null; prepared_by: string | null; processing_status: string; is_approved: boolean; created_at: string; updated_at: string }
 type Output = { report_id?: string | null; statistics: unknown; data_quality?: unknown }
 const inputClass = 'w-full border border-gray-300 rounded px-2 py-1 text-sm disabled:bg-gray-100'
 
@@ -22,7 +24,9 @@ export function SafetyStatisticsForm({ projectTextId, schemaName }: { projectTex
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = useMemo(() => schemaClient(schemaName) as any, [schemaName])
   const [catalogue, setCatalogue] = useState<SafetyMetric[]>([])
-  const [history, setHistory] = useState<Header[]>([])
+  const [history, setHistory] = useState<StatisticsHistory[]>([])
+  const [inputReports, setInputReports] = useState<Header[]>([])
+  const [historyOutput, setHistoryOutput] = useState<(StatisticsHistory & Output) | null>(null)
   const [header, setHeader] = useState<Header | null>(null)
   const [values, setValues] = useState<Record<string, MetricValues>>({})
   const [output, setOutput] = useState<Output | null>(null)
@@ -46,8 +50,9 @@ export function SafetyStatisticsForm({ projectTextId, schemaName }: { projectTex
   const fail = (reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason))
   async function loadHistory() {
     const rows = await checked<Header[]>(HEADER, db.from(HEADER).select('*').eq('project_id', projectTextId).order('created_at', { ascending: false }))
-    setHistory(rows ?? [])
-    return rows ?? []
+    setInputReports(rows ?? [])
+    const statistics = await checked<StatisticsHistory[]>(OUTPUT, db.from(OUTPUT).select('statistics_id,project_id,data_date,week_num,source_reference,prepared_by,processing_status,is_approved,created_at,updated_at').eq('project_id', projectTextId).order('data_date', { ascending: false }))
+    setHistory(statistics ?? [])
   }
   async function findWeekReport(week: number) {
     return checked<Header | null>(HEADER, db.from(HEADER).select('*').eq('project_id', projectTextId).eq('week_num', week).order('created_at', { ascending: false }).limit(1).maybeSingle())
@@ -156,7 +161,7 @@ export function SafetyStatisticsForm({ projectTextId, schemaName }: { projectTex
     } else showSuccess('Draft saved')
     await loadHistory()
   }
-  const olderDrafts = currentProject ? history.filter(report => report.status === 'draft' && report.week_num < currentProject.week) : []
+  const olderDrafts = currentProject ? inputReports.filter(report => report.status === 'draft' && report.week_num < currentProject.week) : []
   const readOnly = busy || header?.status === 'submitted'
   if (loading) return <LoadingSpinner />
   return <div className="space-y-6">
@@ -204,7 +209,32 @@ export function SafetyStatisticsForm({ projectTextId, schemaName }: { projectTex
       {output && <section className="bg-green-50 border border-green-200 rounded p-4 space-y-3"><h3 className="font-semibold">Submitted statistics</h3><p>Report: {output.report_id || 'not linked to a dashboard report yet'}</p><details><summary className="cursor-pointer">Statistics JSON</summary><pre className="overflow-auto text-xs p-3">{JSON.stringify(output.statistics, null, 2)}</pre></details><h4 className="font-semibold">Data quality warnings</h4>{renderQuality(output.data_quality)}</section>}
       {outputMissing && <p role="status">Submitted, but no matching statistics output row was returned.</p>}
     </>}
-    <section className="bg-white rounded-lg border p-4 overflow-x-auto"><h3 className="font-semibold mb-3">Report history</h3><table className="w-full text-sm"><thead><tr>{['Data date', 'Week', 'Report no.', 'Prepared by', 'Status', 'Submitted at', ''].map((label, index) => <th className="text-left p-2" key={index}>{label}</th>)}</tr></thead><tbody>{history.map(report => <tr key={report.id} className="border-t hover:bg-gray-50">{[report.data_date, report.week_num, report.report_no, report.prepared_by, report.status, report.submitted_at].map((value, index) => <td className="p-2" key={index}>{value ?? '—'}</td>)}<td><button className="text-blue-700 underline" disabled={busy} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes?')) void run(() => openReport(report)) }}>Open report</button></td></tr>)}</tbody></table>{!history.length && <p className="text-gray-500">No previous reports.</p>}</section>
+    <section className="bg-white rounded-lg border p-4 overflow-x-auto">
+      <h3 className="font-semibold mb-3">Report history</h3>
+      <table className="w-full text-sm"><thead><tr>{['Data date', 'Week', 'Source reference', 'Prepared by', 'Processing status', 'Approved', 'Updated at', ''].map((label, index) => <th className="text-left p-2" key={index}>{label}</th>)}</tr></thead>
+        <tbody>{history.map(report => <tr key={report.statistics_id} className="border-t hover:bg-gray-50">
+          {[report.data_date, report.week_num, report.source_reference, report.prepared_by, report.processing_status, report.is_approved ? 'Yes' : 'No', report.updated_at].map((value, index) => <td className="p-2" key={index}>{value ?? '—'}</td>)}
+          <td><button className="text-blue-700 underline" disabled={busy} onClick={() => void run(async () => {
+            const record = await checked<StatisticsHistory & Output>(OUTPUT, db.from(OUTPUT).select('*').eq('project_id', projectTextId).eq('statistics_id', report.statistics_id).single())
+            setHistoryOutput(record)
+          })}>Open report</button></td>
+        </tr>)}</tbody>
+      </table>{!history.length && <p className="text-gray-500">No previous statistics records.</p>}
+    </section>
+    <Modal isOpen={!!historyOutput} onClose={() => setHistoryOutput(null)} title="Safety statistics record">
+      {historyOutput && <div className="space-y-3">
+        <p className="text-sm text-gray-500">Read-only statistics output</p>
+        <dl className="text-sm space-y-1">{[
+          ['Data date', historyOutput.data_date], ['Week', historyOutput.week_num], ['Source reference', historyOutput.source_reference],
+          ['Prepared by', historyOutput.prepared_by], ['Processing status', historyOutput.processing_status],
+          ['Approved', historyOutput.is_approved ? 'Yes' : 'No'], ['Updated at', historyOutput.updated_at],
+          ['Report', historyOutput.report_id || 'not linked to a dashboard report yet'],
+        ].map(([label, value]) => <div key={label}><dt className="inline font-semibold">{label}: </dt><dd className="inline">{value ?? '—'}</dd></div>)}</dl>
+        <details><summary className="cursor-pointer">Statistics JSON</summary><pre className="overflow-auto text-xs p-3">{JSON.stringify(historyOutput.statistics, null, 2)}</pre></details>
+        <h4 className="font-semibold">Data quality warnings</h4>{renderQuality(historyOutput.data_quality)}
+        <button className="px-4 py-2 border rounded-lg" onClick={() => setHistoryOutput(null)}>Close</button>
+      </div>}
+    </Modal>
     <ConfirmDialog isOpen={!!discardReport} title="Discard draft?" message={`Delete the draft for week ${discardReport?.week_num} and all its metric lines? This cannot be undone.`} confirmLabel="Discard draft" loading={busy} onCancel={() => { if (!busy) setDiscardReport(null) }} onConfirm={() => {
       if (!discardReport) return
       const report = discardReport

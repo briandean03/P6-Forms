@@ -42,6 +42,7 @@ test('saves metric lines before submit, resumes drafts, and reads trigger output
       expect(method).toBe('GET')
       data = { report_id: null, statistics: { manpower: { total_manhours_worked: { month: 100, ytd: 500, inception: 900 } }, inspections_observations: { consultant_sor: { open: 0, closed: 7, total: 7 } } }, data_quality: { warnings: [{ severity: 'warning', message: 'Some metrics empty' }] } }
     }
+    if (table === 'dbp6_0009_safety_statistics' && url.searchParams.get('select') !== '*') data = []
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
   })
   await page.goto(`/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=test_schema&tab=safetystatistics`)
@@ -121,6 +122,7 @@ for (const scenario of ['none', 'draft', 'submitted', 'duplicate'] as const) tes
       } else data = reports
     }
     if (table === 'dbp6_0009_safety_statistics') data = { statistics: {}, data_quality: [] }
+    if (table === 'dbp6_0009_safety_statistics' && url.searchParams.get('select') !== '*') data = []
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
   })
   await page.goto('/?view=app&project=uuid-1&schema=test_schema&tab=safetystatistics')
@@ -152,4 +154,48 @@ for (const scenario of ['none', 'draft', 'submitted', 'duplicate'] as const) tes
   await expect(warning).toHaveCount(0)
   expect(deleted).toBe(true)
   expect(weekReads).toBeGreaterThan(0)
+})
+
+test('history lists all output records, including samples without input headers', async ({ page }) => {
+  const project = { dgt_dbp6bd00projectdataid: 'uuid-1', dgt_projectid: 'PRJ-ATGC-01', dgt_projectname: 'Test Project', dgt_current_weeknum: 56, dgt_datadate: '2026-10-12T00:00:00Z' }
+  const records = [
+    { statistics_id: 'stats-55', data_date: '2026-10-05', week_num: 55, source_reference: 'REF-55', processing_status: 'processed', is_approved: true },
+    { statistics_id: 'stats-54', data_date: '2026-09-27', week_num: 54, source_reference: 'REF-54', processing_status: 'processed', is_approved: false },
+    { statistics_id: 'sample-56', data_date: '2026-09-25', week_num: 56, source_reference: 'ATGC-PR-13-F02', processing_status: 'sample', is_approved: false },
+  ].map(record => ({ ...record, project_id: project.dgt_projectid, prepared_by: 'Syed Hanif', updated_at: '2026-11-17T09:54:49Z', created_at: '2026-10-31T05:35:25Z', report_id: null, statistics: { manpower: { total_manhours_worked: { month: 100, ytd: 500, inception: 900 } } }, data_quality: [{ severity: 'warning', message: 'Sample record' }] }))
+  await page.route('https://sample.supabase.co/**', async route => {
+    const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()
+    let data: any = []
+    if (table === 'dbp6_0000_projectdata') data = req.headers().accept?.includes('object') ? project : [project]
+    if (table === 'p6_project_mapping') data = { schema_name: 'test_schema' }
+    if (table === 'dbp6_0009_safety_metric_catalogue') data = [{ category: 'manpower', metric_key: 'total_manhours_worked', kind: 'period', label: 'Manhours', doc_no: '1', sort_order: 1 }]
+    if (table === 'dbp6_0009_safety_stat_inputs') data = req.headers().accept?.includes('object') ? null : []
+    if (table === 'dbp6_0009_safety_statistics') {
+      expect(req.method()).toBe('GET')
+      expect(req.headers()['accept-profile']).toBe('test_schema')
+      expect(url.searchParams.get('project_id')).toBe('eq.PRJ-ATGC-01')
+      if (url.searchParams.has('statistics_id')) data = records.find(record => `eq.${record.statistics_id}` === url.searchParams.get('statistics_id'))
+      else {
+        expect(url.searchParams.get('order')).toBe('data_date.desc')
+        expect(url.searchParams.has('is_approved')).toBe(false)
+        expect(url.searchParams.has('processing_status')).toBe(false)
+        data = records
+      }
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+  })
+  await page.goto('/?view=app&project=uuid-1&schema=test_schema&tab=safetystatistics')
+  const history = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Report history', exact: true }) })
+  await expect(history.locator('tbody tr')).toHaveCount(3)
+  await expect(history.locator('tbody tr').first()).toContainText('2026-10-05')
+  const sample = history.locator('tr').filter({ hasText: 'ATGC-PR-13-F02' })
+  await expect(sample).toContainText('sample')
+  await sample.getByRole('button', { name: 'Open report' }).click()
+  await expect(page.getByRole('heading', { name: 'Safety statistics record', exact: true })).toBeVisible()
+  await expect(page.getByText('Read-only statistics output')).toBeVisible()
+  await expect(page.getByText('Sample record', { exact: false })).toBeVisible()
+  await page.getByText('Statistics JSON', { exact: true }).click()
+  await expect(page.locator('details pre')).toContainText('total_manhours_worked')
+  await page.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Start new report for week 56' })).toBeVisible()
 })
