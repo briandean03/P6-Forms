@@ -2397,12 +2397,133 @@ function MilestoneTableWidget({ ast }: { ast: Record<string, unknown> }) {
   return <AutoTable rows={rows} />
 }
 
-// hierarchical_table — flatten to a regular table
+// hierarchical_table — expand/collapse tree with indentation
 function HierarchicalTableWidget({ ast }: { ast: Record<string, unknown> }) {
   const content = getContent(ast)
   const rows = (content.rows ?? content.data ?? content.items) as Record<string, unknown>[] | null
+  const colDefs = content.columns as unknown[] | null
+  const hierarchyCfg = content.hierarchy as Record<string, unknown> | null
+
+  const levelField       = String(hierarchyCfg?.level_field       ?? 'hierarchy_level')
+  const rowIdField       = String(hierarchyCfg?.row_id_field       ?? 'row_id')
+  const parentIdField    = String(hierarchyCfg?.parent_id_field    ?? 'parent_id')
+  const expandableField  = String(hierarchyCfg?.expandable_field   ?? 'is_expandable')
+  const defaultExpandLvl = Number(hierarchyCfg?.default_expand_level ?? 1)
+
+  // Build initial expanded set: expand rows whose level < defaultExpandLvl
+  const initialExpanded = useMemo<Set<string>>(() => {
+    const s = new Set<string>()
+    if (!rows) return s
+    rows.forEach(r => {
+      const lvl = Number(r[levelField] ?? 0)
+      if (lvl < defaultExpandLvl) s.add(String(r[rowIdField] ?? ''))
+    })
+    return s
+  }, [rows, levelField, rowIdField, defaultExpandLvl])
+
+  const [expanded, setExpanded] = useState<Set<string>>(initialExpanded)
+
+  // Derive visible rows based on expanded state
+  const visibleRows = useMemo(() => {
+    if (!rows) return []
+    return rows.filter(r => {
+      const parentId = r[parentIdField]
+      if (parentId == null) return true          // root rows always visible
+      // Walk up ancestry: if any ancestor is collapsed, hide
+      let pid: unknown = parentId
+      while (pid != null) {
+        if (!expanded.has(String(pid))) return false
+        const parentRow = rows.find(p => p[rowIdField] === pid)
+        pid = parentRow ? parentRow[parentIdField] : null
+      }
+      return true
+    })
+  }, [rows, expanded, rowIdField, parentIdField])
+
   if (!rows?.length) return <NoData />
-  return <AutoTable rows={rows} />
+
+  const specs = colDefs?.length ? toColSpecs(colDefs) : toColSpecs(Object.keys(rows[0]))
+
+  function toggleRow(rowId: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(rowId)) next.delete(rowId)
+      else next.add(rowId)
+      return next
+    })
+  }
+
+  const thBase = 'px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap bg-gray-50 text-[11px] sticky top-0 z-10'
+  const indentPx = Number((ast.render_options as Record<string, unknown> | undefined)?.indent_per_level_px ?? 16)
+
+  return (
+    <div className="overflow-auto" style={{ maxHeight: '560px' }}>
+      <table className="min-w-full border-separate border-spacing-0" style={{ fontSize: 12 }}>
+        <thead>
+          <tr>
+            {specs.map(({ key, label }) => (
+              <th key={key} className={thBase} style={{ boxShadow: '0 1px 0 #e5e7eb' }}>
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {visibleRows.map((row, idx) => {
+            const level      = Number(row[levelField] ?? 0)
+            const rowId      = String(row[rowIdField] ?? idx)
+            const isExp      = Boolean(row[expandableField])
+            const isOpen     = expanded.has(rowId)
+            const isEven     = idx % 2 === 0
+
+            return (
+              <tr key={rowId} className={`${isEven ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50/40 transition-colors`}>
+                {specs.map(({ key }, ci) => {
+                  const isFirst = ci === 0
+                  const val = renderCellValue(row[key])
+
+                  if (isFirst) {
+                    return (
+                      <td
+                        key={key}
+                        className="py-2 pr-3 text-gray-700 whitespace-nowrap"
+                        style={{ paddingLeft: `${8 + level * indentPx}px` }}
+                      >
+                        <div className="flex items-center gap-1">
+                          {isExp ? (
+                            <button
+                              onClick={() => toggleRow(rowId)}
+                              className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-700 focus:outline-none"
+                            >
+                              {isOpen
+                                ? <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                              }
+                            </button>
+                          ) : (
+                            <span className="flex-shrink-0 w-4 h-4" />
+                          )}
+                          <span className={level === 0 ? 'font-semibold text-gray-800' : level === 1 ? 'font-medium text-gray-700' : 'text-gray-600'}>
+                            {val}
+                          </span>
+                        </div>
+                      </td>
+                    )
+                  }
+
+                  return (
+                    <td key={key} className="px-3 py-2 text-gray-700 whitespace-nowrap text-right">
+                      {val}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 // resource_table
