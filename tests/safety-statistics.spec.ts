@@ -8,7 +8,7 @@ test('parses pasted report numbers without converting blanks into zero', () => {
 
 test('saves metric lines before submit, resumes drafts, and reads trigger output', async ({ page }) => {
   const calls: { table: string; method: string; body: any }[] = []
-  const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-000000000001', dgt_projectid: 'P2', dgt_projectname: 'Test Project' }
+  const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-000000000001', dgt_projectid: 'P2', dgt_projectname: 'Test Project', dgt_current_weeknum: 54, dgt_datadate: '2026-09-27T00:00:00Z' }
   let header: any = null
   let lines: any[] = []
   await page.route('https://sample.supabase.co/**', async route => {
@@ -45,7 +45,7 @@ test('saves metric lines before submit, resumes drafts, and reads trigger output
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
   })
   await page.goto(`/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=test_schema&tab=safetystatistics`)
-  await page.getByRole('button', { name: 'Start new report' }).click()
+  await page.getByRole('button', { name: 'Start new report for week 54' }).click()
   await expect(page.getByText('Default contractor', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Contractor name')).toHaveValue('Default contractor')
   for (const label of ['Total manhours worked Month', 'Total manhours worked Year To Date', 'Total manhours worked From Job Inception', 'Consultant SOR Open', 'Consultant SOR Closed', 'Consultant SOR Total', 'Fatal Month', 'Fatal Year To Date', 'Fatal From Job Inception']) {
@@ -88,4 +88,68 @@ test('saves metric lines before submit, resumes drafts, and reads trigger output
   await expect(page.getByText('warning:', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Edit', exact: true }).click()
   await expect(page.getByLabel('Consultant SOR Open', { exact: true })).toBeEnabled()
+})
+
+for (const scenario of ['none', 'draft', 'submitted', 'duplicate'] as const) test(`current week lifecycle: ${scenario}`, async ({ page }) => {
+  const old = { id: 'old', project_id: 'P2', week_num: 53, data_date: '2026-09-20', status: 'draft', report_no: 'OLD-53', prepared_by: 'Earlier author', created_at: '2026-09-20T00:00:00Z' }
+  const current = { ...old, id: 'current', week_num: 54, data_date: '2026-09-27', report_no: 'CURRENT-54', status: scenario === 'submitted' ? 'submitted' : 'draft' }
+  let reports = scenario === 'draft' || scenario === 'submitted' ? [current, old] : [old]
+  let deleted = false, weekReads = 0
+  await page.route('https://sample.supabase.co/**', async route => {
+    const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()
+    const project = { dgt_dbp6bd00projectdataid: 'uuid-1', dgt_projectid: 'P2', dgt_projectname: 'Test Project', dgt_current_weeknum: 54, dgt_datadate: '2026-09-27T23:00:00Z' }
+    let data: any = []
+    if (table === 'dbp6_0000_projectdata') data = req.headers().accept?.includes('object') ? project : [project]
+    if (table === 'p6_project_mapping') data = { schema_name: 'test_schema' }
+    if (table === 'dbp6_0009_safety_metric_catalogue') data = [{ category: 'manpower', metric_key: 'total_manhours_worked', kind: 'period', label: 'Manhours', doc_no: '1', sort_order: 1 }]
+    if (table === 'dbp6_0009_safety_stat_inputs') {
+      if (req.method() === 'POST') {
+        expect(req.postDataJSON()).toEqual({ project_id: 'P2', status: 'draft' })
+        reports = [current, old]
+        if (scenario === 'duplicate') {
+          await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: '23505', message: 'duplicate key value violates unique constraint project_id_data_date' }) })
+          return
+        }
+        data = current
+      } else if (req.method() === 'DELETE') {
+        expect(url.searchParams.get('id')).toBe('eq.old')
+        expect(url.searchParams.get('status')).toBe('eq.draft')
+        reports = reports.filter(report => report.id !== 'old'); deleted = true; data = { id: 'old' }
+      } else if (url.searchParams.has('week_num')) {
+        expect(url.searchParams.get('week_num')).toBe('eq.54'); weekReads++
+        data = reports.find(report => report.week_num === 54) ?? null
+      } else data = reports
+    }
+    if (table === 'dbp6_0009_safety_statistics') data = { statistics: {}, data_quality: [] }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+  })
+  await page.goto('/?view=app&project=uuid-1&schema=test_schema&tab=safetystatistics')
+  const warning = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Unsubmitted drafts from earlier weeks' }) })
+  await expect(warning.getByText('OLD-53')).toBeVisible()
+  await expect(warning.getByText('Earlier author')).toBeVisible()
+  if (scenario === 'none' || scenario === 'duplicate') {
+    await expect(page.getByRole('button', { name: 'Start new report for week 54' })).toBeVisible()
+    // Opening an earlier draft is explicit, never automatic.
+    await warning.getByRole('button', { name: 'Open', exact: true }).click()
+    await expect(page.getByLabel('Report no.', { exact: true })).toHaveValue('OLD-53')
+    page.once('dialog', dialog => dialog.accept())
+    await page.getByRole('button', { name: 'Return to current week 54' }).click()
+    await page.getByRole('button', { name: 'Start new report for week 54' }).click()
+    await expect(page.getByLabel('Report no.', { exact: true })).toHaveValue('CURRENT-54')
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  } else {
+    await expect(page.getByLabel('Report no.', { exact: true })).toHaveValue('CURRENT-54')
+    if (scenario === 'submitted') {
+      await expect(page.getByLabel('Report no.', { exact: true })).toBeDisabled()
+      await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+    } else await expect(page.getByLabel('Report no.', { exact: true })).toBeEnabled()
+  }
+  await warning.getByRole('button', { name: 'Discard', exact: true }).click()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(deleted).toBe(false)
+  await warning.getByRole('button', { name: 'Discard', exact: true }).click()
+  await page.getByRole('button', { name: 'Discard draft', exact: true }).click()
+  await expect(warning).toHaveCount(0)
+  expect(deleted).toBe(true)
+  expect(weekReads).toBeGreaterThan(0)
 })
