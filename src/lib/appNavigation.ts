@@ -26,9 +26,11 @@ export function readAppLocation<T extends string>(url: URL, tabs: readonly T[]):
 export function useAppNavigation<T extends string>(tabs: readonly T[]) {
   const [route, setRoute] = useState(() => readAppLocation(new URL(window.location.href), tabs))
   const current = useRef(route)
+  const currentUrl = useRef(window.location.href)
   const navigate = useCallback((patch: Partial<AppLocation<T>>) => {
     const next = { ...current.current, ...patch }
     if (Object.keys(next).every(key => next[key as keyof typeof next] === current.current[key as keyof typeof next])) return
+    if (!window.dispatchEvent(new Event('app:before-navigate', { cancelable: true }))) return
     const url = new URL(window.location.href)
     for (const key of ['project', 'schema', 'tab', 'report', 'view']) url.searchParams.delete(key)
     url.hash = ''
@@ -41,6 +43,7 @@ export function useAppNavigation<T extends string>(tabs: readonly T[]) {
       }
     }
     window.history.pushState(window.history.state, '', url)
+    currentUrl.current = window.location.href
     current.current = next
     setRoute(next)
     resetScroll()
@@ -48,6 +51,11 @@ export function useAppNavigation<T extends string>(tabs: readonly T[]) {
   useEffect(() => {
     const restore = () => {
       const next = readAppLocation(new URL(window.location.href), tabs)
+      if (!window.dispatchEvent(new Event('app:before-navigate', { cancelable: true }))) {
+        window.history.pushState(window.history.state, '', currentUrl.current)
+        return
+      }
+      currentUrl.current = window.location.href
       current.current = next
       setRoute(next)
       if (!window.location.hash) resetScroll()

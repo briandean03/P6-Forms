@@ -5,6 +5,7 @@ import type { ProjectData } from '@/types/database'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
+import { SafetyStatisticsForm } from '@/forms/SafetyStatisticsForm'
 import { EngineeringForm } from '@/forms/EngineeringForm'
 import { QaqcHseForm } from '@/forms/QaqcHseForm'
 import { ActualResourcesForm } from '@/forms/ActualResourcesForm'
@@ -27,6 +28,7 @@ import { WeeklyReportForm } from '@/forms/WeeklyReportForm'
 type TabKey =
   | 'dashboard'
   | 'weekly_dashboard'
+  | 'safetystatistics'
   | 'engineering'
   | 'qaqc'
   | 'resources'
@@ -100,6 +102,11 @@ const navSections: NavSection[] = [
     id: 'documents',
     label: 'DOCUMENTS',
     items: [
+      {
+        key: 'safetystatistics',
+        label: 'Safety Statistics',
+        icon: <span aria-hidden="true">◇</span>,
+      },
       {
         key: 'engineering',
         label: 'Engineering',
@@ -411,6 +418,8 @@ function App() {
             a3Mode={true}
           />
         )
+      case 'safetystatistics':
+        return <SafetyStatisticsForm key={`${selectedSchemaName}:${projectTextId}`} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'engineering':
         return <EngineeringForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'qaqc':
