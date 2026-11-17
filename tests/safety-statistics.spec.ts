@@ -48,6 +48,11 @@ test('saves metric lines before submit, resumes drafts, and reads trigger output
   await page.getByRole('button', { name: 'Start new report' }).click()
   await expect(page.getByText('Default contractor', { exact: true })).toHaveCount(0)
   await expect(page.getByLabel('Contractor name')).toHaveValue('Default contractor')
+  for (const label of ['Total manhours worked Month', 'Total manhours worked Year To Date', 'Total manhours worked From Job Inception', 'Consultant SOR Open', 'Consultant SOR Closed', 'Consultant SOR Total', 'Fatal Month', 'Fatal Year To Date', 'Fatal From Job Inception']) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveValue('0')
+  }
+  // Users can still deliberately clear a metric and submit it as empty.
+  for (const label of ['Fatal Month', 'Fatal Year To Date', 'Fatal From Job Inception']) await page.getByLabel(label, { exact: true }).fill('')
   await page.getByLabel('Total manhours worked Month', { exact: true }).fill('100')
   await page.getByLabel('Total manhours worked Year To Date').fill('-5')
   await expect(page.getByRole('button', { name: 'Save draft', exact: true })).toBeDisabled()
@@ -63,6 +68,9 @@ test('saves metric lines before submit, resumes drafts, and reads trigger output
   await expect(page.getByText('Draft saved', { exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('Total manhours worked Month', { exact: true })).toHaveValue('100')
+  // Missing draft lines default back to zero when resumed.
+  await expect(page.getByLabel('Fatal Month', { exact: true })).toHaveValue('0')
+  for (const label of ['Fatal Month', 'Fatal Year To Date', 'Fatal From Job Inception']) await page.getByLabel(label, { exact: true }).fill('')
   await page.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect(page.getByText('1 metrics are still empty.', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Submit anyway' }).click()

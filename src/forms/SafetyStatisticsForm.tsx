@@ -51,11 +51,17 @@ export function SafetyStatisticsForm({ projectTextId, schemaName }: { projectTex
     const result = await checked<Output | null>(OUTPUT, db.from(OUTPUT).select('*').eq('project_id', report.project_id).eq('data_date', report.data_date).maybeSingle())
     setOutput(result); setOutputMissing(!result)
   }
-  async function openReport(report: Header) {
+  async function openReport(report: Header, metrics = catalogue) {
     const lines = await checked<Line[]>(LINES, db.from(LINES).select('*').eq('input_id', report.id))
     const next: Record<string, MetricValues> = {}
+    if (report.status === 'draft') {
+      for (const metric of metrics) {
+        const fields = metric.kind === 'period' ? periodFields : statusFields
+        next[metricId(metric)] = Object.fromEntries(fields.map(field => [field, '0']))
+      }
+    }
     for (const line of lines ?? []) next[metricId(line)] = Object.fromEntries([...periodFields, ...statusFields].map(field => [field, line[field] == null ? '' : String(line[field])]))
-    setHeader(report); setValues(next); setDirty(false); setOutput(null); setOutputMissing(false)
+    setHeader(report); setValues(next); setDirty(report.status === 'draft' && metrics.some(metric => !(lines ?? []).some(line => metricId(line) === metricId(metric)))); setOutput(null); setOutputMissing(false)
     if (report.status === 'submitted') await readOutput(report)
   }
   useEffect(() => {
@@ -69,7 +75,7 @@ export function SafetyStatisticsForm({ projectTextId, schemaName }: { projectTex
         const reports = await loadHistory()
         if (!active) return
         const draft = reports.find(report => report.status === 'draft')
-        if (draft) await openReport(draft)
+        if (draft) await openReport(draft, metrics ?? [])
         if (active) setReady(true)
       } catch (reason) { if (active) fail(reason) }
       finally { if (active) setLoading(false) }
