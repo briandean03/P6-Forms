@@ -1,6 +1,7 @@
+import { HierarchicalTable } from './HierarchicalTable';
 import { useState } from "react";
 import { WidgetAst, WidgetRow } from "@/boltDashboard/api/dashboardApi";
-import { ThemeTokens, radius, space } from "@/boltDashboard/theme/designTheme";
+import { ThemeTokens, radius } from "@/boltDashboard/theme/designTheme";
 import { DataTable, StatusBadge, TableColumn, formatCellValue, WidgetCard } from "@/boltDashboard/components/widgetPrimitives";
 import {
   ChartSeries,
@@ -949,68 +950,6 @@ export function WidgetRenderer({
     >
       {body}
     </WidgetCard>
-  );
-}
-
-function HierarchicalTable({ theme, c }: { theme: ThemeTokens; c: Rec }) {
-  const rows = rowsOf(c);
-  const cols = columnsOf(c);
-  const hierarchy = (c.hierarchy ?? {}) as Rec;
-  const levelField = String(hierarchy.level_field ?? "hierarchy_level");
-  const expandableField = String(hierarchy.expandable_field ?? "is_expandable");
-
-  return (
-    <div className="print-collapse overflow-x-auto" style={{ maxHeight: 420, overflowY: "auto" }}>
-      <table className="w-full border-collapse text-[12px]">
-        <thead>
-          <tr style={{ background: theme.colors.table_header_bg ?? "#F4F3F8" }}>
-            {cols.map((col) => (
-              <th
-                key={col.key}
-                className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap"
-                style={{ textAlign: col.alignment === "right" ? "right" : "left", color: theme.colors.text_secondary }}
-              >
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => {
-            const level = typeof row[levelField] === "number" ? (row[levelField] as number) : 0;
-            const expandable = Boolean(row[expandableField]);
-            return (
-              <tr key={String(row.row_id ?? i)} style={{ borderBottom: `1px solid ${theme.colors.subtle_border ?? "#ECEAF6"}` }}>
-                {cols.map((col, ci) => {
-                  const raw = row[col.key];
-                  return (
-                    <td
-                      key={col.key}
-                      className="px-3 py-2 whitespace-nowrap"
-                      style={{
-                        textAlign: col.alignment === "right" ? "right" : "left",
-                        color: theme.colors.text_primary,
-                        fontWeight: level === 0 ? 700 : level === 1 ? 600 : 400,
-                        background: level === 0 ? (theme.colors.surface_secondary ?? "#F4F3F8") : undefined,
-                      }}
-                    >
-                      <span className="inline-flex items-center" style={{ paddingLeft: ci === 0 ? level * space(theme, "nav_spacing") : 0 }}>
-                        {ci === 0 && expandable && (
-                          <span className="mr-1 text-[10px]" style={{ color: theme.colors.muted_text }}>
-                            ▸
-                          </span>
-                        )}
-                        {formatCellValue(raw, col.data_type)}
-                      </span>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
   );
 }
 

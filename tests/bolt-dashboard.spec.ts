@@ -4,7 +4,7 @@ const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-0000000000
 const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=bolt_weekly_dashboard`
 const structures = [56, 55].map(week => ({
   id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
-  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
+  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
@@ -41,6 +41,15 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
           { widget_id: 'WGT-008', widget_type: 'line_chart', widget_title: 'Progress trend', content: { category_field: 'date', series: [{ name: 'Actual', value_field: 'actual', color_token: 'primary' }], data: [{ date: '2026-10-01', actual: 20 }, { date: '2026-10-12', actual: week }] } },
           { widget_id: 'WGT-NEW', widget_type: 'future_widget', widget_title: 'Future data', content: {} },
         ]
+        for (const id of ['WGT-025', 'WGT-027']) widgets.push({ widget_id: id, widget_type: 'hierarchical_table', widget_title: `Hierarchy ${id}`, content: {
+          columns: [{ key: 'label', label: 'Discipline' }, { key: 'count', label: 'Count', alignment: 'right' }],
+          hierarchy: { row_id_field: 'code', parent_id_field: 'parent', level_field: 'depth', default_expand_level: 1 },
+          [id === 'WGT-025' ? 'data' : 'items']: [
+            { code: 'root', parent: null, depth: 0, label: 'Engineering', count: 10 },
+            { code: 'child', parent: 'root', depth: 1, label: 'Civil', count: 7 },
+            { code: 'leaf', parent: 'child', depth: 2, label: `Drawings ${week}`, count: 0 },
+          ],
+        } } as typeof widgets[number])
         data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', page_id: `overview-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
@@ -61,12 +70,25 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(page.locator('.bolt-dashboard')).toHaveCSS('--dt-primary', '#5741DF')
     await expect(page.getByRole('region', { name: 'Progress trend', exact: true }).locator('svg path')).not.toHaveCount(0)
     await expect(page.getByText('Widget type "future_widget" is not yet supported')).toBeVisible()
+    for (const id of ['WGT-025', 'WGT-027']) {
+      const hierarchy = page.getByRole('region', { name: `Hierarchy ${id}`, exact: true })
+      await expect(hierarchy.getByText('Civil', { exact: true })).toBeVisible()
+      await expect(hierarchy.getByText('Drawings 56', { exact: true })).toBeHidden()
+      await hierarchy.getByRole('button', { name: 'Expand Civil', exact: true }).click()
+      await expect(hierarchy.getByText('Drawings 56', { exact: true })).toBeVisible()
+      await hierarchy.getByRole('button', { name: 'Collapse Engineering', exact: true }).click()
+      await expect(hierarchy.getByText('Civil', { exact: true })).toBeHidden()
+      await hierarchy.getByRole('button', { name: 'Expand Engineering', exact: true }).click()
+      await expect(hierarchy.getByText('Drawings 56', { exact: true })).toBeVisible()
+    }
     await page.getByLabel('Select reporting week').selectOption('s55')
     await expect(page.getByRole('heading', { name: 'Construction intelligence week 55' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 56' })).toHaveCount(0)
     await expect(page.locator('.bolt-dashboard')).toHaveCSS('--dt-primary', '#087F5B')
+    await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).getByText('Drawings 55', { exact: true })).toBeHidden()
     await page.emulateMedia({ media: 'print' })
+    await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).getByText('Drawings 55', { exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toHaveCount(1)
     await expect(page.getByRole('navigation', { name: 'Dashboard sections' })).toBeHidden()
     if (mode === 'ready') await page.pdf({ path: testInfo.outputPath('bolt-report.pdf'), format: 'A4', printBackground: true })
