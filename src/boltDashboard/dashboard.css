@@ -1,0 +1,158 @@
+.bolt-dashboard .wgt-051-kpi-grid {
+  --kpi-count: 1;
+}
+
+@media (min-width: 768px) {
+  .bolt-dashboard .wgt-051-kpi-grid {
+    grid-template-columns: repeat(var(--kpi-count), minmax(0, 1fr));
+  }
+}
+
+/* Print-friendly reporting output: all seven sections, no widget splits */
+@media print {
+  .bolt-dashboard .no-print {
+    display: none !important;
+  }
+
+
+
+  /* The interactive single-section view hides; the print-only full view shows */
+  .bolt-dashboard .print-hide-entire {
+    display: none !important;
+  }
+
+  .bolt-dashboard .print-section {
+    break-before: page;
+  }
+
+  .bolt-dashboard .print-section:first-of-type,
+  .bolt-dashboard section:first-of-type {
+    break-before: auto;
+  }
+
+  .bolt-dashboard .print-widget {
+    break-inside: avoid;
+  }
+
+  /* Charts and tables must not be clipped by interactive scroll containers */
+  .bolt-dashboard .print-collapse {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .bolt-dashboard > .flex > div {
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .bolt-dashboard table {
+    font-size: 8pt !important;
+  }
+
+  .bolt-dashboard svg {
+    break-inside: avoid;
+  }
+}
+
+.bolt-dashboard .major-exceptions-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: #7d7b8d #eeedf4;
+}
+
+.bolt-dashboard .major-exceptions-scroll::-webkit-scrollbar {
+  width: 14px;
+}
+
+.bolt-dashboard .major-exceptions-scroll::-webkit-scrollbar-track {
+  background: #eeedf4;
+  border-radius: 8px;
+}
+
+.bolt-dashboard .major-exceptions-scroll::-webkit-scrollbar-thumb {
+  background: #7d7b8d;
+  border: 3px solid #eeedf4;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.bolt-dashboard .major-exceptions-scroll::-webkit-scrollbar-thumb:hover {
+  background: #5f5d70;
+  border-color: #eeedf4;
+}
+
+.bolt-dashboard .print-only {
+  display: none;
+}
+
+/* Chart entrance animations: lines draw in, bars grow from the baseline */
+@keyframes bolt-chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes bolt-chart-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bolt-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.bolt-dashboard .chart-line-enter {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: bolt-chart-draw 1.4s ease-out forwards;
+}
+
+.bolt-dashboard .chart-fill-enter {
+  opacity: 0;
+  animation: bolt-chart-fade-in 0.9s ease-out 0.9s forwards;
+}
+
+.bolt-dashboard .chart-bar-enter {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: bolt-bar-grow 0.8s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@media print {
+  .bolt-dashboard .chart-line-enter,
+  .bolt-dashboard .chart-fill-enter,
+  .bolt-dashboard .chart-bar-enter {
+    animation: none !important;
+    stroke-dasharray: none !important;
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+.bolt-dashboard { font-family: var(--dt-font, 'Segoe UI', Arial, sans-serif); }
+@media print {
+  html.bolt-dashboard-printing #root > div,
+  html.bolt-dashboard-printing #root > div > div,
+  html.bolt-dashboard-printing main { display: block !important; height: auto !important; overflow: visible !important; }
+  .bolt-dashboard .bolt-print-section { break-before: page; }
+  .bolt-dashboard .bolt-print-section:first-child { break-before: auto; }
+  .bolt-dashboard header { position: static !important; }
+  .bolt-dashboard svg [style] { opacity: 1 !important; animation: none !important; stroke-dasharray: none !important; }
+}
+
+@media print { .bolt-dashboard [style*="scaleX(0)"] { transform: scaleX(1) !important; } }
+
+@media screen and (max-width: 767px) { html.bolt-dashboard-printing main.print-main { padding: 12px; } }
