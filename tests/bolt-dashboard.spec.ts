@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-000000000001', dgt_projectid: 'P2', dgt_projectname: 'Test Project' }
-const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=bolt_weekly_dashboard`
+const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=online_weekly_dashboard`
 const structures = [56, 55].map(week => ({
   id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
   structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
@@ -55,7 +55,10 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
   })
-  await page.goto(url)
+  await page.goto(mode === 'denied' ? url.replace('tab=online_weekly_dashboard', 'tab=bolt_weekly_dashboard') : url)
+  await expect(page.getByRole('banner').getByRole('heading', { name: 'Online Weekly Dashboard', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Bolt Weekly Dashboard', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Online Weekly Dashboard', exact: true })).toHaveCount(1)
   if (mode === 'empty') {
     await expect(page.getByRole('heading', { name: 'No weekly dashboards available' })).toBeVisible()
   } else {
@@ -99,8 +102,8 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     if (mode === 'ready') await page.screenshot({ path: testInfo.outputPath('bolt-mobile.png'), fullPage: true })
     expect(reads.some(read => read.table.endsWith('_widgets') && read.structure === 'eq.s55')).toBe(true)
   }
-  await page.getByRole('button', { name: 'Online Weekly Dashboard', exact: true }).click()
-  await expect(page).toHaveURL(/tab=online_weekly_dashboard/)
+  await page.getByRole('button', { name: 'Weekly Report', exact: true }).click()
+  await expect(page).toHaveURL(/tab=weekly_report/)
   await expect(page.locator('html')).not.toHaveClass(/bolt-dashboard-printing/)
   expect(errors).toEqual([])
 })

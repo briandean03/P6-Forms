@@ -1,6 +1,6 @@
 # Bolt weekly dashboard integration
 
-The Reports menu now contains **Bolt Weekly Dashboard** in addition to **Online Weekly Dashboard**, **Weekly Report**, and **A3 Dashboard**. It can also be opened through `tab=bolt_weekly_dashboard` in the existing project URL. The other routes keep their existing renderers.
+The Bolt implementation now powers **Reports → Online Weekly Dashboard** and replaces the previous online renderer. **Weekly Report** and **A3 Dashboard** keep their existing renderers. The canonical URL uses `tab=online_weekly_dashboard`; older `tab=bolt_weekly_dashboard` links open the same replacement dashboard. The comparison below describes the previous online implementation versus the replacement.
 
 The imported frontend lives under `src/boltDashboard`. It is loaded on demand and uses React/TypeScript/Vite already installed by P6 Forms. Its only new package is the pinned `lucide-react` icon library. Its CSS, animation names, and stored selections are isolated from the original dashboard. The P6 sidebar collapses on mobile when this route is selected, leaving room for the report.
 
@@ -39,7 +39,7 @@ Additional corrections:
 
 Use the same `.env.local` / environment settings as P6 Forms (`VITE_SUPABASE_URL` and the public `VITE_SUPABASE_ANON_KEY`), then run `npm ci` and `npm run dev`. No `VITE_DASHBOARD_API_URL` is required.
 
-Select a project and choose **Reports → Bolt Weekly Dashboard**. Select an older week and confirm the title, date, sections, widgets, and design all correspond to that selection. Compare the same week in **Online Weekly Dashboard**. Try a chart range, KPI/trade filter where the corresponding widgets are present, a narrow browser window, and **Print report**.
+Select a project and choose **Reports → Online Weekly Dashboard**. Select an older week and confirm the title, date, sections, widgets, and design all correspond to that selection. Verify the selected week against the saved report data. Try a chart range, KPI/trade filter where the corresponding widgets are present, a narrow browser window, and **Print report**.
 
 Existing read access is required to these tables in the selected project schema:
 
