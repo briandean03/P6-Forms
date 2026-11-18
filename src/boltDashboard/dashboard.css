@@ -156,3 +156,5 @@
 @media print { .bolt-dashboard [style*="scaleX(0)"] { transform: scaleX(1) !important; } }
 
 @media screen and (max-width: 767px) { html.bolt-dashboard-printing main.print-main { padding: 12px; } }
+.bolt-dashboard .bolt-hierarchy-hidden { display: none; }
+@media print { .bolt-dashboard .bolt-hierarchy-hidden { display: table-row; } }
