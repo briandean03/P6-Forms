@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
+import { ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
 import {
   ApprovedDesign,
   ApprovedStructure,
@@ -82,6 +82,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<LoadError | null>(null);
   const [activeSection, setActiveSection] = useState(0);
+  const [approvalStatus, setApprovalStatus] = useState<'Approved' | 'Draft'>('Approved');
   const [kpiSelection, setKpiSelection] = useState<string[] | null>(() => readStoredStrings(KPI_SELECTION_STORAGE_KEY));
   const setPersistedKpiSelection = (kpis: string[] | null) => {
     setKpiSelection(kpis);
@@ -201,7 +202,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
             {structure.dashboard_title}
           </h1>
           <p className="truncate text-[11px] leading-4" style={{ color: theme.colors.muted_text }}>
-            {`${structure.project_id} · design v${design.design_version}, structure v${structure.structure_version}`}
+            {structure.project_id}
           </p>
         </div>
         <div className="no-print flex flex-wrap items-center gap-2 md:justify-end">
@@ -214,12 +215,23 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
           <span className="px-2 text-[14px] font-medium" style={{ color: theme.colors.text_secondary }}>
             Data Date: <strong style={{ color: theme.colors.text_primary }}>{formatReportDate(structure.data_date)}</strong>
           </span>
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-semibold"
-            style={{ background: theme.colors.positive_bg ?? "#E6F5EF", color: theme.colors.success ?? "#359D78" }}
-          >
-            <CheckCircle2 size={15} /> Stored dashboard
-          </span>
+          <label className="relative no-print">
+            <span className="sr-only">Approval status</span>
+            <select
+              value={approvalStatus}
+              onChange={(e) => setApprovalStatus(e.target.value as 'Approved' | 'Draft')}
+              className="appearance-none rounded-lg border py-2 pl-3 pr-9 text-[14px] font-medium outline-none transition-colors"
+              style={{
+                borderColor: approvalStatus === 'Approved' ? (theme.colors.success ?? "#359D78") : (theme.colors.subtle_border ?? "#D9D6E8"),
+                background: approvalStatus === 'Approved' ? (theme.colors.positive_bg ?? "#E6F5EF") : (theme.colors.surface_primary ?? "#FFFFFF"),
+                color: approvalStatus === 'Approved' ? (theme.colors.success ?? "#359D78") : theme.colors.text_primary,
+              }}
+            >
+              <option value="Approved">Approved</option>
+              <option value="Draft">Draft</option>
+            </select>
+            <ChevronDown size={16} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: approvalStatus === 'Approved' ? (theme.colors.success ?? "#359D78") : theme.colors.text_secondary }} />
+          </label>
           <label className="relative no-print">
             <span className="sr-only">Select reporting week</span>
             <select
