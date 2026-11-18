@@ -7,7 +7,7 @@ export function readStoredStrings(key: string): string[] | null {
     const parsed = raw ? JSON.parse(raw) : null;
     if (!Array.isArray(parsed)) return null;
     const strings = parsed.filter((s): s is string => typeof s === "string");
-    return strings.length ? strings : null;
+    return strings;
   } catch {
     return null;
   }
@@ -15,7 +15,7 @@ export function readStoredStrings(key: string): string[] | null {
 
 export function writeStoredStrings(key: string, values: string[] | null): void {
   try {
-    if (values && values.length) localStorage.setItem(key, JSON.stringify(values));
+    if (values !== null) localStorage.setItem(key, JSON.stringify(values));
     else localStorage.removeItem(key);
   } catch {
     // Storage may be unavailable (private mode); selection just won't persist.

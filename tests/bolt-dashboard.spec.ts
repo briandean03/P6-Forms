@@ -56,6 +56,10 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
           columns: Array.from({ length: 10 }, (_, index) => ({ key: `column${index}`, label: `Column ${index}` })),
           rows: Array.from({ length: 35 }, (_, row) => Object.fromEntries(Array.from({ length: 10 }, (_, col) => [`column${col}`, `R${row}-C${col}-longvalue`]))),
         } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-038', widget_type: 'grouped_bar_chart', widget_title: 'KPI selection', content: {
+          category_field: 'kpi_key', series: [{ name: 'Actual', value_field: 'actual' }],
+          data: ['Concrete', 'Drainage', 'Plumbing'].map(kpi => ({ kpi_key: kpi, kpi_label: kpi, actual: 10 })),
+        } } as typeof widgets[number])
         data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', page_id: `overview-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
@@ -90,7 +94,15 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
       await hierarchy.getByRole('button', { name: 'Expand Engineering', exact: true }).click()
       await expect(hierarchy.getByText('Drawings 56', { exact: true })).toBeVisible()
     }
+    const selection = page.getByRole('region', { name: 'KPI selection', exact: true })
+    await selection.getByRole('button', { name: 'Clear all', exact: true }).click()
+    await expect(selection.getByRole('button', { name: 'Concrete', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await selection.getByRole('button', { name: 'Concrete', exact: true }).click()
+    await selection.getByRole('button', { name: 'Plumbing', exact: true }).click()
     await page.getByLabel('Select reporting week').selectOption('s55')
+    await expect(selection.getByRole('button', { name: 'Concrete', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(selection.getByRole('button', { name: 'Drainage', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(selection.getByRole('button', { name: 'Plumbing', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByRole('heading', { name: 'Construction intelligence week 55' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 56' })).toHaveCount(0)
