@@ -1,6 +1,6 @@
 # Bolt weekly dashboard integration
 
-The Reports menu now contains **Bolt Weekly Dashboard** in addition to **Online Weekly Dashboard**, **Weekly Report**, and **A3 Dashboard**. It can also be opened through `tab=bolt_weekly_dashboard` in the existing project URL. The other routes keep their existing renderers.
+The Bolt implementation now powers **Reports → Online Weekly Dashboard** and replaces the previous online renderer. **Weekly Report** and **A3 Dashboard** keep their existing renderers. The canonical URL uses `tab=online_weekly_dashboard`; older `tab=bolt_weekly_dashboard` links open the same replacement dashboard. The comparison below describes the previous online implementation versus the replacement.
 
 The imported frontend lives under `src/boltDashboard`. It is loaded on demand and uses React/TypeScript/Vite already installed by P6 Forms. Its only new package is the pinned `lucide-react` icon library. Its CSS, animation names, and stored selections are isolated from the original dashboard. The P6 sidebar collapses on mobile when this route is selected, leaving room for the report.
 
@@ -39,7 +39,7 @@ Additional corrections:
 
 Use the same `.env.local` / environment settings as P6 Forms (`VITE_SUPABASE_URL` and the public `VITE_SUPABASE_ANON_KEY`), then run `npm ci` and `npm run dev`. No `VITE_DASHBOARD_API_URL` is required.
 
-Select a project and choose **Reports → Bolt Weekly Dashboard**. Select an older week and confirm the title, date, sections, widgets, and design all correspond to that selection. Compare the same week in **Online Weekly Dashboard**. Try a chart range, KPI/trade filter where the corresponding widgets are present, a narrow browser window, and **Print report**.
+Select a project and choose **Reports → Online Weekly Dashboard**. Select an older week and confirm the title, date, sections, widgets, and design all correspond to that selection. Verify the selected week against the saved report data. Try a chart range, KPI/trade filter where the corresponding widgets are present, a narrow browser window, and **Print report**.
 
 Existing read access is required to these tables in the selected project schema:
 
@@ -50,3 +50,5 @@ Existing read access is required to these tables in the selected project schema:
 Missing read grants/RLS access is reported with the schema/table name. Projects without generated structures show an empty state; there is no fabricated demonstration data.
 
 `tests/bolt-dashboard.spec.ts` uses mocked requests for a non-ATGC project schema and tests two different weeks/designs, stringified database columns, custom SVG/KPI rendering, empty results, permission errors and retry, mobile sidebar behavior, print layout, and returning to the original dashboard. It verifies that all dashboard requests are reads and that the project/schema filters are present. The ready-state test saves a sample screenshot and PDF in Playwright’s test output directory. Live database data and a full real-world 49-widget report have not been verified here.
+
+Printing uses mixed A4 page orientations: widgets containing a table with six or more columns use landscape; compact tables and chart widgets use portrait. Tables print at full page width, with wrapping cells and repeating headers. Long tables can continue across multiple sheets. Modern Chrome/Edge support the named-page sizes; use browser Save as PDF with the CSS page sizes/default layout and scaling.

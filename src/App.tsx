@@ -49,7 +49,6 @@ type TabKey =
   | 'pdfupload'
   | 'inspectionreports'
   | 'weekly_report'
-  | 'bolt_weekly_dashboard'
   | 'online_weekly_dashboard'
 
 interface NavItem {
@@ -228,11 +227,6 @@ const navSections: NavSection[] = [
     label: 'REPORTS',
     items: [
       {
-        key: 'bolt_weekly_dashboard',
-        label: 'Bolt Weekly Dashboard',
-        icon: <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></svg>,
-      },
-      {
         key: 'online_weekly_dashboard',
         label: 'Online Weekly Dashboard',
         icon: (
@@ -282,7 +276,7 @@ function App() {
   const setActiveTab = (tab: TabKey) => navigate({ activeTab: tab })
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   useEffect(() => {
-    if (activeTab !== 'bolt_weekly_dashboard') return
+    if (activeTab !== 'online_weekly_dashboard') return
     const mobile = window.matchMedia('(max-width: 767px)')
     const collapseOnMobile = () => { if (mobile.matches) setSidebarExpanded(false) }
     collapseOnMobile()
@@ -474,16 +468,8 @@ function App() {
             schemaName={selectedSchemaName}
           />
         )
-      case 'bolt_weekly_dashboard':
-        return <Suspense fallback={<p className="p-4">Loading Bolt weekly dashboard…</p>}><BoltWeeklyDashboardForm projectTextId={projectTextId} schemaName={selectedSchemaName} /></Suspense>
       case 'online_weekly_dashboard':
-        return (
-          <ReportDashboardForm
-            projectId={selectedProjectId}
-            projectTextId={projectTextId}
-            schemaName={selectedSchemaName}
-          />
-        )
+        return <Suspense fallback={<p className="p-4">Loading online weekly dashboard…</p>}><BoltWeeklyDashboardForm projectTextId={projectTextId} schemaName={selectedSchemaName} /></Suspense>
       default:
         return null
     }

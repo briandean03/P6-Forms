@@ -14,7 +14,9 @@ function resetScroll() {
 
 export function readAppLocation<T extends string>(url: URL, tabs: readonly T[]): AppLocation<T> {
   const project = url.searchParams.get('project') ?? ''
-  const requested = url.searchParams.get('tab')
+  const tab = url.searchParams.get('tab')
+  // Preserve links saved while the replacement dashboard was being trialled.
+  const requested = tab === 'bolt_weekly_dashboard' ? 'online_weekly_dashboard' : tab
   return {
     view: project || url.searchParams.get('view') === 'app' ? 'app' : 'home',
     activeTab: tabs.find(tab => tab === requested) ?? ('dashboard' as T),
