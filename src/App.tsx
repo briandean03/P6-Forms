@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useAppNavigation } from '@/lib/appNavigation'
 import { supabase, schemaClient } from '@/lib/supabase'
 import type { ProjectData } from '@/types/database'
@@ -25,6 +25,8 @@ import { InspectionReportForm } from '@/forms/InspectionReportForm'
 import { ReportDashboardForm } from '@/forms/ReportDashboardForm'
 import { WeeklyReportForm } from '@/forms/WeeklyReportForm'
 
+const BoltWeeklyDashboardForm = lazy(() => import('@/forms/BoltWeeklyDashboardForm').then(module => ({ default: module.BoltWeeklyDashboardForm })))
+
 type TabKey =
   | 'dashboard'
   | 'weekly_dashboard'
@@ -47,6 +49,7 @@ type TabKey =
   | 'pdfupload'
   | 'inspectionreports'
   | 'weekly_report'
+  | 'bolt_weekly_dashboard'
   | 'online_weekly_dashboard'
 
 interface NavItem {
@@ -225,6 +228,11 @@ const navSections: NavSection[] = [
     label: 'REPORTS',
     items: [
       {
+        key: 'bolt_weekly_dashboard',
+        label: 'Bolt Weekly Dashboard',
+        icon: <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" /></svg>,
+      },
+      {
         key: 'online_weekly_dashboard',
         label: 'Online Weekly Dashboard',
         icon: (
@@ -273,6 +281,14 @@ function App() {
   const { view, activeTab, selectedProjectId, selectedSchemaName, navigate } = useAppNavigation(navigationTabs)
   const setActiveTab = (tab: TabKey) => navigate({ activeTab: tab })
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  useEffect(() => {
+    if (activeTab !== 'bolt_weekly_dashboard') return
+    const mobile = window.matchMedia('(max-width: 767px)')
+    const collapseOnMobile = () => { if (mobile.matches) setSidebarExpanded(false) }
+    collapseOnMobile()
+    mobile.addEventListener('change', collapseOnMobile)
+    return () => mobile.removeEventListener('change', collapseOnMobile)
+  }, [activeTab])
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
   const [runUpdateLoading, setRunUpdateLoading] = useState(false)
@@ -458,6 +474,8 @@ function App() {
             schemaName={selectedSchemaName}
           />
         )
+      case 'bolt_weekly_dashboard':
+        return <Suspense fallback={<p className="p-4">Loading Bolt weekly dashboard…</p>}><BoltWeeklyDashboardForm projectTextId={projectTextId} schemaName={selectedSchemaName} /></Suspense>
       case 'online_weekly_dashboard':
         return (
           <ReportDashboardForm
