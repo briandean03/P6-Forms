@@ -335,16 +335,17 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                   }}
                   className="bolt-print-section scroll-mt-[72px]"
                 >
-                  <h2 className="text-[16px] md:text-[18px] font-semibold mb-4" style={{ color: theme.colors.text_primary, letterSpacing: "0" }}>
+                  <h2 className="bolt-section-heading text-[16px] md:text-[18px] font-semibold mb-4" style={{ color: theme.colors.text_primary, letterSpacing: "0" }}>
                     {p.title}
                   </h2>
                   {pageWidgets.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 min-w-0" style={{ rowGap: space(theme, "gap_xl") }}>
+                    <div className="bolt-widget-grid grid grid-cols-1 md:grid-cols-12 gap-4 min-w-0" style={{ rowGap: space(theme, "gap_xl") }}>
                       {pageWidgets.map((w) => {
                         const placement = (p.widgets ?? []).find((pl) => pl.widget_id === w.widget_id);
                         return (
+                          <div className="contents bolt-print-item" key={`${w.widget_record_id ?? w.widget_id}:${w.id}`}>
+                          <p className="hidden bolt-print-context">{structure.dashboard_title} · {p.title} · Week {structure.week_num} · {structure.data_date}</p>
                           <WidgetRenderer
-                            key={`${w.widget_record_id ?? w.widget_id}:${w.id}`}
                             theme={theme}
                             widget={w}
                             placement={{ column_span: placement?.grid?.column_span }}
@@ -352,6 +353,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                             kpiSelection={kpiSelection}
                             onKpiSelectionChange={setPersistedKpiSelection}
                           />
+                          </div>
                         );
                       })}
                     </div>

@@ -1,10 +1,12 @@
+import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 
 const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-000000000001', dgt_projectid: 'P2', dgt_projectname: 'Test Project' }
 const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=online_weekly_dashboard`
 const structures = [56, 55].map(week => ({
   id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
-  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
+  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
@@ -50,6 +52,10 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
             { code: 'leaf', parent: 'child', depth: 2, label: `Drawings ${week}`, count: 0 },
           ],
         } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-WIDE', widget_type: 'data_table', widget_title: 'Wide print table', content: {
+          columns: Array.from({ length: 10 }, (_, index) => ({ key: `column${index}`, label: `Column ${index}` })),
+          rows: Array.from({ length: 35 }, (_, row) => Object.fromEntries(Array.from({ length: 10 }, (_, col) => [`column${col}`, `R${row}-C${col}-longvalue`]))),
+        } } as typeof widgets[number])
         data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', page_id: `overview-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
@@ -92,9 +98,30 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).getByText('Drawings 55', { exact: true })).toBeHidden()
     await page.emulateMedia({ media: 'print' })
     await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).getByText('Drawings 55', { exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toHaveCount(1)
+    await expect(page.locator('.bolt-print-context').first()).toContainText('Executive overview 55')
     await expect(page.getByRole('navigation', { name: 'Dashboard sections' })).toBeHidden()
-    if (mode === 'ready') await page.pdf({ path: testInfo.outputPath('bolt-report.pdf'), format: 'A4', printBackground: true })
+    const wide = page.getByRole('region', { name: 'Wide print table', exact: true })
+    await expect(wide.locator('xpath=..')).toHaveCSS('page', 'online-landscape')
+    await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).locator('xpath=..')).toHaveCSS('page', 'online-portrait')
+    await expect(page.locator('.bolt-dashboard > header')).toBeHidden()
+    const clipped = await wide.locator('table').evaluate(table => table.scrollWidth > table.clientWidth + 2)
+    expect(clipped).toBe(false)
+    if (mode === 'ready') {
+      const path = testInfo.outputPath('bolt-report.pdf')
+      await page.pdf({ path, preferCSSPageSize: true, printBackground: true })
+      const orientations: boolean[] = []
+      const parsePdf = createRequire(import.meta.url)('pdf-parse')
+      const pdf = await parsePdf(readFileSync(path), { pagerender: async (pdfPage: any) => {
+        const content = await pdfPage.getTextContent()
+        orientations.push(pdfPage.view[2] > pdfPage.view[3])
+        for (const item of content.items) expect(item.transform[4] + item.width).toBeLessThan(pdfPage.view[2] - 10)
+        return content.items.map((item: any) => item.str).join(' ')
+      } })
+      expect(orientations).toContain(true)
+      expect(orientations).toContain(false)
+      expect(pdf.text).toContain('Column 9')
+      expect(pdf.text).toContain('R34-C9')
+    }
     await page.emulateMedia({ media: 'screen' })
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
