@@ -72,7 +72,7 @@ export function EngineeringSubmissionsSummary({
       </span>
       <span className="break-words text-[28px] font-semibold leading-8 tabular-nums" style={{ color: theme.colors.text_primary }}>
         {countText(kpi?.value)}
-        <span className="ml-1 text-[18px] font-medium" style={{ color: theme.colors.text_secondary }}>
+        <span className="inline-block whitespace-nowrap ml-1 text-[18px] font-medium" style={{ color: theme.colors.text_secondary }}>
           {String(kpi?.unit ?? "")}
         </span>
       </span>
@@ -99,7 +99,7 @@ export function EngineeringSubmissionsSummary({
           </span>
           <span className="break-words text-[36px] font-semibold leading-10 tabular-nums" style={{ color: theme.colors.text_primary }}>
             {countText(total.value)}
-            <span className="ml-1 text-[18px] font-medium" style={{ color: theme.colors.text_secondary }}>
+            <span className="inline-block whitespace-nowrap ml-1 text-[18px] font-medium" style={{ color: theme.colors.text_secondary }}>
               {String(total.unit ?? "")}
             </span>
           </span>

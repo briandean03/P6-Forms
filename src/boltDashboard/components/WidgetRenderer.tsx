@@ -386,6 +386,9 @@ export function WidgetRenderer({
       <span className="text-[11px] font-semibold uppercase tracking-wide mr-1" style={{ color: theme.colors.text_secondary }}>
         KPIs:
       </span>
+      <button type="button" className="px-2 py-1 text-[11px] rounded border" onClick={() => onKpiSelectionChange?.(kpiNames)}>Select all</button>
+      <button type="button" className="px-2 py-1 text-[11px] rounded border" onClick={() => onKpiSelectionChange?.([])}>Clear all</button>
+      {!activeKpis?.length && <span role="status" className="text-xs">Select KPIs to compare.</span>}
       {kpiNames.map((key) => {
         const on = (activeKpis ?? []).includes(key);
         const row = (Array.isArray(c.data) ? (c.data as Rec[]) : []).find((r) => kpiNameOf(r) === key);
@@ -393,6 +396,7 @@ export function WidgetRenderer({
         return (
           <button
             key={key}
+            aria-pressed={on}
             type="button"
             onClick={() => {
               if (!onKpiSelectionChange) return;
@@ -402,7 +406,7 @@ export function WidgetRenderer({
               } else {
                 current.add(key);
               }
-              if (current.size > 0) onKpiSelectionChange(Array.from(current));
+              onKpiSelectionChange(Array.from(current));
             }}
             className="px-2.5 py-1 text-[11px] font-medium rounded-full border transition-colors"
             style={{
