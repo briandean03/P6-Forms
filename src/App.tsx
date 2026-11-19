@@ -278,7 +278,7 @@ function App() {
   const isFullWidthTab = activeTab === 'online_weekly_dashboard' || activeTab === 'weekly_report' || activeTab === 'weekly_dashboard'
   useEffect(() => {
     if (!isFullWidthTab) return
-    setSidebarExpanded(true)
+    setSidebarExpanded(false)
   }, [isFullWidthTab])
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
