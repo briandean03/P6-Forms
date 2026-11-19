@@ -275,10 +275,11 @@ function App() {
   const { view, activeTab, selectedProjectId, selectedSchemaName, navigate } = useAppNavigation(navigationTabs)
   const setActiveTab = (tab: TabKey) => navigate({ activeTab: tab })
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  const isFullWidthTab = activeTab === 'online_weekly_dashboard' || activeTab === 'weekly_report' || activeTab === 'weekly_dashboard'
   useEffect(() => {
-    if (activeTab !== 'online_weekly_dashboard') return
+    if (!isFullWidthTab) return
     setSidebarExpanded(true)
-  }, [activeTab])
+  }, [isFullWidthTab])
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
   const [runUpdateLoading, setRunUpdateLoading] = useState(false)
@@ -573,7 +574,7 @@ function App() {
       {/* Sidebar */}
       <aside
         className={`no-print flex flex-col bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0 ${
-          activeTab === 'online_weekly_dashboard'
+          isFullWidthTab
             ? sidebarExpanded ? 'w-56' : 'w-0 overflow-hidden'
             : sidebarExpanded ? 'w-56' : 'w-14'
         }`}
@@ -723,8 +724,8 @@ function App() {
         </div>
       </aside>
 
-      {/* Floating sidebar toggle — only shown on the Online Weekly Dashboard */}
-      {activeTab === 'online_weekly_dashboard' && (
+      {/* Floating sidebar toggle — shown on full-width report tabs */}
+      {isFullWidthTab && (
         <button
           onClick={() => setSidebarExpanded(prev => !prev)}
           title={sidebarExpanded ? 'Hide navigation' : 'Show navigation'}
@@ -743,7 +744,7 @@ function App() {
       {/* Main area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
-        <header className="no-print bg-white border-b border-gray-200 flex-shrink-0" style={{ display: activeTab === 'online_weekly_dashboard' ? 'none' : undefined }}>
+        <header className="no-print bg-white border-b border-gray-200 flex-shrink-0" style={{ display: isFullWidthTab ? 'none' : undefined }}>
           <div className="px-6 py-2 border-b border-gray-100 overflow-x-auto">
             <div className="flex items-center gap-4 whitespace-nowrap">
               <button
@@ -799,12 +800,12 @@ function App() {
         </header>
 
         {/* Content */}
-        <main className={`print-main flex-1 overflow-y-auto${activeTab === 'online_weekly_dashboard' ? '' : ' px-6 py-6'}`}>
+        <main className={`print-main flex-1 overflow-y-auto${isFullWidthTab ? '' : ' px-6 py-6'}`}>
           {renderTabContent()}
         </main>
 
         {/* Footer */}
-        <footer className="no-print bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0" style={{ display: activeTab === 'online_weekly_dashboard' ? 'none' : undefined }}>
+        <footer className="no-print bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0" style={{ display: isFullWidthTab ? 'none' : undefined }}>
           <p className="text-center text-xs text-gray-400">P6 Project Controls Data Management</p>
         </footer>
       </div>
