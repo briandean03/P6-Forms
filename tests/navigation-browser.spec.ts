@@ -43,7 +43,7 @@ test('section clicks replace history; Back/Forward and refresh restore the proje
   await expect(page.locator('#section-SEC-011')).toBeVisible()
   await expect.poll(async () => page.locator('#section-SEC-011').evaluate(el => {
     const main = document.querySelector('main')!
-    return Math.abs(el.getBoundingClientRect().top - main.getBoundingClientRect().top)
+    return Math.abs(el.getBoundingClientRect().top - main.getBoundingClientRect().top - parseFloat(getComputedStyle(main).paddingTop))
   })).toBeLessThan(15)
   await page.goBack()
   await expect(page).toHaveURL(/tab=dashboard/)

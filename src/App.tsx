@@ -800,7 +800,7 @@ function App() {
         </header>
 
         {/* Content */}
-        <main className={`print-main flex-1 overflow-y-auto${isFullWidthTab ? '' : ' px-6 py-6'}`}>
+        <main className={`print-main flex-1 overflow-y-auto${isFullWidthTab ? ' report-workspace' : ' px-6 py-6'}`}>
           {renderTabContent()}
         </main>
 

@@ -1525,6 +1525,7 @@ async function printDashboard(): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 350))
     preparePrint(el)
     await new Promise(resolve => setTimeout(resolve, 350))
+    await Promise.all(Array.from(el.querySelectorAll('img')).map(image => image.decode().catch(() => undefined)))
     fitRenderedPrint(el)
     window.print()
   } finally {
@@ -4592,43 +4593,30 @@ function A3Widget({ widget, region }: { widget: DashboardWidget; region?: A3Regi
   }
 
   if (type === 'trade_schedule_gantt') {
-    const trades = (c.trades ?? []) as Record<string, unknown>[]
+    const trades = (Array.isArray(c.trades) && c.trades.length ? c.trades : c.data ?? []) as Record<string, unknown>[]
     if (!trades.length) return noData
-    const selectedCodes = region?.presentation_selection?.selected_trade_codes
-    const selected = selectedCodes?.length
-      ? selectedCodes.flatMap(code => trades.filter(trade => trade.trade_code === code)) : trades
-    const shown = selected.slice(0, region?.presentation_selection?.maximum_items ?? 8)
-    const date = (value: unknown) => typeof value === 'string' ? Date.parse(value) : NaN
-    const dates = trades.flatMap(trade => {
-      const planned = trade.planned as Record<string, unknown> | undefined
-      const actual = trade.actual as Record<string, unknown> | undefined
-      return [date(planned?.start), date(planned?.finish), date(actual?.start), date(actual?.finish)]
-    }).filter(Number.isFinite)
-    if (!dates.length) return <div className="a3-empty">Trade dates not available</div>
-    const start = Math.min(...dates)
-    const finish = Math.max(...dates)
-    const span = Math.max(1, finish - start)
-    const cutoff = date(dataDate)
-    const markerPosition = Number.isFinite(cutoff) && cutoff >= start && cutoff <= finish ? (cutoff - start) / span * 100 : null
-    return <div className="a3-trades">{shown.map((trade, i) => {
-      const planned = trade.planned as Record<string, unknown> | undefined
-      const actual = trade.actual as Record<string, unknown> | undefined
-      return <div key={i}><span>{String(trade.trade_name ?? trade.trade_label ?? trade.trade_code ?? '')}</span><div>
-        {[planned, actual].map((value, j) => {
-          const from = date(value?.start), to = date(value?.finish)
-          return <div key={j} className="a3-trade-track" style={{ position: 'relative' }}>{Number.isFinite(from) && Number.isFinite(to) && <div style={{ marginLeft: `${(from - start) / span * 100}%`, width: `${Math.max(0.5, (to - from) / span * 100)}%`, background: palette[j] }} />}{markerPosition != null && <span title={`Data Date: ${dataDate}`} style={{ position: 'absolute', left: `${markerPosition}%`, top: -2, bottom: -2, borderLeft: '1.5px dashed #ef4444' }} />}</div>
-        })}
-      </div></div>
-    })}<small>{new Date(start).toISOString().slice(0, 10)} — {new Date(finish).toISOString().slice(0, 10)} · Planned / actual dates{markerPosition != null && <span style={{ color: '#ef4444' }}> · Data Date: {dataDate}</span>}</small>
-    <small>{shown.length} of {trades.length} trades. In-progress actual finish is latest recorded activity finish.</small></div>
+    const codes = region?.presentation_selection?.selected_trade_codes
+    const shown = codes?.length ? codes.flatMap(code => trades.filter(row => row.trade_code === code)) : trades
+    const percent = (row: Record<string, unknown>, kind: 'planned' | 'actual') => {
+      const nested = row[kind] as Record<string, unknown> | undefined
+      const value = Number(nested?.cumulative_percent_complete ?? row[`trade_cumulative_${kind}_percent_complete`] ?? 0)
+      return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
+    }
+    return <div className="a3-trades a3-trade-percent">
+      <small>Planned % / Actual %</small>
+      {shown.map((trade, i) => <div key={i}><span>{String(trade.trade_name ?? trade.trade_label ?? trade.trade_code ?? '')}</span><div>
+        {(['planned', 'actual'] as const).map((kind, j) => <div key={kind} className="a3-percent-row"><div className="a3-trade-track"><div style={{ width: `${percent(trade, kind)}%`, background: palette[j] }} /></div><span>{percent(trade, kind).toFixed(1)}%</span></div>)}
+      </div></div>)}
+    </div>
   }
 
   if (type === 'photo_gallery') {
-    const photos = (c.photos ?? []) as Record<string, unknown>[]
+    const photos = (c.photos ?? c.images ?? c.items ?? []) as Record<string, unknown>[]
     if (!photos.length) return noData
-    const photo = photos[0]
-    const url = String(photo.photo_url ?? photo.imageurl ?? '')
-    return <div className="a3-photo"><img src={url} alt={String(photo.caption_or_description ?? photo.filename ?? 'Progress photograph')} /><div><strong>{String(photo.photo_date_display ?? photo.photo_date ?? '')}</strong><p>{String(photo.caption_or_description ?? photo.filename ?? '')}</p><small>Photo 1 of {photos.length}</small></div></div>
+    return <div className="a3-photo-grid" style={{ gridTemplateColumns: `repeat(${photos.length === 1 ? 1 : photos.length <= 4 ? 2 : 3}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${Math.ceil(photos.length / (photos.length === 1 ? 1 : photos.length <= 4 ? 2 : 3))}, minmax(0, 1fr))` }}>{photos.map((photo, index) => {
+      const url = String(photo.photo_url ?? photo.image_url ?? photo.imageurl ?? '')
+      return <figure key={index}><img src={url} alt={String(photo.caption_or_description ?? photo.caption ?? `Progress photograph ${index + 1}`)} /><figcaption>{index + 1} · {String(photo.photo_date_display ?? photo.photo_date ?? '')}</figcaption></figure>
+    })}</div>
   }
 
   // Preserve existing renderers for other supported widget types.
@@ -4897,14 +4885,14 @@ function A3WeeklyDashboardPage({ structure, widgets }: A3PageProps) {
   return (
     <CompactContext.Provider value={true}>
       {/*
-        On screen: width is fixed at 420mm for layout fidelity but height is auto
+        On screen: width follows the available report area and height is auto
         so content is never clipped. On print: both dimensions are constrained to
         the A3 page via @media print rules in index.css.
       */}
       <div
         className="a3-screen-page"
         style={{
-          width: '420mm',
+          width: '100%',
           height: isPrinting ? '297mm' : 'auto',
           boxSizing: 'border-box',
           padding: `${paperMargin}mm`,

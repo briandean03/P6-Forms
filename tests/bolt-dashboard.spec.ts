@@ -66,9 +66,10 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
   })
   await page.goto(mode === 'denied' ? url.replace('tab=online_weekly_dashboard', 'tab=bolt_weekly_dashboard') : url)
-  await expect(page.getByRole('banner').getByRole('heading', { name: 'Online Weekly Dashboard', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Show navigation', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Bolt Weekly Dashboard', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Online Weekly Dashboard', exact: true })).toHaveCount(1)
+  await page.getByRole('button', { name: 'Hide navigation', exact: true }).click()
   if (mode === 'empty') {
     await expect(page.getByRole('heading', { name: 'No weekly dashboards available' })).toBeVisible()
   } else {
@@ -137,10 +138,11 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await page.emulateMedia({ media: 'screen' })
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
-    await expect(page.getByRole('complementary')).toHaveCSS('width', '56px')
+    await expect(page.getByRole('button', { name: 'Show navigation', exact: true })).toBeVisible()
     if (mode === 'ready') await page.screenshot({ path: testInfo.outputPath('bolt-mobile.png'), fullPage: true })
     expect(reads.some(read => read.table.endsWith('_widgets') && read.structure === 'eq.s55')).toBe(true)
   }
+  await page.getByRole('button', { name: 'Show navigation', exact: true }).click()
   await page.getByRole('button', { name: 'Weekly Report', exact: true }).click()
   await expect(page).toHaveURL(/tab=weekly_report/)
   await expect(page.locator('html')).not.toHaveClass(/bolt-dashboard-printing/)

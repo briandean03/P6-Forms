@@ -187,7 +187,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
   }
 
   return (
-    <div style={themeToCssVars(theme)} className="bolt-dashboard min-h-screen" >
+    <div style={themeToCssVars(theme)} className="bolt-dashboard report-screen-frame min-h-screen" >
       {/* Application header */}
       <header
         className="sticky top-0 z-20 flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-8"

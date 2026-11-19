@@ -1314,7 +1314,7 @@ export function WeeklyReportForm({
   return (
     <WeeklyDesignContext.Provider value={design}>
     <WeeklyMetadataContext.Provider value={loadedScope === scopeKey ? disciplines : {}}>
-    <div onClick={replaceSectionLink} className="weekly-report-themed min-h-full" style={weeklyDesignStyle(design)}>
+    <div onClick={replaceSectionLink} className="weekly-report-themed report-screen-frame min-h-full" style={weeklyDesignStyle(design)}>
       <style>{weeklyPrintCss(design, { projectId: projectTextId, dataDate: selectedWeek?.data_date ?? '' })}</style>
       {!designRow && sections.length > 0 && <p className="no-print text-xs text-amber-700 mb-3">No approved active design matches this report. Using fallback styling.</p>}
       {notification && (
@@ -1326,7 +1326,7 @@ export function WeeklyReportForm({
       )}
 
       {/* Toolbar — hidden on print */}
-      <div className="no-print flex items-center gap-3 mb-6 flex-wrap">
+      <div className="no-print report-toolbar flex items-center gap-3 mb-6 flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-gray-500 whitespace-nowrap">
             Report Week:
