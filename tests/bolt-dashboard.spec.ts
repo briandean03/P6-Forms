@@ -6,7 +6,7 @@ const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-0000000000
 const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=online_weekly_dashboard`
 const structures = [56, 55].map(week => ({
   id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
-  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
+  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
@@ -60,6 +60,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
           category_field: 'kpi_key', series: [{ name: 'Actual', value_field: 'actual' }],
           data: ['Concrete', 'Drainage', 'Plumbing'].map(kpi => ({ kpi_key: kpi, kpi_label: kpi, actual: 10 })),
         } } as typeof widgets[number])
+        for (const id of ['WGT-011', 'WGT-012', 'WGT-036', 'WGT-037']) widgets.push({ widget_id: id, widget_type: 'kpi_group', widget_title: `Hidden ${id}`, content: {} } as typeof widgets[number])
         data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', page_id: `overview-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
@@ -108,6 +109,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 56' })).toHaveCount(0)
     await expect(page.locator('.bolt-dashboard')).toHaveCSS('--dt-primary', '#087F5B')
+    for (const id of ['WGT-011', 'WGT-012', 'WGT-036', 'WGT-037']) await expect(page.getByRole('region', { name: `Hidden ${id}` })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).getByText('Drawings 55', { exact: true })).toBeHidden()
     await page.emulateMedia({ media: 'print' })
     await expect(page.getByRole('region', { name: 'Hierarchy WGT-025' }).getByText('Drawings 55', { exact: true })).toBeVisible()

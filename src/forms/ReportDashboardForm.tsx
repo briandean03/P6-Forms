@@ -1,3 +1,4 @@
+import { isDashboardWidgetVisible, visibleDashboardRegions } from '@/lib/dashboardVisibility'
 import { useState, useEffect, useMemo, useRef, useCallback, memo, createContext, useContext, type Dispatch, type SetStateAction } from 'react'
 import { flushSync } from 'react-dom'
 import {
@@ -5206,12 +5207,14 @@ export function ReportDashboardForm({
           const spec = parseJsonCol((designResult.data as DashboardDesign).design_specification)
           setTok(() => buildTokenResolver(designObject(spec)))
         }
+        const a3Layout = parseJsonCol(sRow?.a3_layout) as A3Layout | null
+        if (a3Layout?.layout?.regions) a3Layout.layout.regions = visibleDashboardRegions(a3Layout.layout.regions)
         setSelectedStructure(sRow ? {
           ...sRow,
           structure_plan: parseJsonCol(sRow.structure_plan) as DashboardStructure['structure_plan'],
-          a3_layout: parseJsonCol(sRow.a3_layout) as A3Layout | null,
+          a3_layout: a3Layout,
         } : null)
-        setWidgets(((widgetRes.data ?? []) as DashboardWidget[]).map(w => ({
+        setWidgets(((widgetRes.data ?? []) as DashboardWidget[]).filter(w => isDashboardWidgetVisible(w.widget_id)).map(w => ({
           ...w,
           widget_ast: parseAst(w.widget_ast),
         })))

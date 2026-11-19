@@ -1,3 +1,4 @@
+import { isDashboardWidgetVisible } from '@/lib/dashboardVisibility';
 export interface DesignTokenColor {
   hex: string;
   usage?: string;
@@ -132,6 +133,7 @@ export function createDashboardSource(schema: string, project: string) {
       if (!raw) throw new Error('The selected dashboard structure is no longer available.');
       const structure = { ...raw, structure_plan: decode<StructurePlan>(raw.structure_plan, { pages: [] }) };
       if (!Array.isArray(structure.structure_plan.pages)) structure.structure_plan.pages = [];
+      structure.structure_plan.pages = structure.structure_plan.pages.map(page => ({ ...page, widgets: (page.widgets ?? []).filter(widget => isDashboardWidgetVisible(widget.widget_id)) })).filter(page => page.widgets.length > 0);
       const layout = decode<{ dashboard_context?: { design_id?: string } }>((raw as unknown as Record<string, unknown>).a3_layout, {});
       const designId = raw.design_id || layout.dashboard_context?.design_id;
       const designTable = 'dbp6_0008_dashboard_designs';
@@ -142,7 +144,7 @@ export function createDashboardSource(schema: string, project: string) {
         checked<WidgetRow[]>('dbp6_0008_dashboard_widgets', db.from('dbp6_0008_dashboard_widgets').select('*').eq('project_id', project).eq('structure_id', structureId).order('widget_order')),
       ]);
       if (!design) throw new Error(designId ? `Linked dashboard design ${designId} was not found.` : 'No approved default dashboard design is available.');
-      const widgets = (rows ?? []).map(row => ({ ...row, widget_ast: decode<WidgetAst>(row.widget_ast, { type: row.widget_type, title: row.widget_title, content: {} }) }));
+      const widgets = (rows ?? []).filter(row => isDashboardWidgetVisible(row.widget_id)).map(row => ({ ...row, widget_ast: decode<WidgetAst>(row.widget_ast, { type: row.widget_type, title: row.widget_title, content: {} }) }));
       const spec = decode<Partial<DesignSpecification>>(design.design_specification, {});
       const normalizedDesign = { ...design, design_specification: {
         radii: {}, shadows: {}, spacing: {}, navigation: {}, typography: {}, chart_styles: {}, color_tokens: {}, semantic_colors: {}, table_styles: {}, print_specification: {}, responsive_breakpoints: {}, design_name: design.design_name, design_version: design.design_version, ...spec,
