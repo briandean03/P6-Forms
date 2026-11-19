@@ -277,11 +277,7 @@ function App() {
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   useEffect(() => {
     if (activeTab !== 'online_weekly_dashboard') return
-    const mobile = window.matchMedia('(max-width: 767px)')
-    const collapseOnMobile = () => { if (mobile.matches) setSidebarExpanded(false) }
-    collapseOnMobile()
-    mobile.addEventListener('change', collapseOnMobile)
-    return () => mobile.removeEventListener('change', collapseOnMobile)
+    setSidebarExpanded(true)
   }, [activeTab])
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [projectInfo, setProjectInfo] = useState<ProjectInfo[]>([])
@@ -577,7 +573,9 @@ function App() {
       {/* Sidebar */}
       <aside
         className={`no-print flex flex-col bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0 ${
-          sidebarExpanded ? 'w-56' : 'w-14'
+          activeTab === 'online_weekly_dashboard'
+            ? sidebarExpanded ? 'w-56' : 'w-0 overflow-hidden'
+            : sidebarExpanded ? 'w-56' : 'w-14'
         }`}
       >
         {/* Logo / Brand */}
@@ -725,10 +723,27 @@ function App() {
         </div>
       </aside>
 
+      {/* Floating sidebar toggle — only shown on the Online Weekly Dashboard */}
+      {activeTab === 'online_weekly_dashboard' && (
+        <button
+          onClick={() => setSidebarExpanded(prev => !prev)}
+          title={sidebarExpanded ? 'Hide navigation' : 'Show navigation'}
+          className="no-print fixed top-1/2 -translate-y-1/2 z-30 flex items-center justify-center w-6 h-12 rounded-r-lg shadow-md transition-all duration-300 bg-white border border-l-0 border-gray-200 hover:bg-gray-50"
+          style={{ left: sidebarExpanded ? 224 : 0 }}
+        >
+          <svg className="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            {sidebarExpanded
+              ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7" />
+              : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
+            }
+          </svg>
+        </button>
+      )}
+
       {/* Main area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
-        <header className="no-print bg-white border-b border-gray-200 flex-shrink-0">
+        <header className="no-print bg-white border-b border-gray-200 flex-shrink-0" style={{ display: activeTab === 'online_weekly_dashboard' ? 'none' : undefined }}>
           <div className="px-6 py-2 border-b border-gray-100 overflow-x-auto">
             <div className="flex items-center gap-4 whitespace-nowrap">
               <button
@@ -784,12 +799,12 @@ function App() {
         </header>
 
         {/* Content */}
-        <main className="print-main flex-1 overflow-y-auto px-6 py-6">
+        <main className={`print-main flex-1 overflow-y-auto${activeTab === 'online_weekly_dashboard' ? '' : ' px-6 py-6'}`}>
           {renderTabContent()}
         </main>
 
         {/* Footer */}
-        <footer className="no-print bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0">
+        <footer className="no-print bg-white border-t border-gray-200 px-6 py-3 flex-shrink-0" style={{ display: activeTab === 'online_weekly_dashboard' ? 'none' : undefined }}>
           <p className="text-center text-xs text-gray-400">P6 Project Controls Data Management</p>
         </footer>
       </div>
