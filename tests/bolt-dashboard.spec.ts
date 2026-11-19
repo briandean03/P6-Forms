@@ -80,7 +80,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
       deny = false
       await page.getByRole('button', { name: 'Try again' }).click()
     }
-    await expect(page.getByRole('heading', { name: 'Construction intelligence week 56' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Construction Intelligence Dashboard' })).toBeVisible()
     await expect(page.getByText('Overall actual progress', { exact: true })).toBeVisible()
     await expect(page.locator('.bolt-dashboard')).toHaveCSS('--dt-primary', '#5741DF')
     await expect(page.getByRole('region', { name: 'Progress trend', exact: true }).locator('svg path')).not.toHaveCount(0)
@@ -105,7 +105,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(selection.getByRole('button', { name: 'Concrete', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(selection.getByRole('button', { name: 'Drainage', exact: true })).toHaveAttribute('aria-pressed', 'false')
     await expect(selection.getByRole('button', { name: 'Plumbing', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByRole('heading', { name: 'Construction intelligence week 55' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Construction Intelligence Dashboard' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Executive overview 56' })).toHaveCount(0)
     await expect(page.locator('.bolt-dashboard')).toHaveCSS('--dt-primary', '#087F5B')

@@ -199,7 +199,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
       >
         <div className="min-w-0">
           <h1 className="truncate text-[16px] font-semibold leading-6 md:text-[18px]" style={{ color: theme.colors.text_primary }}>
-            {structure.dashboard_title}
+            Construction Intelligence Dashboard
           </h1>
           <p className="truncate text-[11px] leading-4" style={{ color: theme.colors.muted_text }}>
             {structure.project_id}
@@ -356,7 +356,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                         const placement = (p.widgets ?? []).find((pl) => pl.widget_id === w.widget_id);
                         return (
                           <div className="contents bolt-print-item" key={`${w.widget_record_id ?? w.widget_id}:${w.id}`}>
-                          <p className="hidden bolt-print-context">{structure.dashboard_title} · {p.title} · Week {structure.week_num} · {structure.data_date}</p>
+                          <p className="hidden bolt-print-context">Construction Intelligence Dashboard · {p.title} · Week {structure.week_num} · {structure.data_date}</p>
                           <WidgetRenderer
                             theme={theme}
                             widget={w}
