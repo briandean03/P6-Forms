@@ -9,6 +9,7 @@ test('responsive A3 screen prints percentage trades and every photograph on one 
     { widget_id: 'WGT-007', widget_title: 'Trade Schedule Comparison', widget_type: 'trade_schedule_gantt', widget_ast: { content: { data: [{ trade_code: 'ST', trade_label: 'Structure', trade_cumulative_planned_percent_complete: 58.2, trade_cumulative_actual_percent_complete: 59.8 }] } } },
     { widget_id: 'WGT-050', widget_title: 'Progress Photographs', widget_type: 'photo_gallery', widget_ast: { content: { photos: Array.from({ length: 5 }, (_, index) => ({ photo_url: image, caption_or_description: `Photo ${index + 1}` })) } } },
   ].map((w, index) => ({ ...w, widget_record_id: `w${index}`, structure_id: 's', page_id: 'p', widget_order: index }))
+  for (const id of ['WGT-011', 'WGT-012', 'WGT-036', 'WGT-037']) widgets.push({ widget_id: id, widget_title: `Hidden ${id}`, widget_type: 'kpi_group', widget_ast: { content: {} }, widget_record_id: id, structure_id: 's', page_id: 'p', widget_order: 9 } as typeof widgets[number])
   const structure = { structure_id: 's', project_id: 'P2', report_id: 'r', week_num: 56, data_date: '2026-10-12', dashboard_title: 'A3 regression', structure_plan: { pages: [] }, a3_layout: { layout: { regions: widgets.map((w, index) => ({ region_id: `region${index}`, title: w.widget_title, widget_ids: [w.widget_id], column_span: 6, row_span: 2, region_order: index })) } } }
   await page.route('https://sample.supabase.co/**', async route => {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()
@@ -30,6 +31,7 @@ test('responsive A3 screen prints percentage trades and every photograph on one 
   await expect(page.locator('.a3-print-sheet .a3-trades')).toContainText('59.8%')
   await expect(page.locator('.a3-print-sheet .a3-photo-grid img')).toHaveCount(5)
   await expect(page.locator('.a3-print-sheet .a3-empty')).toHaveCount(0)
+  for (const id of ['WGT-011', 'WGT-012', 'WGT-036', 'WGT-037']) await expect(page.locator('.a3-print-sheet').getByText(`Hidden ${id}`, { exact: true })).toHaveCount(0)
   await page.emulateMedia({ media: 'print' })
   const path = info.outputPath('a3.pdf')
   await page.pdf({ path, preferCSSPageSize: true, printBackground: true })

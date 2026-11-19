@@ -29,7 +29,7 @@ The integration replaces that API dependency with the existing `schemaClient(sch
 Additional corrections:
 
 - Removed the hardcoded requirement for exactly 49 widgets; validate against the selected structure instead.
-- Render supplied WGT-011, WGT-012, and WGT-036 instead of silently omitting them as the downloaded UI did.
+- Frontend visibility policy now excludes WGT-011, WGT-012, WGT-036, and WGT-037 across all weeks in online and A3 dashboards, including print. Source database rows are retained; regions containing only hidden widgets are omitted.
 - Decode object, JSON-string, and double-encoded JSON columns.
 - Normalize missing design dictionaries and retain fallback colors.
 - Print the report once instead of printing both the screen sections and a duplicate print-only report.
