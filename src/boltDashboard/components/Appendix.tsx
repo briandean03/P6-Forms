@@ -15,6 +15,8 @@ export function Appendix({ schemaName, projectId, reportId, dataDate }: { schema
   const [selected, setSelected] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState({ completed: 0, total: 0 })
+  const [uploadResults, setUploadResults] = useState<{ name: string; success: boolean; message: string }[]>([])
   const [deleteTarget, setDeleteTarget] = useState<Drawing | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
@@ -56,20 +58,34 @@ export function Appendix({ schemaName, projectId, reportId, dataDate }: { schema
     return () => { cancelled = true; window.clearInterval(refresh) }
   }, [folder, revision])
 
-  async function attach(file: File) {
-    setError('')
-    if (!allowed.has(file.type) || !/\.(pdf|png|jpe?g|webp)$/i.test(file.name)) { setError('Attach a PDF, PNG, JPEG, or WebP drawing. Export CAD drawings to PDF first.'); return }
-    if (file.size > MAX_BYTES) { setError('The drawing must be 25 MB or smaller.'); return }
-    setUploading(true)
-    try {
-      const name = `${crypto.randomUUID()}--${encodeURIComponent(file.name)}`
-      const { error } = await storage.upload(`${folder}/${name}`, file, { contentType: file.type, upsert: false })
-      if (error) throw error
-      setSelected(name); setRevision(value => value + 1)
-      showSuccess('Drawing attached')
-    } catch (reason) {
-      setError(`Could not attach drawing: ${(reason as { message?: string })?.message ?? String(reason)}`)
-    } finally { setUploading(false) }
+  async function attach(files: File[]) {
+    if (!files.length || uploading || deleting) return
+    setError(''); setUploadResults([]); setUploading(true)
+    setProgress({ completed: 0, total: files.length })
+    const results: { name: string; success: boolean; message: string }[] = []
+    let firstUploaded = ''
+    // Sequential uploads avoid overwhelming the connection with large drawings.
+    for (const [index, file] of files.entries()) {
+      try {
+        if (!allowed.has(file.type) || !/\.(pdf|png|jpe?g|webp)$/i.test(file.name)) throw new Error('Use PDF, PNG, JPEG or WebP. Export CAD drawings to PDF first.')
+        if (file.size > MAX_BYTES) throw new Error('File exceeds the 25 MB limit.')
+        const name = `${crypto.randomUUID()}--${encodeURIComponent(file.name)}`
+        const { error } = await storage.upload(`${folder}/${name}`, file, { contentType: file.type, upsert: false })
+        if (error) throw error
+        if (!firstUploaded) firstUploaded = name
+        results.push({ name: file.name, success: true, message: 'Attached' })
+      } catch (reason) {
+        results.push({ name: file.name, success: false, message: (reason as { message?: string })?.message ?? String(reason) })
+      }
+      setProgress({ completed: index + 1, total: files.length })
+      setUploadResults([...results])
+    }
+    if (firstUploaded) {
+      setSelected(firstUploaded); setRevision(value => value + 1)
+      const count = results.filter(result => result.success).length
+      showSuccess(`${count} drawing${count === 1 ? '' : 's'} attached`)
+    }
+    setUploading(false)
   }
   async function removeDrawing() {
     if (!deleteTarget || deleting) return
@@ -93,11 +109,16 @@ export function Appendix({ schemaName, projectId, reportId, dataDate }: { schema
     {notification && <Notification {...notification} onClose={hideNotification} />}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-gray-600">Drawings attached to this project and reporting week.</p>
-      <button className="no-print px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50" disabled={uploading || deleting} onClick={() => input.current?.click()}>{uploading ? 'Attaching…' : 'Attach drawing'}</button>
-      <input ref={input} className="hidden" type="file" aria-label="Attach drawing file" accept="application/pdf,image/png,image/jpeg,image/webp,.pdf,.png,.jpg,.jpeg,.webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void attach(file) }} />
+      <button className="no-print px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50" disabled={uploading || deleting} onClick={() => input.current?.click()}>{uploading ? `Attaching ${progress.completed} of ${progress.total}…` : 'Attach drawings'}</button>
+      <input ref={input} className="hidden" type="file" multiple disabled={uploading || deleting} aria-label="Attach drawing file" accept="application/pdf,image/png,image/jpeg,image/webp,.pdf,.png,.jpg,.jpeg,.webp" onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length) void attach(files) }} />
     </div>
-    <p className="no-print text-xs text-gray-500">PDF, PNG, JPEG or WebP · Up to 25 MB per file · Visible to everyone who can access this website.</p>
+    <p className="no-print text-xs text-gray-500">Select multiple PDFs or images · PNG, JPEG or WebP · Up to 25 MB per file · Visible to everyone who can access this website.</p>
     {error && <p role="alert" className="text-red-700 bg-red-50 p-3 rounded">{error}</p>}
+    {uploading && <p role="status">Uploading drawings: {progress.completed} of {progress.total} completed.</p>}
+    {!uploading && !!uploadResults.length && <div className="no-print text-sm space-y-1">
+      <p role="status">{uploadResults.filter(result => result.success).length} attached · {uploadResults.filter(result => !result.success).length} failed</p>
+      {uploadResults.some(result => !result.success) && <div role="alert" className="text-red-700"><p>These files were not attached. You can select them again to retry:</p><ul className="list-disc pl-5">{uploadResults.filter(result => !result.success).map((result, index) => <li key={index}>{result.name}: {result.message}</li>)}</ul></div>}
+    </div>}
     {loading && <p role="status">Loading appendix drawings…</p>}
     {!loading && !error && !drawings.length && <p className="text-gray-500 py-6 text-center">No drawings attached for this reporting week yet.</p>}
     {!!drawings.length && <div className="flex flex-wrap gap-2 no-print" aria-label="Attached drawings">{drawings.map(drawing => <button key={drawing.name} aria-pressed={selected === drawing.name} className={`px-3 py-2 rounded border text-sm break-all ${selected === drawing.name ? 'bg-indigo-50 border-indigo-500' : 'border-gray-200'}`} disabled={deleting} onClick={() => setSelected(drawing.name)}>{drawing.label}</button>)}</div>}

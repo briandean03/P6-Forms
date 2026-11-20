@@ -40,6 +40,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
         await route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6k9sAAAAASUVORK5CYII=', 'base64') })
       } else {
         const key = path.split('/object/weekly-report-appendix/')[1]
+        if (key.includes('Rejected.png')) { await route.fulfill({ status: 403, json: { statusCode: '403', error: 'Forbidden', message: 'Upload rejected' } }); return }
         attachments.set(key, key)
         await route.fulfill({ json: { Key: key } })
       }
@@ -149,6 +150,20 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await page.getByRole('button', { name: 'Remove permanently', exact: true }).click()
     await expect(page.getByText('No drawings attached for this reporting week yet.')).toBeVisible()
     expect(attachments.size).toBe(0)
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6k9sAAAAASUVORK5CYII=', 'base64')
+    await page.getByLabel('Attach drawing file').setInputFiles([
+      { name: 'SectionA.png', mimeType: 'image/png', buffer: png },
+      { name: 'Unsupported.dwg', mimeType: 'application/octet-stream', buffer: png },
+      { name: 'Rejected.png', mimeType: 'image/png', buffer: png },
+      { name: 'SectionB.png', mimeType: 'image/png', buffer: png },
+    ])
+    await expect(page.getByText('2 attached · 2 failed', { exact: true })).toBeVisible()
+    await expect(page.getByRole('alert')).toContainText('Unsupported.dwg')
+    await expect(page.getByRole('alert')).toContainText('Rejected.png: Upload rejected')
+    expect(attachments.size).toBe(2)
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'SectionA.png', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'SectionB.png', exact: true })).toBeVisible()
     await page.getByLabel('Select reporting week').selectOption('s55')
     await expect(page.getByText('No drawings attached for this reporting week yet.')).toBeVisible()
     await expect(page.getByRole('img', { name: 'Foundation.png' })).toHaveCount(0)
