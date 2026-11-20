@@ -1,3 +1,4 @@
+import { Appendix } from './Appendix';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
 import {
@@ -124,7 +125,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
 
   const theme = useMemo(() => buildTheme(design ?? FALLBACK_DESIGN), [design]);
 
-  const pages = useMemo(() => structure?.structure_plan?.pages ?? [], [structure]);
+  const pages = useMemo(() => [...(structure?.structure_plan?.pages ?? []).filter(page => page.page_id !== 'dashboard-appendix'), { page_id: 'dashboard-appendix', title: 'Appendix', widgets: [] }], [structure]);
 
   // Highlight the section currently in view while scrolling continuously.
   useEffect(() => {
@@ -350,7 +351,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                   <h2 className="bolt-section-heading text-[16px] md:text-[18px] font-semibold mb-4" style={{ color: theme.colors.text_primary, letterSpacing: "0" }}>
                     {p.title}
                   </h2>
-                  {pageWidgets.length > 0 ? (
+                  {p.page_id === 'dashboard-appendix' ? <Appendix key={`${schemaName}:${projectTextId}:${structure.report_id || structure.structure_id}:${structure.data_date}`} schemaName={schemaName} projectId={projectTextId} reportId={`week-${structure.week_num ?? structure.data_date}`} dataDate={structure.data_date || `week-${structure.week_num}`} /> : pageWidgets.length > 0 ? (
                     <div className="bolt-widget-grid grid grid-cols-1 md:grid-cols-12 gap-4 min-w-0" style={{ rowGap: space(theme, "gap_xl") }}>
                       {pageWidgets.map((w) => {
                         const placement = (p.widgets ?? []).find((pl) => pl.widget_id === w.widget_id);

@@ -10,12 +10,42 @@ const structures = [56, 55].map(week => ({
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
+  const attachments = new Map<string, string>()
+  let removals = 0
+  let denyRemoval = true
   let deny = mode === 'denied'
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   const reads: { table: string; structure?: string | null }[] = []
   await page.route('https://sample.supabase.co/**', async route => {
     const request = route.request(), uri = new URL(request.url()), table = uri.pathname.split('/').pop()!
+    if (uri.pathname.includes('/storage/v1/')) {
+      const path = decodeURIComponent(uri.pathname)
+      if (path.includes('/object/list/')) {
+        const prefix = request.postDataJSON().prefix
+        await route.fulfill({ json: [...attachments.keys()].filter(key => key.startsWith(prefix + '/')).map(key => ({ id: key, name: key.slice(prefix.length + 1), created_at: '2026-11-20', metadata: { mimetype: 'image/png' } })) })
+      } else if (path.includes('/object/sign/') && request.method() === 'POST') {
+        await route.fulfill({ json: { signedURL: '/object/sign/weekly-report-appendix/test.png?token=test' } })
+      } else if (request.method() === 'DELETE') {
+        removals++
+        if (denyRemoval) {
+          denyRemoval = false
+          await route.fulfill({ status: 403, json: { statusCode: '403', error: 'Forbidden', message: 'Deletion denied' } })
+        } else {
+          const keys = request.postDataJSON().prefixes as string[]
+          keys.forEach(key => attachments.delete(key))
+          await route.fulfill({ json: keys.map(name => ({ name })) })
+        }
+      } else if (request.method() === 'GET') {
+        await route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6k9sAAAAASUVORK5CYII=', 'base64') })
+      } else {
+        const key = path.split('/object/weekly-report-appendix/')[1]
+        if (key.includes('Rejected.png')) { await route.fulfill({ status: 403, json: { statusCode: '403', error: 'Forbidden', message: 'Upload rejected' } }); return }
+        attachments.set(key, key)
+        await route.fulfill({ json: { Key: key } })
+      }
+      return
+    }
     let data: unknown = []
     if (table === 'dbp6_0000_projectdata') data = request.headers().accept?.includes('object') ? project : [project]
     if (table === 'p6_project_mapping') data = { schema_name: 'other_project' }
@@ -101,7 +131,42 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(selection.getByRole('button', { name: 'Concrete', exact: true })).toHaveAttribute('aria-pressed', 'false')
     await selection.getByRole('button', { name: 'Concrete', exact: true }).click()
     await selection.getByRole('button', { name: 'Plumbing', exact: true }).click()
+    await expect(page.getByRole('navigation', { name: 'Dashboard sections' }).getByRole('button').last()).toHaveText('Appendix')
+    await expect(page.getByRole('heading', { name: 'Appendix', exact: true })).toBeVisible()
+    await page.getByLabel('Attach drawing file').setInputFiles({ name: 'Foundation.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6k9sAAAAASUVORK5CYII=', 'base64') })
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
+    expect([...attachments.keys()][0]).toContain('other_project/P2/week-56/2026-10-12/')
+    await page.getByRole('button', { name: 'Remove attachment', exact: true }).click()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    expect(removals).toBe(0)
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
+    await page.getByRole('button', { name: 'Remove attachment', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove permanently', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Deletion denied')
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
+    await page.getByRole('button', { name: 'Remove attachment', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove permanently', exact: true }).click()
+    await expect(page.getByText('No drawings attached for this reporting week yet.')).toBeVisible()
+    expect(attachments.size).toBe(0)
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6k9sAAAAASUVORK5CYII=', 'base64')
+    await page.getByLabel('Attach drawing file').setInputFiles([
+      { name: 'SectionA.png', mimeType: 'image/png', buffer: png },
+      { name: 'Unsupported.dwg', mimeType: 'application/octet-stream', buffer: png },
+      { name: 'Rejected.png', mimeType: 'image/png', buffer: png },
+      { name: 'SectionB.png', mimeType: 'image/png', buffer: png },
+    ])
+    await expect(page.getByText('2 attached · 2 failed', { exact: true })).toBeVisible()
+    await expect(page.getByRole('alert')).toContainText('Unsupported.dwg')
+    await expect(page.getByRole('alert')).toContainText('Rejected.png: Upload rejected')
+    expect(attachments.size).toBe(2)
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'SectionA.png', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'SectionB.png', exact: true })).toBeVisible()
     await page.getByLabel('Select reporting week').selectOption('s55')
+    await expect(page.getByText('No drawings attached for this reporting week yet.')).toBeVisible()
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toHaveCount(0)
     await expect(selection.getByRole('button', { name: 'Concrete', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(selection.getByRole('button', { name: 'Drainage', exact: true })).toHaveAttribute('aria-pressed', 'false')
     await expect(selection.getByRole('button', { name: 'Plumbing', exact: true })).toHaveAttribute('aria-pressed', 'true')
