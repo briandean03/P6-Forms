@@ -11,6 +11,8 @@ const structures = [56, 55].map(week => ({
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
   const attachments = new Map<string, string>()
+  let removals = 0
+  let denyRemoval = true
   let deny = mode === 'denied'
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
@@ -24,6 +26,16 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
         await route.fulfill({ json: [...attachments.keys()].filter(key => key.startsWith(prefix + '/')).map(key => ({ id: key, name: key.slice(prefix.length + 1), created_at: '2026-11-20', metadata: { mimetype: 'image/png' } })) })
       } else if (path.includes('/object/sign/') && request.method() === 'POST') {
         await route.fulfill({ json: { signedURL: '/object/sign/weekly-report-appendix/test.png?token=test' } })
+      } else if (request.method() === 'DELETE') {
+        removals++
+        if (denyRemoval) {
+          denyRemoval = false
+          await route.fulfill({ status: 403, json: { statusCode: '403', error: 'Forbidden', message: 'Deletion denied' } })
+        } else {
+          const keys = request.postDataJSON().prefixes as string[]
+          keys.forEach(key => attachments.delete(key))
+          await route.fulfill({ json: keys.map(name => ({ name })) })
+        }
       } else if (request.method() === 'GET') {
         await route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6k9sAAAAASUVORK5CYII=', 'base64') })
       } else {
@@ -125,6 +137,18 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await page.reload()
     await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
     expect([...attachments.keys()][0]).toContain('other_project/P2/week-56/2026-10-12/')
+    await page.getByRole('button', { name: 'Remove attachment', exact: true }).click()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    expect(removals).toBe(0)
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
+    await page.getByRole('button', { name: 'Remove attachment', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove permanently', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Deletion denied')
+    await expect(page.getByRole('img', { name: 'Foundation.png' })).toBeVisible()
+    await page.getByRole('button', { name: 'Remove attachment', exact: true }).click()
+    await page.getByRole('button', { name: 'Remove permanently', exact: true }).click()
+    await expect(page.getByText('No drawings attached for this reporting week yet.')).toBeVisible()
+    expect(attachments.size).toBe(0)
     await page.getByLabel('Select reporting week').selectOption('s55')
     await expect(page.getByText('No drawings attached for this reporting week yet.')).toBeVisible()
     await expect(page.getByRole('img', { name: 'Foundation.png' })).toHaveCount(0)

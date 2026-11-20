@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 
@@ -14,6 +15,8 @@ export function Appendix({ schemaName, projectId, reportId, dataDate }: { schema
   const [selected, setSelected] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Drawing | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const input = useRef<HTMLInputElement>(null)
@@ -68,25 +71,43 @@ export function Appendix({ schemaName, projectId, reportId, dataDate }: { schema
       setError(`Could not attach drawing: ${(reason as { message?: string })?.message ?? String(reason)}`)
     } finally { setUploading(false) }
   }
+  async function removeDrawing() {
+    if (!deleteTarget || deleting) return
+    const target = deleteTarget
+    setDeleting(true); setError('')
+    try {
+      const { data, error } = await storage.remove([target.path])
+      if (error) throw error
+      if (!data?.length) throw new Error('The file was not removed. Check the Storage DELETE policy and refresh the appendix.')
+      setDrawings(previous => previous.filter(drawing => drawing.path !== target.path))
+      setSelected(previous => previous === target.name ? '' : previous)
+      setDeleteTarget(null); setRevision(value => value + 1)
+      showSuccess('Attachment removed')
+    } catch (reason) {
+      setDeleteTarget(null)
+      setError(`Could not remove attachment: ${(reason as { message?: string })?.message ?? String(reason)}. Check the weekly-report-appendix DELETE policy.`)
+    } finally { setDeleting(false) }
+  }
   const current = drawings.find(drawing => drawing.name === selected)
   return <div className="bg-white border rounded-xl p-4 md:p-6 space-y-4">
     {notification && <Notification {...notification} onClose={hideNotification} />}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-gray-600">Drawings attached to this project and reporting week.</p>
-      <button className="no-print px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50" disabled={uploading} onClick={() => input.current?.click()}>{uploading ? 'Attaching…' : 'Attach drawing'}</button>
+      <button className="no-print px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50" disabled={uploading || deleting} onClick={() => input.current?.click()}>{uploading ? 'Attaching…' : 'Attach drawing'}</button>
       <input ref={input} className="hidden" type="file" aria-label="Attach drawing file" accept="application/pdf,image/png,image/jpeg,image/webp,.pdf,.png,.jpg,.jpeg,.webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void attach(file) }} />
     </div>
     <p className="no-print text-xs text-gray-500">PDF, PNG, JPEG or WebP · Up to 25 MB per file · Visible to everyone who can access this website.</p>
     {error && <p role="alert" className="text-red-700 bg-red-50 p-3 rounded">{error}</p>}
     {loading && <p role="status">Loading appendix drawings…</p>}
     {!loading && !error && !drawings.length && <p className="text-gray-500 py-6 text-center">No drawings attached for this reporting week yet.</p>}
-    {!!drawings.length && <div className="flex flex-wrap gap-2 no-print" aria-label="Attached drawings">{drawings.map(drawing => <button key={drawing.name} aria-pressed={selected === drawing.name} className={`px-3 py-2 rounded border text-sm break-all ${selected === drawing.name ? 'bg-indigo-50 border-indigo-500' : 'border-gray-200'}`} onClick={() => setSelected(drawing.name)}>{drawing.label}</button>)}</div>}
+    {!!drawings.length && <div className="flex flex-wrap gap-2 no-print" aria-label="Attached drawings">{drawings.map(drawing => <button key={drawing.name} aria-pressed={selected === drawing.name} className={`px-3 py-2 rounded border text-sm break-all ${selected === drawing.name ? 'bg-indigo-50 border-indigo-500' : 'border-gray-200'}`} disabled={deleting} onClick={() => setSelected(drawing.name)}>{drawing.label}</button>)}</div>}
     {current && <div className="space-y-3">
-      <div className="flex flex-wrap gap-3 items-center"><h3 className="font-semibold break-all">{current.label}</h3><a className="no-print text-indigo-700 underline text-sm" href={current.url} target="_blank" rel="noreferrer">Open drawing in new tab</a></div>
+      <div className="flex flex-wrap gap-3 items-center"><h3 className="font-semibold break-all">{current.label}</h3><a className="no-print text-indigo-700 underline text-sm" href={current.url} target="_blank" rel="noreferrer">Open drawing in new tab</a><button type="button" className="no-print px-3 py-1.5 rounded border border-red-300 text-red-700 disabled:opacity-50" disabled={uploading || deleting} onClick={() => setDeleteTarget(current)}>Remove attachment</button></div>
       {current.pdf ? <>
         <iframe className="no-print w-full rounded border" style={{ height: '75vh', minHeight: 420 }} title={`Drawing preview: ${current.label}`} src={current.url} />
         <p className="text-xs text-gray-500">Use Open drawing in new tab if your browser cannot display the PDF. Print the drawing from its PDF viewer; dashboard printing does not merge attached PDF pages.</p>
       </> : <img className="w-full max-h-[80vh] object-contain rounded border" src={current.url} alt={current.label} />}
     </div>}
+    <ConfirmDialog isOpen={!!deleteTarget} title="Remove attachment?" message={`Permanently remove “${deleteTarget?.label ?? ''}” from this reporting week for everyone? This cannot be undone.`} confirmLabel="Remove permanently" loading={deleting} onCancel={() => { if (!deleting) setDeleteTarget(null) }} onConfirm={() => void removeDrawing()} />
   </div>
 }

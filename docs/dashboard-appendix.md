@@ -6,7 +6,7 @@ Appendix is a frontend-defined final section in every available weekly dashboard
 
 Run `supabase/dashboard_appendix_storage.sql` in the SQL Editor of the same Supabase project that P6 Forms already uses. This creates the `weekly-report-appendix` bucket and its object policies. The application continues using the existing public/anon client key, with no additional environment variables or service-role key.
 
-As requested, all website visitors can list, view, and attach files without signing in. This is enforced by SELECT/INSERT policies for both the `anon` and `authenticated` database roles, scoped to this bucket only. No UPDATE or DELETE policies are added. The bucket enforces a 25 MB limit and PDF/PNG/JPEG/WebP MIME types. Its `public` flag is false; previews use one-hour signed URLs, which refresh while the appendix is open. The anonymous SELECT policy means drawings are intentionally shared with everyone who can access the site, not confidential user-only files.
+As requested, all website visitors can list, view, attach, and remove files without signing in. This is enforced by SELECT/INSERT/DELETE policies for both the `anon` and `authenticated` database roles, scoped to this bucket only. No UPDATE policy is added. Removal is permanent and available to all website visitors, with an explicit confirmation dialog. The bucket enforces a 25 MB limit and PDF/PNG/JPEG/WebP MIME types. Its `public` flag is false; previews use one-hour signed URLs, which refresh while the appendix is open. The anonymous SELECT policy means drawings are intentionally shared with everyone who can access the site, not confidential user-only files.
 
 The SQL is additive and does not change other buckets. If a bucket with this name already exists, verify its MIME types and size limit; the script preserves existing bucket settings. The SQL has not been applied to the live Supabase project by this change.
 
@@ -20,8 +20,9 @@ Files are stored directly in Storage, so no new application metadata table is re
 
 1. Apply the SQL, open a project/week, scroll to Appendix, and choose **Attach drawing**.
 2. Upload an image and confirm its preview appears. Reload and confirm the file remains available.
-3. Upload a PDF and select it; confirm the PDF viewer and new-tab link work.
-4. Switch weeks and confirm the attachment lists are separate. Switch back to see the originals.
-5. Repeat for a different project/schema. Regenerate the same report/week/date and confirm its drawings remain.
+3. Use **Remove attachment**, cancel once to keep the drawing, then confirm removal. Reload to verify it remains removed. Re-run the setup SQL if the bucket already exists to add its DELETE policy.
+4. Upload a PDF and select it; confirm the PDF viewer and new-tab link work.
+5. Switch weeks and confirm the attachment lists are separate. Switch back to see the originals.
+6. Repeat for a different project/schema. Regenerate the same report/week/date and confirm its drawings remain.
 
-The frontend build and mocked browser tests cover the permanent final section, image upload and preview, reload persistence, and isolation when changing weeks. Live Storage operations require the one-time SQL setup and a live verification. Bucket/policy errors are shown in Appendix, rather than working around permissions.
+The frontend build and mocked browser tests cover the permanent final section, image upload and preview, reload persistence, cancellation and permission failure on removal, successful deletion, and isolation when changing weeks. Live Storage operations require the one-time SQL setup and a live verification. Bucket/policy errors are shown in Appendix, rather than working around permissions.
