@@ -112,7 +112,7 @@ export function Appendix({ schemaName, projectId, reportId, dataDate }: { schema
       <button className="no-print px-4 py-2 rounded-lg bg-indigo-600 text-white disabled:opacity-50" disabled={uploading || deleting} onClick={() => input.current?.click()}>{uploading ? `Attaching ${progress.completed} of ${progress.total}…` : 'Attach drawings'}</button>
       <input ref={input} className="hidden" type="file" multiple disabled={uploading || deleting} aria-label="Attach drawing file" accept="application/pdf,image/png,image/jpeg,image/webp,.pdf,.png,.jpg,.jpeg,.webp" onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length) void attach(files) }} />
     </div>
-    <p className="no-print text-xs text-gray-500">Select multiple PDFs or images · PNG, JPEG or WebP · Up to 25 MB per file · Visible to everyone who can access this website.</p>
+    <p className="no-print text-xs text-gray-500">Select multiple PDFs or images · PNG, JPEG or WebP · Up to 25 MB per file</p>
     {error && <p role="alert" className="text-red-700 bg-red-50 p-3 rounded">{error}</p>}
     {uploading && <p role="status">Uploading drawings: {progress.completed} of {progress.total} completed.</p>}
     {!uploading && !!uploadResults.length && <div className="no-print text-sm space-y-1">
