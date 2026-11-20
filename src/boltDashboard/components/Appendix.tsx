@@ -5,7 +5,7 @@ import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
 
 const BUCKET = 'weekly-report-appendix'
-const MAX_BYTES = 25 * 1024 * 1024
+const MAX_BYTES = 50 * 1024 * 1024
 const allowed = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp'])
 type Drawing = { name: string; path: string; label: string; pdf: boolean; url: string }
 
