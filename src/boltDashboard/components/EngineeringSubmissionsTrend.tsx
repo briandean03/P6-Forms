@@ -85,7 +85,7 @@ function TrendCard({ theme, data, categoryField, definition, series }: { theme: 
   const W = Math.max(280, Math.round(measured));
   const values = data
     .map((row, index) => ({ row, index, value: series ? row[series.value_field] : null }))
-    .filter((point): point is { row: ChartDatum; index: number; value: number } => typeof point.value === "number");
+    .filter((point): point is { row: ChartDatum; index: number; value: number } => typeof point.value === "number" && Number.isFinite(point.value));
   const latest = values[values.length - 1]?.value ?? null;
   const rawValues = values.map((point) => point.value);
   const rawMin = rawValues.length ? Math.min(...rawValues) : 0;
@@ -107,7 +107,7 @@ function TrendCard({ theme, data, categoryField, definition, series }: { theme: 
   }));
   const path = smoothPath(points);
   const gradientId = `${definition.key}-gradient`;
-  const xLabels = values.filter((_, index) => index === 0 || index === values.length - 1 || index % Math.max(1, Math.ceil(values.length / 5)) === 0);
+  const xLabels = values.map((point, plotIndex) => ({ ...point, plotIndex })).filter((_, index) => index === 0 || index === values.length - 1 || index % Math.max(1, Math.ceil(values.length / 5)) === 0);
 
   return (
     <article
@@ -187,10 +187,9 @@ function TrendCard({ theme, data, categoryField, definition, series }: { theme: 
               </g>
             ))}
             {xLabels.map((point) => {
-              const source = values[point.index];
-              const label = String(source.row[categoryField] ?? source.row.period_end ?? "");
+              const label = String(point.row[categoryField] ?? point.row.period_end ?? "");
               return (
-                <text key={`label-${point.index}`} x={points[point.index].x} y={H - 5} textAnchor="middle" fontSize="9" fill="#667085">
+                <text key={`label-${point.index}`} x={points[point.plotIndex].x} y={H - 5} textAnchor="middle" fontSize="9" fill="#667085">
                   {label.length > 10 ? label.slice(0, 10) : label}
                 </text>
               );
