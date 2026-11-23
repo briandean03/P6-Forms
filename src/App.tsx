@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useAppNavigation } from '@/lib/appNavigation'
-import { supabase, schemaClient } from '@/lib/supabase'
+import { supabase, supabaseReady, schemaClient } from '@/lib/supabase'
 import type { ProjectData } from '@/types/database'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Notification } from '@/components/Notification'
@@ -286,6 +286,7 @@ function App() {
   const [showRunUpdateConfirm, setShowRunUpdateConfirm] = useState(false)
   const [isDataStale, setIsDataStale] = useState(false)
   const [updatesCount, setUpdatesCount] = useState(0)
+  const [dbConnectionError, setDbConnectionError] = useState(false)
 
   const { notification, hideNotification, showSuccess, showError } = useNotification()
 
@@ -324,10 +325,18 @@ function App() {
   }
 
   const fetchProjectInfo = async () => {
-    const { data } = await supabase
+    if (!supabaseReady) {
+      setDbConnectionError(true)
+      return
+    }
+    const { data, error } = await supabase
       .from('dbp6_0000_projectdata')
       .select('*')
       .order('dgt_projectname', { ascending: true })
+    if (error) {
+      setDbConnectionError(true)
+      return
+    }
     const rows = data as ProjectData[] | null
     if (rows) {
       setProjectInfo(rows.map(p => ({
@@ -495,7 +504,20 @@ function App() {
             <p className="text-gray-500 mt-2">Select a project to view and manage its data</p>
           </div>
 
-          {projectInfo.length === 0 ? (
+          {dbConnectionError ? (
+            <div className="text-center py-16 text-gray-500">
+              <p className="text-lg font-semibold text-gray-900">Can't reach the database</p>
+              <p className="text-sm mt-1">
+                Your project data couldn't be loaded. Check your internet connection and refresh the page.
+              </p>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : projectInfo.length === 0 ? (
             <div className="text-center py-16 text-gray-500">
               <p className="text-lg">No projects found.</p>
               <p className="text-sm mt-1">Go to Project Data to create a new project.</p>
