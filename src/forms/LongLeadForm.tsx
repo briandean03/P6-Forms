@@ -1,3 +1,4 @@
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { useEffect, useMemo, useState } from 'react'
 import { schemaClient } from '@/lib/supabase'
 import { Modal } from '@/components/Modal'
@@ -85,8 +86,17 @@ export function LongLeadForm({ projectTextId, schemaName }: { projectTextId: str
     window.addEventListener('app:before-navigate', beforeNavigate)
     return () => { window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('app:before-navigate', beforeNavigate) }
   }, [dirty, busy])
-  const references = [...new Set(engineering.map(row => row.dgt_transmittalref).filter((ref): ref is string => !!ref))].sort()
-  const candidates = engineering.filter(row => row.dgt_transmittalref === draft.transmittal_ref)
+  const byReference = useMemo(() => {
+    const grouped = new Map<string, EngineeringReference[]>()
+    for (const row of engineering) if (row.dgt_transmittalref) {
+      const group = grouped.get(row.dgt_transmittalref) ?? []
+      group.push(row); grouped.set(row.dgt_transmittalref, group)
+    }
+    return grouped
+  }, [engineering])
+  const references = useMemo(() => [...byReference.keys()].sort(), [byReference])
+  const transmittalOptions = useMemo(() => references.map(ref => ({ value: ref, label: ref + (byReference.get(ref)?.some(row => row.is_long_lead) ? ' · Long lead' : '') })), [references, byReference])
+  const candidates = byReference.get(draft.transmittal_ref) ?? []
   const revisions = [...new Set(candidates.map(row => row.dgt_revision).filter((rev): rev is number => rev != null))].sort((a, b) => b - a)
   const filtered = records.filter(record => (!week || (week === 'none' ? record.week_num == null : String(record.week_num) === week)) && [record.transmittal_ref, record.supplier_name, record.procurement_tracker_status, record.lpo_number].some(value => String(value ?? '').toLowerCase().includes(search.toLowerCase())))
   const lpoError = integerError(draft.lpo_number, 'LPO number', 0)
@@ -139,7 +149,7 @@ export function LongLeadForm({ projectTextId, schemaName }: { projectTextId: str
       <form onSubmit={event => { event.preventDefault(); void save() }} className="space-y-4">
         {errorPanel}
         <fieldset disabled={busy} className="space-y-4">
-          <label className="block text-sm font-medium">Transmittal reference<select aria-label="Transmittal reference" required className={inputClass} value={draft.transmittal_ref} onChange={event => { const ref = event.target.value; setDraft(previous => ({ ...previous, transmittal_ref: ref, engineering_revision: String(latestEngineeringRevision(engineering.filter(row => row.dgt_transmittalref === ref)) ?? '') })) }}><option value="">Select an engineering transmittal</option>{references.map(ref => <option key={ref} value={ref}>{ref}{engineering.some(row => row.dgt_transmittalref === ref && row.is_long_lead) ? ' · Long lead' : ''}</option>)}</select></label>
+          <div className="block text-sm font-medium"><span>Transmittal reference</span><SearchableSelect label="Transmittal reference" disabled={busy} value={draft.transmittal_ref} options={transmittalOptions} onChange={ref => setDraft(previous => ({ ...previous, transmittal_ref: ref, engineering_revision: String(latestEngineeringRevision(byReference.get(ref) ?? []) ?? '') }))} /></div>
           {candidates.length > 0 && <p className="text-xs text-gray-500">{candidates.find(row => String(row.dgt_revision ?? '') === draft.engineering_revision)?.dgt_transmittalsubject ?? ''}</p>}
           <div className="grid grid-cols-2 gap-3"><label className="text-sm font-medium">Engineering revision<select aria-label="Engineering revision" className={inputClass} value={draft.engineering_revision} onChange={event => set('engineering_revision', event.target.value)}><option value="">Unspecified (NULL)</option>{revisions.map(rev => <option key={rev} value={rev}>{rev}</option>)}</select></label><label className="text-sm font-medium">Week number<input aria-label="Week number" aria-invalid={!!weekError} className={inputClass} type="number" min="1" max="2147483647" step="1" value={draft.week_num} onChange={event => set('week_num', event.target.value)} />{weekError && <span className="text-red-600 text-xs">{weekError}</span>}</label></div>
           <div className="grid grid-cols-2 gap-3">{longLeadFields.map(([field, label]) => <label key={field} className="text-sm font-medium">{label}<input className={inputClass} type="date" value={draft[field]} onChange={event => set(field, event.target.value)} /></label>)}</div>

@@ -1,4 +1,3 @@
-import { LongLeadForm } from '@/forms/LongLeadForm'
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useAppNavigation } from '@/lib/appNavigation'
 import { supabase, supabaseReady, schemaClient } from '@/lib/supabase'
@@ -6,25 +5,27 @@ import type { ProjectData } from '@/types/database'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Notification } from '@/components/Notification'
 import { useNotification } from '@/hooks/useNotification'
-import { SafetyStatisticsForm } from '@/forms/SafetyStatisticsForm'
-import { EngineeringForm } from '@/forms/EngineeringForm'
-import { QaqcHseForm } from '@/forms/QaqcHseForm'
-import { ActualResourcesForm } from '@/forms/ActualResourcesForm'
-import { DynamicActualDataForm } from '@/forms/DynamicActualDataForm'
-import { ProjectDataForm } from '@/forms/ProjectDataForm'
-import { AreasOfConcernForm } from '@/forms/AreasOfConcernForm'
-import { VariationsForm } from '@/forms/VariationsForm'
-import { PaymentsForm } from '@/forms/PaymentsForm'
-import { ReferenceDataForm } from '@/forms/ReferenceDataForm'
-import { P6ActivityOutputForm } from '@/forms/P6ActivityOutputForm'
-import { P6ActivityUpdatesForm } from '@/forms/P6ActivityUpdatesForm'
-import { P6ProjectMappingForm } from '@/forms/P6ProjectMappingForm'
-import { PhotoUploadForm } from '@/forms/PhotoUploadForm'
-import { PdfUploadForm } from '@/forms/PdfUploadForm'
-import { ProjectDashboard } from '@/forms/ProjectDashboard'
-import { InspectionReportForm } from '@/forms/InspectionReportForm'
-import { ReportDashboardForm } from '@/forms/ReportDashboardForm'
-import { WeeklyReportForm } from '@/forms/WeeklyReportForm'
+
+const LongLeadForm = lazy(() => import('@/forms/LongLeadForm').then(module => ({ default: module.LongLeadForm })))
+const SafetyStatisticsForm = lazy(() => import('@/forms/SafetyStatisticsForm').then(module => ({ default: module.SafetyStatisticsForm })))
+const EngineeringForm = lazy(() => import('@/forms/EngineeringForm').then(module => ({ default: module.EngineeringForm })))
+const QaqcHseForm = lazy(() => import('@/forms/QaqcHseForm').then(module => ({ default: module.QaqcHseForm })))
+const ActualResourcesForm = lazy(() => import('@/forms/ActualResourcesForm').then(module => ({ default: module.ActualResourcesForm })))
+const DynamicActualDataForm = lazy(() => import('@/forms/DynamicActualDataForm').then(module => ({ default: module.DynamicActualDataForm })))
+const ProjectDataForm = lazy(() => import('@/forms/ProjectDataForm').then(module => ({ default: module.ProjectDataForm })))
+const AreasOfConcernForm = lazy(() => import('@/forms/AreasOfConcernForm').then(module => ({ default: module.AreasOfConcernForm })))
+const VariationsForm = lazy(() => import('@/forms/VariationsForm').then(module => ({ default: module.VariationsForm })))
+const PaymentsForm = lazy(() => import('@/forms/PaymentsForm').then(module => ({ default: module.PaymentsForm })))
+const ReferenceDataForm = lazy(() => import('@/forms/ReferenceDataForm').then(module => ({ default: module.ReferenceDataForm })))
+const P6ActivityOutputForm = lazy(() => import('@/forms/P6ActivityOutputForm').then(module => ({ default: module.P6ActivityOutputForm })))
+const P6ActivityUpdatesForm = lazy(() => import('@/forms/P6ActivityUpdatesForm').then(module => ({ default: module.P6ActivityUpdatesForm })))
+const P6ProjectMappingForm = lazy(() => import('@/forms/P6ProjectMappingForm').then(module => ({ default: module.P6ProjectMappingForm })))
+const PhotoUploadForm = lazy(() => import('@/forms/PhotoUploadForm').then(module => ({ default: module.PhotoUploadForm })))
+const PdfUploadForm = lazy(() => import('@/forms/PdfUploadForm').then(module => ({ default: module.PdfUploadForm })))
+const ProjectDashboard = lazy(() => import('@/forms/ProjectDashboard').then(module => ({ default: module.ProjectDashboard })))
+const InspectionReportForm = lazy(() => import('@/forms/InspectionReportForm').then(module => ({ default: module.InspectionReportForm })))
+const ReportDashboardForm = lazy(() => import('@/forms/ReportDashboardForm').then(module => ({ default: module.ReportDashboardForm })))
+const WeeklyReportForm = lazy(() => import('@/forms/WeeklyReportForm').then(module => ({ default: module.WeeklyReportForm })))
 
 const BoltWeeklyDashboardForm = lazy(() => import('@/forms/BoltWeeklyDashboardForm').then(module => ({ default: module.BoltWeeklyDashboardForm })))
 
@@ -832,7 +833,7 @@ function App() {
 
         {/* Content */}
         <main className={`print-main flex-1 overflow-y-auto${isFullWidthTab ? ' report-workspace' : ' px-6 py-6'}`}>
-          {renderTabContent()}
+          <Suspense fallback={<p className="p-4 text-gray-500" role="status">Loading page…</p>}>{renderTabContent()}</Suspense>
         </main>
 
         {/* Footer */}

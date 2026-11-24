@@ -1,5 +1,5 @@
 import { Appendix } from './Appendix';
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, memo, type ComponentProps } from "react";
 import { ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
 import {
   ApprovedDesign,
@@ -10,6 +10,11 @@ import {
 import { buildTheme, themeToCssVars, radius, shadow, space } from "@/boltDashboard/theme/designTheme";
 import { WidgetRenderer } from "@/boltDashboard/components/WidgetRenderer";
 import { readStoredStrings, writeStoredStrings } from "@/boltDashboard/utils/storedSelection";
+
+type WidgetProps = ComponentProps<typeof WidgetRenderer>;
+const StableWidget = memo(function StableWidget({ columnSpan, ...props }: Omit<WidgetProps, 'placement'> & { columnSpan?: number }) {
+  return <WidgetRenderer {...props} placement={{ column_span: columnSpan }} />;
+});
 
 type LoadError = { message: string; status: number };
 
@@ -85,10 +90,10 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
   const [activeSection, setActiveSection] = useState(0);
   const [approvalStatus, setApprovalStatus] = useState<'Approved' | 'Draft'>('Approved');
   const [kpiSelection, setKpiSelection] = useState<string[] | null>(() => readStoredStrings(KPI_SELECTION_STORAGE_KEY));
-  const setPersistedKpiSelection = (kpis: string[] | null) => {
+  const setPersistedKpiSelection = useCallback((kpis: string[] | null) => {
     setKpiSelection(kpis);
     writeStoredStrings(KPI_SELECTION_STORAGE_KEY, kpis);
-  };
+  }, [KPI_SELECTION_STORAGE_KEY]);
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);
 
   useEffect(() => {
@@ -358,10 +363,10 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                         return (
                           <div className="contents bolt-print-item" key={`${w.widget_record_id ?? w.widget_id}:${w.id}`}>
                           <p className="hidden bolt-print-context">Construction Intelligence Dashboard · {p.title} · Week {structure.week_num} · {structure.data_date}</p>
-                          <WidgetRenderer
+                          <StableWidget
                             theme={theme}
                             widget={w}
-                            placement={{ column_span: placement?.grid?.column_span }}
+                            columnSpan={placement?.grid?.column_span}
                             dataDate={structure?.data_date}
                             kpiSelection={kpiSelection}
                             onKpiSelectionChange={setPersistedKpiSelection}

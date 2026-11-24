@@ -6,7 +6,7 @@ The page reads `dbp6_000401_longlead` and the selected project's `dbp6_000401_en
 
 A new item defaults to the project's current week from `dbp6_0000_projectdata`. Selecting a transmittal defaults to its highest available numbered revision. Engineers may select an older revision or NULL explicitly. Revision 0, NULL, LPO 0, and empty values are kept distinct. LPO must be a non-negative PostgreSQL integer; week must be a positive integer or empty. Date fields remain editable independently; no dates are invented or recalculated. Procurement status accepts existing/custom text and offers common suggestions.
 
-The transmittal selector includes the project's engineering references, with existing long-lead flags identified in the label. Creating a tracker entry does not silently modify engineering history or its is_long_lead flag. Multiple tracker rows for the same transmittal are supported, matching the current table schema.
+The transmittal selector supports case-insensitive typing, keyboard selection, and a maximum of 100 rendered matches at a time. It includes the project's engineering references, with existing long-lead flags identified in the label. Creating a tracker entry does not silently modify engineering history or its is_long_lead flag. Multiple tracker rows for the same transmittal are supported, matching the current table schema.
 
 The table has no project ID column. Records are therefore scoped through engineering references belonging to the selected project's text ID. References absent from that project's engineering history will not appear. Transmittal references should identify a project within a schema; a project ID on the tracker would be needed to distinguish a reused reference with NULL revision across multiple projects.
 

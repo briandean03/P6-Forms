@@ -7,6 +7,7 @@ for (const mode of ['ready', 'denied'] as const) test(`long-lead form: ${mode}`,
     { dgt_transmittalref: 'MS-054', dgt_revision: 2, dgt_transmittalsubject: 'Material 054 revised', is_long_lead: true },
     { dgt_transmittalref: 'MS-NULL', dgt_revision: null, dgt_transmittalsubject: 'Unspecified revision material', is_long_lead: false },
   ]
+  engineering.push(...Array.from({ length: 150 }, (_, i) => ({ dgt_transmittalref: `TEST-${String(i).padStart(4, '0')}`, dgt_revision: 0, dgt_transmittalsubject: 'Additional register entry', is_long_lead: false })))
   let records: any[] = [{ id: 'existing', transmittal_ref: 'MS-054', engineering_revision: 2, week_num: 55, order_planned_date: '2026-08-04', first_delivery_planned_date: '2026-08-15', order_placed_date: null, delivered_date: null, supplier_name: null, procurement_tracker_status: null, lpo_number: null, created_at: '2026-11-23' }]
   const writes: { method: string; payload: any }[] = []
   await page.route('https://sample.supabase.co/**', async route => {
@@ -25,7 +26,11 @@ for (const mode of ['ready', 'denied'] as const) test(`long-lead form: ${mode}`,
       }
       const method = req.method()
       expect(req.headers()[method === 'GET' ? 'accept-profile' : 'content-profile']).toBe('test_schema')
-      if (method === 'GET') { expect(url.searchParams.get('transmittal_ref')).toContain('MS-054'); data = records }
+      if (method === 'GET') {
+        const refs = (url.searchParams.get('transmittal_ref') ?? '').slice(4, -1).split(',')
+        expect(refs.every(ref => engineering.some(row => row.dgt_transmittalref === ref))).toBe(true)
+        data = records.filter(record => refs.includes(record.transmittal_ref))
+      }
       else {
         const payload = req.postDataJSON(); writes.push({ method, payload })
         if (method === 'POST') { const record = { ...payload, id: `new-${writes.length}`, created_at: '2026-11-24' }; records.push(record); data = { id: record.id } }
@@ -45,7 +50,11 @@ for (const mode of ['ready', 'denied'] as const) test(`long-lead form: ${mode}`,
     expect(writes).toHaveLength(0); return
   }
   await page.getByRole('button', { name: 'Add long-lead item', exact: true }).click()
-  await page.getByLabel('Transmittal reference', { exact: true }).selectOption('MS-054')
+  await page.getByRole('combobox', { name: 'Transmittal reference' }).click()
+  await expect(page.getByRole('listbox', { name: 'Transmittal reference' }).getByRole('option')).toHaveCount(100)
+  await page.getByRole('combobox', { name: 'Transmittal reference' }).fill('054')
+  await expect(page.getByRole('option', { name: /MS-NULL/ })).toHaveCount(0)
+  await page.getByRole('option', { name: /MS-054/ }).click()
   await expect(page.getByLabel('Engineering revision', { exact: true })).toHaveValue('2')
   await expect(page.getByLabel('Week number', { exact: true })).toHaveValue('56')
   await page.getByLabel('Engineering revision', { exact: true }).selectOption('0')
@@ -56,13 +65,14 @@ for (const mode of ['ready', 'denied'] as const) test(`long-lead form: ${mode}`,
   await expect(page.getByText('Long-lead item added', { exact: true })).toBeVisible()
   expect(writes[0].payload).toMatchObject({ transmittal_ref: 'MS-054', engineering_revision: 0, lpo_number: 0, week_num: 56, supplier_name: 'Supplier One', first_delivery_planned_date: '2026-12-01', delivered_date: null })
   await page.getByRole('button', { name: 'Add long-lead item', exact: true }).click()
-  await page.getByLabel('Transmittal reference', { exact: true }).selectOption('MS-NULL')
+  await page.getByRole('combobox', { name: 'Transmittal reference' }).fill('MS-NULL')
+  await page.getByRole('combobox', { name: 'Transmittal reference' }).press('Enter')
   await expect(page.getByLabel('Engineering revision', { exact: true })).toHaveValue('')
   await page.getByLabel('LPO number', { exact: true }).fill('1.5')
   await expect(page.getByRole('button', { name: 'Create item', exact: true })).toBeDisabled()
   await page.getByLabel('LPO number', { exact: true }).fill('')
   await page.getByRole('button', { name: 'Create item', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Create item', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Add long-lead item', exact: true })).toHaveCount(0)
   expect(writes[1].payload).toMatchObject({ transmittal_ref: 'MS-NULL', engineering_revision: null, lpo_number: null })
   await page.getByLabel('Reporting week', { exact: true }).selectOption('55')
   await page.getByRole('button', { name: 'Edit MS-054', exact: true }).click()
