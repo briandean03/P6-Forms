@@ -1,3 +1,4 @@
+import { LongLeadForm } from '@/forms/LongLeadForm'
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useAppNavigation } from '@/lib/appNavigation'
 import { supabase, supabaseReady, schemaClient } from '@/lib/supabase'
@@ -31,6 +32,7 @@ type TabKey =
   | 'dashboard'
   | 'weekly_dashboard'
   | 'safetystatistics'
+  | 'longlead'
   | 'engineering'
   | 'qaqc'
   | 'resources'
@@ -108,6 +110,11 @@ const navSections: NavSection[] = [
         key: 'safetystatistics',
         label: 'Safety Statistics',
         icon: <span aria-hidden="true">◇</span>,
+      },
+      {
+        key: 'longlead',
+        label: 'Long Lead Items',
+        icon: <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v13h14V7a2 2 0 00-2-2h-2M9 3h6v4H9zM9 12h6M9 16h6" /></svg>,
       },
       {
         key: 'engineering',
@@ -436,6 +443,8 @@ function App() {
         )
       case 'safetystatistics':
         return <SafetyStatisticsForm key={`${selectedSchemaName}:${projectTextId}`} projectTextId={projectTextId} schemaName={selectedSchemaName} />
+      case 'longlead':
+        return <LongLeadForm key={`${selectedSchemaName}:${projectTextId}`} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'engineering':
         return <EngineeringForm projectId={selectedProjectId} projectTextId={projectTextId} schemaName={selectedSchemaName} />
       case 'qaqc':
