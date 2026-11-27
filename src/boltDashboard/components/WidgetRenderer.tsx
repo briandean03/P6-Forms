@@ -1,3 +1,4 @@
+import { repeatsAcrossFloors } from '../utils/repeatingFloors';
 import { MajorExceptionsPanel } from "./MajorExceptionsPanel";
 import { EngineeringSubmissionsSummary } from "./EngineeringSubmissionsSummary";
 import { HierarchicalTable } from './HierarchicalTable';
@@ -1900,7 +1901,7 @@ export function WidgetRenderer({
                 return out;
               };
               const byTrade = new Map<string, { order: number; label: string; rows: Rec[] }>();
-              (c.rows as Rec[]).forEach((r, i) => {
+              (c.rows as Rec[]).filter(repeatsAcrossFloors).forEach((r, i) => {
                 const key = String(r.trade_group_key ?? r.trade_code ?? r.trade_label ?? "unclassified");
                 const label = String(r.trade_label ?? r.trade_name ?? key);
                 const order = typeof r.trade_display_order === "number" ? (r.trade_display_order as number) : 9999;

@@ -104,7 +104,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
         } } as typeof widgets[number])
         widgets.push({ widget_id: 'WGT-020', widget_type: 'data_table', widget_title: 'Trade progress by level', content: {
           columns: [{ key: 'activity_name', label: 'Activity' }, { key: 'level:L1', label: 'Level 1', data_type: 'percentage', value_source: 'progress_by_level', level_code: 'L1' }],
-          rows: [{ row_id: 'a', activity_name: 'Install blockwork', trade_label: 'Blockwork', progress_by_level: { L1: { planned_percent: 60, actual_percent: 45 } } }],
+          rows: [{ row_id: 'single', activity_name: 'Single-floor lift installation', trade_label: 'Conveying', progress_by_level: { L1: { planned_percent: 100, actual_percent: 0 } } }, { row_id: 'all', activity_name: 'Project-wide activity', trade_label: 'General', progress_by_level: { All: { planned_percent: 50, actual_percent: 0 } } }, { row_id: 'a', activity_name: 'Install blockwork', trade_label: 'Blockwork', progress_by_level: { L1: { planned_percent: 60, actual_percent: 45 }, L2: { planned_percent: 0, actual_percent: 0 } } }],
         } } as typeof widgets[number])
         for (const id of ['WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047']) widgets.push({ widget_id: id, widget_type: 'kpi_group', widget_title: `Hidden ${id}`, content: {} } as typeof widgets[number])
         for (const id of ['WGT-011', 'WGT-012', 'WGT-036', 'WGT-037']) widgets.push({ widget_id: id, widget_type: 'kpi_group', widget_title: `Hidden ${id}`, content: {} } as typeof widgets[number])
@@ -149,6 +149,9 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(levelProgress).toContainText('45.0%')
     await levelProgress.getByRole('button', { name: 'Planned %', exact: true }).click()
     await expect(levelProgress).toContainText('60.0%')
+    await expect(levelProgress).not.toContainText('Single-floor lift installation')
+    await expect(levelProgress).not.toContainText('Project-wide activity')
+    await expect(levelProgress).not.toContainText('Conveying')
     const trend = page.getByRole('img', { name: 'Materials weekly submission trend', exact: true })
     await expect(trend).toContainText('2026-09-08')
     await expect(trend).toContainText('2026-09-22')
@@ -242,6 +245,8 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
       expect(orientations).toContain(false)
       expect(pdf.text).toContain('Column 9')
       expect(pdf.text).toContain('R34-C9')
+      expect(pdf.text).not.toContain('Single-floor lift installation')
+      expect(pdf.text).not.toContain('Project-wide activity')
     }
     await page.emulateMedia({ media: 'screen' })
     await page.setViewportSize({ width: 390, height: 844 })
