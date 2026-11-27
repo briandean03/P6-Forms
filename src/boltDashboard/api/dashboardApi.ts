@@ -59,6 +59,7 @@ export interface StructurePlan {
 }
 
 export interface ApprovedStructure {
+  is_approved?: boolean;
   id: number;
   structure_id: string;
   report_id: string;

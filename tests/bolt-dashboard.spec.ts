@@ -6,7 +6,7 @@ const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-0000000000
 const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=online_weekly_dashboard`
 const structures = [56, 55].map(week => ({
   id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
-  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
+  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037', 'WGT-007', 'WGT-021', 'WGT-032', 'WGT-020', 'WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
@@ -90,6 +90,21 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
           category_field: 'kpi_key', series: [{ name: 'Actual', value_field: 'actual' }],
           data: ['Concrete', 'Drainage', 'Plumbing'].map(kpi => ({ kpi_key: kpi, kpi_label: kpi, actual: 10 })),
         } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-007', widget_type: 'narrative_summary', widget_title: 'Weekly narrative', content: {
+          sections: [{ title: 'Achievements', bullets: [{ activity: `Concrete pour week ${week}`, verified_achievement: 'Completed slab pour' }] }],
+        } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-021', widget_type: 'exception_table', widget_title: 'Key risks', content: {
+          columns: [{ key: 'activity_name' }, { key: 'exception_type' }, { key: 'exception_severity' }],
+          rows: [{ activity_id: 'A1', activity_name: 'Cladding procurement', exception_type: 'Late delivery', exception_severity: 'high' }],
+        } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-032', widget_type: 'grouped_bar_chart', widget_title: 'Manpower comparison', content: {
+          data: [{ resource_name: 'Steel fixers', planned_manpower: 25, actual_manpower: 20 }],
+        } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-020', widget_type: 'data_table', widget_title: 'Trade progress by level', content: {
+          columns: [{ key: 'activity_name', label: 'Activity' }, { key: 'level:L1', label: 'Level 1', data_type: 'percentage', value_source: 'progress_by_level', level_code: 'L1' }],
+          rows: [{ row_id: 'a', activity_name: 'Install blockwork', trade_label: 'Blockwork', progress_by_level: { L1: { planned_percent: 60, actual_percent: 45 } } }],
+        } } as typeof widgets[number])
+        for (const id of ['WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047']) widgets.push({ widget_id: id, widget_type: 'kpi_group', widget_title: `Hidden ${id}`, content: {} } as typeof widgets[number])
         for (const id of ['WGT-011', 'WGT-012', 'WGT-036', 'WGT-037']) widgets.push({ widget_id: id, widget_type: 'kpi_group', widget_title: `Hidden ${id}`, content: {} } as typeof widgets[number])
         widgets.push({ widget_id: 'WGT-026', widget_type: 'line_chart', widget_title: 'Engineering weekly trend', content: {
           category_field: 'period_end', series: [{ name: 'Materials', value_field: 'materials' }],
@@ -121,6 +136,14 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     }
     await expect(page.getByRole('heading', { name: 'Construction Intelligence Dashboard' })).toBeVisible()
     await expect(page.getByText('Overall actual progress', { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Weekly narrative' })).toContainText(`Concrete pour week 56`)
+    await expect(page.getByRole('region', { name: 'Key risks' })).toContainText('Cladding procurement')
+    await expect(page.getByRole('img', { name: 'Steel fixers: planned 25.000, actual 20.000' })).toBeVisible()
+    for (const id of ['WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047']) await expect(page.getByRole('region', { name: `Hidden ${id}` })).toHaveCount(0)
+    const levelProgress = page.getByRole('region', { name: 'Trade progress by level' })
+    await expect(levelProgress).toContainText('45.0%')
+    await levelProgress.getByRole('button', { name: 'Planned %', exact: true }).click()
+    await expect(levelProgress).toContainText('60.0%')
     const trend = page.getByRole('img', { name: 'Materials weekly submission trend', exact: true })
     await expect(trend).toContainText('2026-09-08')
     await expect(trend).toContainText('2026-09-22')

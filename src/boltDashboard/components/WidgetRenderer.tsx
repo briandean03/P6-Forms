@@ -1,5 +1,8 @@
+import { MajorExceptionsPanel } from "./MajorExceptionsPanel";
+import { EngineeringSubmissionsSummary } from "./EngineeringSubmissionsSummary";
 import { HierarchicalTable } from './HierarchicalTable';
 import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { WidgetAst, WidgetRow } from "@/boltDashboard/api/dashboardApi";
 import { ThemeTokens, radius } from "@/boltDashboard/theme/designTheme";
 import { DataTable, StatusBadge, TableColumn, formatCellValue, WidgetCard } from "@/boltDashboard/components/widgetPrimitives";
@@ -8,15 +11,16 @@ import {
   ChartDatum,
   DonutChart,
   TransmittalDonutChart,
+  ResourceComparisonBarChart,
   GroupedBarChart,
   LineChart,
   StackedBarChart,
 } from "@/boltDashboard/components/charts";
 import { UnsupportedWidgetNotice } from "@/boltDashboard/components/UnsupportedWidgetNotice";
-import { EngineeringSubmissionsSummary } from "@/boltDashboard/components/EngineeringSubmissionsSummary";
+import { NarrativeSummary } from "@/boltDashboard/components/NarrativeSummary";
+import { ExceptionTable } from "@/boltDashboard/components/ExceptionTable";
 import { EngineeringSubmissionsTrend } from "@/boltDashboard/components/EngineeringSubmissionsTrend";
 import { PositionWidget, SubmissionsKpiPanel } from "@/boltDashboard/components/ProgressPositionPanels";
-import { MajorExceptionsPanel } from "@/boltDashboard/components/MajorExceptionsPanel";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Rec = Record<string, any>;
@@ -64,12 +68,12 @@ function roundNumbersDeep(value: unknown): unknown {
   return value;
 }
 
-function KpiGrid({ theme, kpis, widgetId }: { theme: ThemeTokens; kpis: Rec[]; widgetId?: string }) {
+function KpiGrid({ theme, kpis, widgetId, twoColumn }: { theme: ThemeTokens; kpis: Rec[]; widgetId?: string; twoColumn?: boolean }) {
   if (!Array.isArray(kpis) || !kpis.length) return null;
   const isWgt051 = widgetId === "WGT-051";
   return (
     <div
-      className={`grid grid-cols-1 gap-3${isWgt051 ? " wgt-051-kpi-grid" : " sm:grid-cols-2 xl:grid-cols-4"}`}
+      className={`grid gap-3${isWgt051 ? " wgt-051-kpi-grid" : widgetId === "WGT-016" ? " grid-cols-4" : widgetId === "WGT-031" ? " grid-cols-2 md:grid-cols-4" : twoColumn ? " sm:grid-cols-2" : " sm:grid-cols-2 xl:grid-cols-4"}`}
       style={isWgt051 ? ({ "--kpi-count": kpis.length } as React.CSSProperties) : undefined}
     >
       {kpis.map((k, idx) => {
@@ -121,7 +125,7 @@ function KpiGrid({ theme, kpis, widgetId }: { theme: ThemeTokens; kpis: Rec[]; w
             >
               {String(k.display_value ?? display?.value ?? formatCellValue(k.value, k.data_type))}
               {k.unit && !k.display_value && !display?.value && k.unit !== "%" ? (
-                <span className="text-[12px] font-semibold ml-0.5" style={{ color: theme.colors.muted_text }}>
+                <span className="inline-block whitespace-nowrap text-[12px] font-semibold ml-0.5" style={{ color: theme.colors.muted_text }}>
                   {k.unit}
                 </span>
               ) : null}
@@ -254,6 +258,19 @@ function Observations({ theme, notes }: { theme: ThemeTokens; notes: string[] })
   );
 }
 
+// WGT-022/023/024 ship three different AST shapes for the same two-ring
+// transmittal donut; this helper pulls the planned-to-date total out of
+// whichever variant is present.
+function plannedCountOf(c: Rec): number | null {
+  const p = c.planned_inner_ring as Rec | undefined;
+  if (p && typeof p.planned_count === "number") return p.planned_count as number;
+  const progress = (c.submission_progress ?? {}) as Rec;
+  if (typeof progress.planned_submissions_to_datadate === "number") {
+    return progress.planned_submissions_to_datadate as number;
+  }
+  return null;
+}
+
 function CategoryLabel(field: string, categoryLabelField?: string) {
   return categoryLabelField ?? (field === "week_num" ? "week_label" : field);
 }
@@ -269,6 +286,7 @@ export function WidgetRenderer({
   dataDate,
   kpiSelection,
   onKpiSelectionChange,
+  allWidgets,
 }: {
   theme: ThemeTokens;
   widget: WidgetRow;
@@ -276,9 +294,12 @@ export function WidgetRenderer({
   dataDate?: string;
   kpiSelection?: string[] | null;
   onKpiSelectionChange?: (kpis: string[]) => void;
+  allWidgets?: WidgetRow[];
 }) {
   const ast = widget.widget_ast;
   const wholeNumbers = widget.widget_id === "WGT-034";
+  // WGT-020: planned/actual progress toggle for the level columns.
+  const [wgt20Mode, setWgt20Mode] = useState<"planned" | "actual">("actual");
   const c = (wholeNumbers ? roundNumbersDeep(contentOf(ast)) : contentOf(ast)) as Rec;
   const type = widget.widget_type;
   const isKpiWidget =
@@ -286,14 +307,24 @@ export function WidgetRenderer({
   // WGT-038 full width; WGT-039 and WGT-040 share the row beneath it, same size.
   const span =
     widget.widget_id === "WGT-051" ||
-    widget.widget_id === "WGT-013" ||
+    widget.widget_id === "WGT-016" ||
+    widget.widget_id === "WGT-021" ||
     widget.widget_id === "WGT-026" ||
-    widget.widget_id === "WGT-035" ||
-    widget.widget_id === "WGT-038"
+    widget.widget_id === "WGT-038" ||
+    widget.widget_id === "WGT-005"
       ? 12
-      : widget.widget_id === "WGT-039" || widget.widget_id === "WGT-040"
+      // WGT-032 sits beside WGT-033 on one row; WGT-013 and WGT-014 also pair up;
+      // WGT-045/046 full width.
+      : widget.widget_id === "WGT-013" ||
+          widget.widget_id === "WGT-014" ||
+          widget.widget_id === "WGT-032" ||
+          widget.widget_id === "WGT-033"
         ? 6
-        : (placement?.column_span ?? 6);
+        : widget.widget_id === "WGT-045" || widget.widget_id === "WGT-046"
+          ? 12
+          : widget.widget_id === "WGT-039" || widget.widget_id === "WGT-040"
+            ? 6
+            : (placement?.column_span ?? 6);
 
   const kpiNames = isKpiWidget
     ? Array.from(new Set((Array.isArray(c.data) ? (c.data as Rec[]) : []).map(kpiNameOf).filter(Boolean)))
@@ -315,7 +346,7 @@ export function WidgetRenderer({
             ? "md:col-span-4 min-w-0"
             : "md:col-span-3 min-w-0";
 
-  if (widget.widget_id === "WGT-021") {
+  if (widget.widget_id === "WGT-021" && ["kpi_group", "kpi_grid", "status_summary"].includes(type)) {
     return (
       <WidgetCard
         theme={theme}
@@ -330,7 +361,7 @@ export function WidgetRenderer({
     );
   }
 
-  if (widget.widget_id === "WGT-002" || widget.widget_id === "WGT-003") {
+  if (widget.widget_id === "WGT-003") {
     return (
       <PositionWidget
         theme={theme}
@@ -341,6 +372,111 @@ export function WidgetRenderer({
         dataStatus={widget.data_status}
         className={gridClass}
       />
+    );
+  }
+
+  if (widget.widget_id === "WGT-015") {
+    // Status-per-transmittal-type table, sourced from WGT-025's hierarchy rows
+    // (the only place all four types carry status counts in this update).
+    const wgt25 = (allWidgets ?? []).find((w) => w.widget_id === "WGT-025");
+    const w25Rows = Array.isArray(wgt25?.widget_ast.content?.rows)
+      ? (wgt25.widget_ast.content.rows as Rec[])
+      : [];
+    const typeLabels: Record<string, string> = {
+      PRQ: "Prequalification",
+      DWG: "Shop Drawings",
+      MAT: "Material Submittals",
+      MST: "Method Statements",
+    };
+    const typeOrder = ["PRQ", "DWG", "MAT", "MST"];
+    const typeRows = w25Rows.filter((r) => r.row_type === "transmittal_type");
+    const tableRows = typeOrder
+      .map((code) => {
+        const r = typeRows.find((x) => String(x.row_id) === `transmittal_type:${code}`);
+        if (!r) return null;
+        const total = typeof r.total_transmittals === "number" ? (r.total_transmittals as number) : 0;
+        const submitted = (["A", "B", "C", "D", "UR"] as const).reduce(
+          (acc, s) => acc + (typeof r[s] === "number" ? (r[s] as number) : 0),
+          0,
+        );
+        return { code, label: typeLabels[code] ?? code, total, submitted, balance: Math.max(0, total - submitted) };
+      })
+      .filter((r): r is { code: string; label: string; total: number; submitted: number; balance: number } => r !== null);
+    return (
+      <WidgetCard
+        theme={theme}
+        title="Engineering Submissions Status by Transmittal Type"
+        widgetId={widget.widget_id}
+        dataStatus={widget.data_status}
+        className="md:col-span-12 min-w-0"
+      >
+        {tableRows.length ? (
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr style={{ background: theme.colors.table_header_bg ?? "#F4F3F8" }}>
+                {["Transmittal Type", "Total Transmittals", "Submitted (A+B+C+D+UR)", "Balance to be Submitted"].map((h, hi) => (
+                  <th
+                    key={h}
+                    className={`px-3 py-2.5 text-[12px] font-semibold tracking-wide ${hi === 0 ? "text-left" : "text-right"} first:rounded-l-md last:rounded-r-md`}
+                    style={{ color: theme.colors.text_secondary ?? "#6B6D7B" }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((r) => (
+                <tr key={r.code} style={{ borderBottom: `1px solid ${theme.colors.subtle_border ?? "#ECEAF6"}` }}>
+                  <td className="px-3 py-2.5 text-[13px] font-medium" style={{ color: theme.colors.text_primary }}>
+                    {r.label}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: theme.colors.text_primary }}>
+                    {r.total.toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: theme.colors.success ?? "#359D78" }}>
+                    {r.submitted.toLocaleString()}
+                  </td>
+                  <td
+                    className="px-3 py-2.5 text-right tabular-nums font-semibold"
+                    style={{ color: r.balance > 0 ? theme.colors.warning ?? "#D99A39" : theme.colors.text_secondary }}
+                  >
+                    {r.balance.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: `2px solid ${theme.colors.border_strong ?? "#CBC5F2"}` }}>
+                <td className="px-3 py-2.5 text-[12px] font-semibold" style={{ color: theme.colors.text_primary }}>
+                  Total
+                </td>
+                <td className="px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums" style={{ color: theme.colors.text_primary }}>
+                  {tableRows.reduce((a, r) => a + r.total, 0).toLocaleString()}
+                </td>
+                <td className="px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums" style={{ color: theme.colors.success ?? "#359D78" }}>
+                  {tableRows.reduce((a, r) => a + r.submitted, 0).toLocaleString()}
+                </td>
+                <td className="px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums" style={{ color: theme.colors.warning ?? "#D99A39" }}>
+                  {tableRows.reduce((a, r) => a + r.balance, 0).toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        ) : (
+          <p className="py-6 text-center text-[13px]" style={{ color: theme.colors.muted_text }}>
+            Transmittal-type status data is not available for this reporting update.
+          </p>
+        )}
+        {Array.isArray(c.notes) && (c.notes as string[]).length > 0 && (
+          <ul className="mt-4 flex flex-col gap-2">
+            {(c.notes as string[]).map((n, i) => (
+              <li key={i} className="text-[12px] leading-5 flex gap-2" style={{ color: theme.colors.text_secondary }}>
+                <span className="shrink-0" style={{ color: theme.colors.planned }}>•</span>
+                <span>{n}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </WidgetCard>
     );
   }
 
@@ -363,22 +499,170 @@ export function WidgetRenderer({
     );
   }
 
-  if (widget.widget_id === "WGT-007") {
+  if ((widget.widget_id === "WGT-007" && type !== "narrative_summary") ||
+      (widget.widget_id === "WGT-005" && type === "status_summary" && Array.isArray(c.kpis))) {
+    return <WidgetCard theme={theme} title={widget.widget_title} widgetId={widget.widget_id} dataStatus={widget.data_status} className={gridClass}>
+      {widget.widget_id === "WGT-007" ? <MajorExceptionsPanel theme={theme} ast={ast} /> : <EngineeringSubmissionsSummary theme={theme} ast={ast} />}
+    </WidgetCard>;
+  }
+
+  if (widget.widget_type === "narrative_summary") {
     return (
       <WidgetCard
         theme={theme}
         title={widget.widget_title}
         widgetId={widget.widget_id}
         dataStatus={widget.data_status}
-        eyebrow={`${widget.widget_id} · alert panel`}
+        eyebrow={`${widget.widget_id} · narrative summary`}
         className="md:col-span-12 min-w-0"
       >
-        <MajorExceptionsPanel theme={theme} ast={ast} />
+        <NarrativeSummary theme={theme} ast={ast} />
       </WidgetCard>
     );
   }
 
   let body: JSX.Element | null = null;
+
+  // WGT-005 in early updates is typed composite (donut + discipline table).
+  if (widget.widget_id === "WGT-005" && type === "composite") {
+    const donutComp = (Array.isArray(c.components) ? (c.components as Rec[]) : []).find(
+      (comp) => comp.component_type === "donut_chart",
+    );
+    const donutContent = (donutComp?.content ?? donutComp ?? {}) as Rec;
+    const submissionAnnotation = (donutComp?.submission_annotation ?? {}) as Rec;
+    const annotationCards: [string, string][] = [
+      ["planned_submissions_to_datadate", "Planned submissions to data date"],
+      ["submitted_to_datadate", "Submitted to data date"],
+      ["overdue_not_submitted", "Overdue — not submitted"],
+      ["under_review_over_14_days", "Under review over 14 days"],
+      ["status_c_not_resubmitted_over_14_days", "Status C not resubmitted over 14 days"],
+    ];
+    body = (
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+        <div className="lg:col-span-3">
+          <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
+            {String(donutComp?.title ?? "")}
+          </p>
+          <DonutChart
+            height={340}
+            theme={theme}
+            data={(donutContent.data ?? []) as ChartDatum[]}
+            categoryField={String(donutContent.category_field ?? "status_code")}
+            valueField={String(donutContent.value_field ?? "count")}
+            centerMetric={
+              typeof donutContent.center_total === "number"
+                ? { label: String(donutContent.center_label ?? "Total"), value: donutContent.center_total as number }
+                : ((donutContent.center_metric as { label: string; value: number } | undefined) ?? null)
+            }
+          />
+        </div>
+        <div className="lg:col-span-2 grid grid-cols-1 gap-2.5">
+          {annotationCards.map(([key, label]) => (
+            <div
+              key={key}
+              className="flex items-baseline justify-between gap-3 px-3.5 py-2.5"
+              style={{ background: theme.colors.surface_secondary ?? "#F4F3F8", borderRadius: radius(theme, "kpi_card") }}
+            >
+              <span className="text-[11px] font-medium leading-4" style={{ color: theme.colors.text_secondary }}>
+                {label}
+              </span>
+              <span className="shrink-0 text-[15px] font-semibold tabular-nums" style={{ color: theme.colors.text_primary }}>
+                {typeof submissionAnnotation[key] === "number" ? (submissionAnnotation[key] as number).toLocaleString() : "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+    return (
+      <WidgetCard
+        theme={theme}
+        title={widget.widget_title}
+        widgetId={widget.widget_id}
+        dataStatus={widget.data_status}
+        className="md:col-span-12 min-w-0"
+      >
+        {body}
+      </WidgetCard>
+    );
+  }
+
+  // status_list (WGT-036/047 in early updates): flagged items with severity
+  // badges plus a summary.
+  if (type === "status_list") {
+    const items = Array.isArray(c.items) ? (c.items as Rec[]) : [];
+    const summaryBySeverity = Array.isArray(c.summary?.by_severity) ? (c.summary.by_severity as Rec[]) : [];
+    const severityColor = (sev: string) =>
+      sev === "critical"
+        ? theme.colors.critical ?? "#DB694F"
+        : sev === "warning"
+          ? theme.colors.warning ?? "#D99A39"
+          : theme.colors.text_secondary;
+    body = (
+      <div className="flex flex-col gap-3">
+        {typeof c.subtitle === "string" && (
+          <p className="text-[12px] leading-5" style={{ color: theme.colors.text_secondary }}>
+            {c.subtitle}
+          </p>
+        )}
+        {summaryBySeverity.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {summaryBySeverity.map((s) => (
+              <span
+                key={String(s.severity)}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold"
+                style={{ background: theme.colors.surface_secondary ?? "#F4F3F8", color: severityColor(String(s.severity)) }}
+              >
+                {String(s.severity_label ?? s.severity)}: {Number(s.count ?? 0)}
+              </span>
+            ))}
+          </div>
+        )}
+        {items.map((item, i) => (
+          <div
+            key={String(item.item_id ?? i)}
+            className="p-4"
+            style={{ background: theme.colors.surface_secondary ?? "#F4F3F8", borderRadius: radius(theme, "radius_md"), borderLeft: `3px solid ${severityColor(String(item.severity))}` }}
+          >
+            <p className="text-[12px] font-semibold" style={{ color: theme.colors.text_primary }}>
+              {String(item.label ?? "")}
+              {item.affected_area ? (
+                <span className="ml-2 font-medium" style={{ color: theme.colors.muted_text }}>
+                  {String(item.affected_area)}
+                </span>
+              ) : null}
+            </p>
+            {item.detail && (
+              <p className="mt-1 text-[12px] leading-5" style={{ color: theme.colors.text_secondary }}>
+                {String(item.detail)}
+              </p>
+            )}
+          </div>
+        ))}
+        {typeof c.summary?.summary_label === "string" && (
+          <p className="text-[11px] leading-4" style={{ color: theme.colors.muted_text }}>
+            {String(c.summary.summary_label)}
+          </p>
+        )}
+        {typeof c.reporting_context === "string" && (
+          <p className="text-[11px] leading-4" style={{ color: theme.colors.muted_text }}>
+            {String(c.reporting_context)}
+          </p>
+        )}
+      </div>
+    );
+    return (
+      <WidgetCard
+        theme={theme}
+        title={widget.widget_title}
+        widgetId={widget.widget_id}
+        dataStatus={widget.data_status}
+        className="md:col-span-6 min-w-0"
+      >
+        {body}
+      </WidgetCard>
+    );
+  }
 
   // WGT-038 hosts the shared KPI pills that drive WGT-039/040 too.
   const kpiPills = kpiNames ? (
@@ -426,13 +710,629 @@ export function WidgetRenderer({
 
   switch (type) {
     case "metadata_panel":
-      body = <MetadataPanel theme={theme} c={c} />;
-      break;
-
+    // WGT-001 is typed kpi_group but carries identity fields; render the
+    // identity strip either way.
+    // "composite" (WGT-005 in older updates) carries components[] and is
+    // handled by the WGT-005 branch below.
+    case "composite":
     case "kpi_group": {
-      // ASTs ship two shapes: kpis[] (WGT-002, WGT-045, WGT-048, WGT-051) and
-      // items[] (WGT-003, WGT-016, WGT-021, WGT-031). Render either.
-      const kpis = Array.isArray(c.kpis) ? (c.kpis as Rec[]) : Array.isArray(c.items) ? (c.items as Rec[]) : [];
+      if (widget.widget_id === "WGT-001" || type === "metadata_panel") {
+        body = <MetadataPanel theme={theme} c={c} />;
+        break;
+      }
+      if (widget.widget_id === "WGT-022") {
+        // Rendered through the shared two-ring transmittal donut (PAGE-004 row).
+        body = (
+          <TransmittalDonutChart
+            theme={theme}
+            data={(Array.isArray(c.status_ring?.data) ? c.status_ring.data : (Array.isArray(c.data) ? c.data : [])) as ChartDatum[]}
+            categoryField="status"
+            valueField="count"
+            centerMetric={
+              typeof c.total_transmittals === "number"
+                ? { label: String(c.center_label ?? "Total Transmittals"), value: c.total_transmittals as number }
+                : typeof c.center_total === "number"
+                  ? { label: String(c.center_label ?? "Total Transmittals"), value: c.center_total as number }
+                  : null
+            }
+            plannedCount={plannedCountOf(c)}
+            height={340}
+          />
+        );
+        break;
+      }
+      // WGT-002 ships two shapes over successive updates: kpis[] keyed by
+      // `key` and components[] keyed by component_id. Render both. Cards are
+      // grouped into planned-vs-actual pairs on violet/green tinted panels;
+      // the standalone variance card is folded into the cumulative pair.
+      if (widget.widget_id === "WGT-002") {
+        const comps = Array.isArray(c.components) ? (c.components as Rec[]) : [];
+        const notes = Array.isArray(c.observations) ? (c.observations as string[]) : [];
+        const source: Rec[] = comps.length
+          ? comps
+          : Array.isArray(c.kpis)
+            ? (c.kpis as Rec[])
+            : [];
+        const idOf = (k: Rec) => String(k.component_id ?? k.key ?? "");
+        const findKpi = (id: string) => source.find((k) => idOf(k) === id);
+        const planned = findKpi("cumulative_planned_progress");
+        const actual = findKpi("cumulative_actual_progress");
+        const variance = findKpi("planned_vs_actual_variance");
+        const prevPlanned = findKpi("previous_week_cumulative_planned_progress");
+        const prevActual = findKpi("previous_week_cumulative_actual_progress");
+        const curPlanned = findKpi("current_week_planned_increment");
+        const curActual = findKpi("current_week_actual_increment");
+        // Elapsed vs remaining project duration (older updates ship a
+        // project_duration card with a duration_bar definition).
+        const durationBar = (source.find((k) => k.duration_bar && Array.isArray(k.duration_bar.segments))?.duration_bar ?? null) as Rec | null;
+        const seg = (key: string) => (durationBar ? (durationBar.segments as Rec[]).find((s) => s.key === key) : undefined);
+
+        const plannedColor = theme.colors.planned ?? "#5741DF";
+        const actualColor = theme.colors.success ?? "#359D78";
+        const wgt003Bg = theme.colors.surface_secondary ?? "#E7E3FA";
+        const actualBg = theme.colors.positive_bg ?? "#E6F5EF";
+
+        const pairPanel = (
+          title: string,
+          a: Rec | undefined,
+          b: Rec | undefined,
+          bg: string,
+        ) => {
+          if (!a && !b) return null;
+          const cell = (k: Rec | undefined) =>
+            k ? (
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide leading-4 break-words" style={{ color: theme.colors.text_secondary }}>
+                  {String(k.label ?? "")}
+                </span>
+                <span
+                  className="text-[26px] leading-8 font-semibold tabular-nums break-words"
+                  style={{ color: theme.colors.text_primary, letterSpacing: "-0.02em", overflowWrap: "anywhere" }}
+                >
+                  {String(k.display_value ?? formatCellValue(k.value, k.data_type))}
+                </span>
+                {k.status && (
+                  <span>
+                    <StatusBadge theme={theme} status={String(k.status)} label={k.status_label ? String(k.status_label) : undefined} />
+                  </span>
+                )}
+              </div>
+            ) : null;
+          const varianceLine =
+            variance && title.startsWith("Cumulative") && typeof variance.value === "number" ? (
+              <p
+                className="text-[12px] font-semibold tabular-nums"
+                style={{ color: (variance.value as number) >= 0 ? actualColor : theme.colors.critical ?? "#DB694F" }}
+              >
+                {String(
+                  variance.display_value ??
+                    `${Number(variance.value).toFixed(2)} ${String(variance.variance_unit ?? "pp")}`,
+                )}{" "}
+                <span className="font-medium" style={{ color: theme.colors.text_secondary }}>
+                  vs plan
+                </span>
+              </p>
+            ) : !variance && title.startsWith("Cumulative") && actual && typeof actual.variance === "number" ? (
+              <p
+                className="text-[12px] font-semibold tabular-nums"
+                style={{ color: (actual.variance as number) >= 0 ? actualColor : theme.colors.critical ?? "#DB694F" }}
+              >
+                {String(
+                  actual.variance_display_value ??
+                    `${(actual.variance as number).toFixed(2)} ${String(actual.variance_unit ?? "pp")}`,
+                )}{" "}
+                <span className="font-medium" style={{ color: theme.colors.text_secondary }}>
+                  vs plan
+                </span>
+              </p>
+            ) : null;
+          return (
+            <div
+              className="flex min-w-0 flex-col gap-2.5 p-4"
+              style={{ background: bg, borderRadius: radius(theme, "kpi_card"), border: `1px solid ${theme.colors.subtle_border ?? "#D9D6E8"}` }}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: theme.colors.text_secondary }}>
+                {title}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                {cell(a)}
+                {cell(b)}
+              </div>
+              {varianceLine}
+            </div>
+          );
+        };
+
+        const bars: { label: string; value: number; display: string; color: string }[] = [];
+        if (typeof planned?.value === "number") {
+          bars.push({ label: "Cumulative Planned", value: planned.value as number, display: String(planned.display_value ?? `${planned.value}%`), color: plannedColor });
+        }
+        if (typeof actual?.value === "number") {
+          bars.push({ label: "Cumulative Actual", value: actual.value as number, display: String(actual.display_value ?? `${actual.value}%`), color: actualColor });
+        }
+
+        body = (
+          <div>
+            <div className="grid grid-cols-1 gap-3">
+              {pairPanel("Cumulative Progress", planned, actual, wgt003Bg)}
+              {pairPanel("Previous Week Progress", prevPlanned, prevActual, wgt003Bg)}
+              {pairPanel("Current Week Increment", curPlanned, curActual, actualBg)}
+            </div>
+            {bars.length > 0 && (
+              <div className="mt-4 flex flex-col gap-2.5">
+                {bars.map((bar) => (
+                  <div key={bar.label} className="flex items-center gap-3">
+                    <span className="w-36 shrink-0 text-[11px] font-medium" style={{ color: theme.colors.text_secondary }}>
+                      {bar.label}
+                    </span>
+                    <div className="h-5 flex-1 overflow-hidden" style={{ background: theme.colors.empty_data_bg ?? "#F4F3F8", borderRadius: radius(theme, "radius_sm") }}>
+                      <div
+                        className="h-full transition-[width] duration-700 ease-out"
+                        style={{ width: `${Math.min(100, bar.value)}%`, background: bar.color, borderRadius: radius(theme, "radius_sm") }}
+                      />
+                    </div>
+                    <span className="w-16 shrink-0 text-right text-[12px] font-semibold tabular-nums" style={{ color: theme.colors.text_primary }}>
+                      {bar.display}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Observations theme={theme} notes={notes} />
+            {durationBar && (
+              <div className="mt-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  {durationBar.segments && (durationBar.segments as Rec[]).map((s) => (
+                    <span key={String(s.key)} className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: theme.colors.text_secondary }}>
+                      <span
+                        className="inline-block h-2 w-2 shrink-0"
+                        style={{ background: s.semantic_color === "primary" ? theme.colors.planned ?? "#5741DF" : theme.colors.empty_data_bg ?? "#D9D6E8", borderRadius: 2 }}
+                      />
+                      {String(s.label ?? s.key)}: {Number(s.days ?? 0).toLocaleString()} days ({Number(s.percent ?? 0).toFixed(1)}%)
+                    </span>
+                  ))}
+                </div>
+                <div
+                  className="mt-1.5 flex h-2.5 overflow-hidden"
+                  style={{ background: theme.colors.empty_data_bg ?? "#D9D6E8", borderRadius: radius(theme, "radius_sm") }}
+                  role="img"
+                  aria-label="Elapsed vs remaining project duration"
+                >
+                  {seg("elapsed") && (
+                    <div
+                      className="h-full transition-[width] duration-700 ease-out"
+                      style={{ width: `${Number(seg("elapsed")?.percent ?? 0)}%`, background: theme.colors.planned ?? "#5741DF" }}
+                    />
+                  )}
+                  {seg("remaining") && (
+                    <div
+                      className="h-full transition-[width] duration-700 ease-out"
+                      style={{ width: `${Number(seg("remaining")?.percent ?? 0)}%`, background: theme.colors.subtle_border ?? "#D9D6E8" }}
+                    />
+                  )}
+                </div>
+                <div className="mt-1 flex items-baseline justify-between text-[10px] font-medium tabular-nums" style={{ color: theme.colors.muted_text }}>
+                  <span>{String(durationBar.start_marker_label ?? "")}</span>
+                  <span>Data date: {String(durationBar.data_date_marker_label ?? "")}</span>
+                  <span>{String(durationBar.end_marker_label ?? "")}</span>
+                </div>
+              </div>
+            )}
+            {typeof c.summary === "string" && (
+              <p className="mt-3 text-[12px] leading-5" style={{ color: theme.colors.text_secondary }}>
+                {c.summary}
+              </p>
+            )}
+          </div>
+        );
+        break;
+      }
+      // WGT-005 has shipped two shapes: components[] (donut + discipline
+      // table) and a status_summary style (summary_metrics + status_distribution).
+      if (widget.widget_id === "WGT-005") {
+        const comps = Array.isArray(c.components) ? (c.components as Rec[]) : [];
+        const donutComp = comps.find((comp) => comp.component_type === "donut_chart");
+        const tableComp = comps.find((comp) => comp.component_type === "data_table" && Array.isArray(comp.rows) && Array.isArray(comp.columns));
+        const notSubmitted = donutComp?.not_submitted as Rec | undefined;
+        const distribution = !donutComp ? (c.status_distribution as Rec | undefined) : undefined;
+        const summaryKpis = !donutComp && !tableComp && Array.isArray(c.summary_metrics) ? (c.summary_metrics as Rec[]) : [];
+        body = (
+          <div className="flex flex-col gap-5">
+            {comps.length ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                {donutComp && Array.isArray(donutComp.data) && (
+                  <div>
+                    <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
+                      {String(donutComp.title ?? "")}
+                    </p>
+                    <DonutChart
+                      theme={theme}
+                      data={donutComp.data as ChartDatum[]}
+                      categoryField={String(donutComp.category_field ?? "status_code")}
+                      valueField={String(donutComp.value_field ?? "count")}
+                      centerMetric={
+                        typeof donutComp.center_total === "number"
+                          ? { label: String(donutComp.center_label ?? "Total"), value: donutComp.center_total as number }
+                          : null
+                      }
+                    />
+                    {notSubmitted && typeof notSubmitted.count === "number" && (
+                      <p className="mt-3 text-[12px] font-medium flex items-center gap-1.5" style={{ color: theme.colors.warning ?? "#D99A39" }}>
+                        <AlertTriangle size={13} className="shrink-0" />
+                        {String(notSubmitted.label ?? "Not submitted")}: {(notSubmitted.count as number).toLocaleString()}
+                        {typeof notSubmitted.unit === "string" ? ` ${notSubmitted.unit}` : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {tableComp && (
+                  <div>
+                    <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
+                      {String(tableComp.title ?? "")}
+                    </p>
+                    <DataTable
+                      theme={theme}
+                      columns={columnsOf(tableComp)}
+                      rows={(tableComp.rows as ChartDatum[]).filter((r) => r.row_id !== tableComp.totals_row?.row_id)}
+                      totals={(tableComp.totals_row as Record<string, unknown>) ?? null}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                <div className={distribution ? "lg:col-span-3" : "lg:col-span-5"}>
+                  <KpiGrid theme={theme} kpis={summaryKpis} widgetId={widget.widget_id} twoColumn />
+                </div>
+                {distribution && Array.isArray(distribution.data) && (
+                  <div className="lg:col-span-2">
+                    <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
+                      {String(distribution.title ?? "Status distribution")}
+                    </p>
+                    <DonutChart
+                      height={360}
+                      theme={theme}
+                      data={distribution.data as ChartDatum[]}
+                      categoryField={String(distribution.category_field ?? "status_code")}
+                      valueField="count"
+                      centerMetric={
+                        typeof distribution.status_count_total === "number"
+                          ? { label: "Submitted documents", value: distribution.status_count_total as number }
+                          : null
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {typeof c.chart_summary_text === "string" && (
+              <p className="text-[11px] leading-5" style={{ color: theme.colors.muted_text }}>
+                {c.chart_summary_text}
+              </p>
+            )}
+          </div>
+        );
+        break;
+      }
+      // WGT-008 in older updates is a kpi_group of cards[] rather than a line
+      // chart; render the cards through the shared KPI grid.
+      if (widget.widget_id === "WGT-008" && Array.isArray(c.cards)) {
+        // One full-width summary strip instead of separate cards: planned %,
+        // actual % and the variance in pp, all at 2 decimal places.
+        const findCard = (id: string) => (c.cards as Rec[]).find((card) => String(card.card_id ?? "") === id);
+        const plannedCard = findCard("cumulative_planned_progress");
+        const actualCard = findCard("cumulative_actual_progress");
+        const varianceCard = findCard("source_reported_variance");
+        const pct2 = (v: unknown) => (typeof v === "number" ? `${v.toFixed(2)}%` : "—");
+        const pp2 = (v: unknown) => (typeof v === "number" ? `${v >= 0 ? "+" : ""}${v.toFixed(2)} pp` : "—");
+        // The source leaves the variance card null; derive it as actual − planned.
+        const varianceValue =
+          typeof varianceCard?.value === "number"
+            ? (varianceCard.value as number)
+            : typeof plannedCard?.value === "number" && typeof actualCard?.value === "number"
+              ? (actualCard.value as number) - (plannedCard.value as number)
+              : null;
+        // Older updates deliver WGT-008 as summary cards with no weekly series.
+        // Reuse WGT-009's cumulative planned/actual rows from the same update,
+        // aggregated to month-end points so the scale reads in months.
+        const wgt9 = (allWidgets ?? []).find((w) => w.widget_id === "WGT-009");
+        const wgt9c = ((wgt9?.widget_ast.content ?? {}) as Rec);
+        const weeklyRows = Array.isArray(wgt9c.data) ? (wgt9c.data as Rec[]) : [];
+        const monthKey = (iso: string) => String(iso ?? "").slice(0, 7);
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        // The source rows hold weekly increments. Group them by month, then
+        // accumulate across months so each point is the true cumulative
+        // position at that month's end.
+        const weeksByMonth = new Map<string, Rec[]>();
+        for (const row of weeklyRows) {
+          const end = String(row.period_end ?? "");
+          if (!/^\d{4}-\d{2}/.test(end)) continue;
+          (weeksByMonth.get(monthKey(end)) ?? weeksByMonth.set(monthKey(end), []).get(monthKey(end))!).push(row);
+        }
+        const monthly = [...weeksByMonth.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, weeks]): Rec => {
+            const last = weeks[weeks.length - 1] ?? {};
+            return {
+              ...last,
+              month_label: `${monthNames[Number(key.slice(5, 7)) - 1]} ${key.slice(0, 4)}`,
+            };
+          });
+        let cumPlanned = 0;
+        let cumActual = 0;
+        for (const row of monthly) {
+          for (const week of weeksByMonth.get(String(row.period_end ?? "").slice(0, 7)) ?? []) {
+            cumPlanned += typeof week.planned_pp === "number" ? week.planned_pp : 0;
+            cumActual += typeof week.actual_pp === "number" ? week.actual_pp : 0;
+          }
+          row.planned_pp = cumPlanned;
+          row.actual_pp = cumActual;
+        }
+        const monthlySeries = (Array.isArray(wgt9c.series) ? seriesOf(wgt9c) : []).map((s) =>
+          s.value_field === "planned_pp"
+            ? { ...s, name: "Cumulative Planned Progress" }
+            : s.value_field === "actual_pp"
+              ? { ...s, name: "Cumulative Actual Progress" }
+              : s,
+        );
+        // Extend the curve to project completion: WGT-003's forecast
+        // completion KPI is the source of truth, with WGT-002's duration bar
+        // end marker as fallback. Planned continues to 100% (the baseline
+        // plan completes the project); actual stays empty past the data date.
+        const wgt3 = (allWidgets ?? []).find((w) => w.widget_id === "WGT-003");
+        const wgt3Items = Array.isArray(wgt3?.widget_ast.content?.items)
+          ? (wgt3.widget_ast.content.items as Rec[])
+          : [];
+        const forecastCompletion = wgt3Items.find((it) => it.key === "forecast_completion_date");
+        const wgt2 = (allWidgets ?? []).find((w) => w.widget_id === "WGT-002");
+        const wgt2Source = Array.isArray(wgt2?.widget_ast.content?.source)
+          ? (wgt2.widget_ast.content.source as Rec[])
+          : [];
+        const durationBar = wgt2Source.find((s) => s.duration_bar?.segments)?.duration_bar as Rec | undefined;
+        const projectEnd = String(
+          forecastCompletion?.value ?? durationBar?.end_marker_label ?? "",
+        ).slice(0, 10);
+        const last = monthly[monthly.length - 1] as Rec | undefined;
+        const lastEnd = String(last?.period_end ?? "");
+        if (/^\d{4}-\d{2}/.test(lastEnd) && /^\d{4}-\d{2}/.test(projectEnd) && projectEnd.slice(0, 7) > lastEnd.slice(0, 7)) {
+          const placeholders: Rec[] = [];
+          const cursor = new Date(`${lastEnd.slice(0, 7)}-01T00:00:00`);
+          for (let guard = 0; guard < 120; guard++) {
+            cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+            const key = cursor.toISOString().slice(0, 7);
+            const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+            placeholders.push({
+              period_end: monthEnd.toISOString().slice(0, 10),
+              month_label: `${monthNames[cursor.getUTCMonth()]} ${key.slice(0, 4)}`,
+              planned_pp: null,
+              actual_pp: null,
+            });
+            if (key >= projectEnd.slice(0, 7)) break;
+          }
+          const startPlanned = cumPlanned;
+          const target = Math.max(100, startPlanned);
+          placeholders.forEach((p, i) => {
+            p.planned_pp = startPlanned + (target - startPlanned) * ((i + 1) / placeholders.length);
+          });
+          monthly.push(...placeholders);
+        }
+        body = (
+          <div>
+            <div
+              className="grid grid-cols-3 items-baseline gap-4 px-5 py-4"
+              style={{ background: theme.colors.surface_secondary ?? "#F4F3F8", border: `1px solid ${theme.colors.subtle_border ?? "#D9D6E8"}`, borderRadius: radius(theme, "kpi_card") }}
+            >
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide leading-4" style={{ color: theme.colors.text_secondary }}>
+                  Planned
+                </span>
+                <span className="text-[24px] font-semibold tabular-nums leading-7" style={{ color: theme.colors.planned ?? "#5741DF" }}>
+                  {pct2(plannedCard?.value)}
+                </span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1 border-l pl-4" style={{ borderColor: theme.colors.subtle_border ?? "#D9D6E8" }}>
+                <span className="text-[10px] font-semibold uppercase tracking-wide leading-4" style={{ color: theme.colors.text_secondary }}>
+                  Actual
+                </span>
+                <span className="text-[24px] font-semibold tabular-nums leading-7" style={{ color: theme.colors.success ?? "#359D78" }}>
+                  {pct2(actualCard?.value)}
+                </span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1 border-l pl-4" style={{ borderColor: theme.colors.subtle_border ?? "#D9D6E8" }}>
+                <span className="text-[10px] font-semibold uppercase tracking-wide leading-4" style={{ color: theme.colors.text_secondary }}>
+                  Variance
+                </span>
+                <span
+                  className="text-[24px] font-semibold tabular-nums leading-7"
+                  style={{
+                    color:
+                      varianceValue != null
+                        ? varianceValue >= 0
+                          ? theme.colors.success ?? "#359D78"
+                          : theme.colors.critical ?? "#DB694F"
+                        : theme.colors.muted_text,
+                  }}
+                >
+                  {pp2(varianceValue)}
+                </span>
+              </div>
+            </div>
+            {monthly.length > 2 && monthlySeries.length > 0 ? (
+              <div className="mt-5">
+                <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
+                  Cumulative progress by month
+                </p>
+                <LineChart
+                  theme={theme}
+                  data={monthly as ChartDatum[]}
+                  series={monthlySeries}
+                  categoryField="period_end"
+                  categoryLabelField="month_label"
+                  showPointLabels
+                  showDots={false}
+                  pointLabelSize={10}
+                  defaultBefore={3}
+                  defaultAfter={1}
+                  dataDate={dataDate}
+                />
+              </div>
+            ) : null}
+            <Observations theme={theme} notes={Array.isArray(c.notes) ? (c.notes as string[]) : []} />
+          </div>
+        );
+        break;
+      }
+      // WGT-045/046 (Safety widgets): compact stat strips instead of full KPI
+      // cards — dense tiles with the YTD value prominent and the inception
+      // figure as a small sub-line, grouped under section headings.
+      if (widget.widget_id === "WGT-045" || widget.widget_id === "WGT-046") {
+        const statTile = (label: string, value: string, unit: string, sub: string | null, si: number) => (
+          <div
+            key={`${label}-${si}`}
+            className="flex min-w-0 flex-col gap-0.5 px-3 py-2.5"
+            style={{
+              background: theme.colors.surface_secondary ?? "#F4F3F8",
+              borderRadius: radius(theme, "radius_sm"),
+              borderLeft: `3px solid ${theme.colors.planned ?? "#5741DF"}`,
+            }}
+          >
+            <span className="truncate text-[10px] font-semibold uppercase tracking-wide leading-4" style={{ color: theme.colors.text_secondary }} title={label}>
+              {label}
+            </span>
+            <span className="text-[18px] font-semibold tabular-nums leading-6" style={{ color: theme.colors.text_primary }}>
+              {value}
+              {unit && unit !== "count" && (
+                <span className="whitespace-nowrap inline-block ml-1 text-[10px] font-medium" style={{ color: theme.colors.muted_text }}>
+                  {unit}
+                </span>
+              )}
+            </span>
+            {sub && (
+              <span className="text-[10px] font-medium leading-4" style={{ color: theme.colors.muted_text }}>
+                {sub}
+              </span>
+            )}
+          </div>
+        );
+        const fmtNum = (v: unknown) =>
+          typeof v === "number" ? v.toLocaleString() : String(v ?? "—");
+        if (widget.widget_id === "WGT-046" && Array.isArray(c.sections)) {
+          body = (
+            <div className="flex flex-col gap-4">
+              {(c.sections as Rec[]).map((section, si) => (
+                <div key={String(section.section_id ?? si)}>
+                  {section.title ? (
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide" style={{ color: theme.colors.text_secondary }}>
+                      {String(section.title)}
+                    </p>
+                  ) : null}
+                  <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-3">
+                    {(Array.isArray(section.cards) ? (section.cards as Rec[]) : []).map((card, ci) =>
+                      statTile(
+                        String(card.label ?? ""),
+                        String(card.value_display ?? fmtNum(card.value)),
+                        String(card.unit ?? ""),
+                        Array.isArray(card.supporting_metrics) && card.supporting_metrics.length
+                          ? `ITD ${String(card.supporting_metrics[0].value_display ?? fmtNum(card.supporting_metrics[0].value))}`
+                          : null,
+                        ci,
+                      ),
+                    )}
+                  </div>
+                </div>
+              ))}
+              {typeof c.footnote === "string" && (
+                <p className="text-[10px] leading-4" style={{ color: theme.colors.muted_text }}>
+                  {c.footnote}
+                </p>
+              )}
+            </div>
+          );
+          break;
+        }
+        if (widget.widget_id === "WGT-045" && Array.isArray(c.kpis)) {
+          const available = (c.kpis as Rec[]).filter((k) => k.status !== "unavailable" || k.value != null);
+          body = (
+            <div>
+              <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-3">
+                {available.map((k, ki) =>
+                  statTile(
+                    String(k.label ?? ""),
+                    fmtNum(k.value),
+                    String(k.unit ?? ""),
+                    k.comparison_value != null ? `ITD ${fmtNum(k.comparison_value)}` : null,
+                    ki,
+                  ),
+                )}
+              </div>
+              {typeof c.footnote === "string" && (
+                <p className="mt-2 text-[10px] leading-4" style={{ color: theme.colors.muted_text }}>
+                  {c.footnote}
+                </p>
+              )}
+            </div>
+          );
+          break;
+        }
+      }
+      // WGT-046 (Safety Performance Indicators) nests its cards inside
+      // sections[] with titles; render each section as its own KPI grid.
+      if (widget.widget_id === "WGT-046" && Array.isArray(c.sections)) {
+        body = (
+          <div>
+            {(c.sections as Rec[]).map((section, si) => (
+              <div key={String(section.section_id ?? si)} className={si > 0 ? "mt-5" : undefined}>
+                {section.title ? (
+                  <p className="mb-2.5 text-[12px] font-semibold uppercase tracking-wide" style={{ color: theme.colors.text_secondary }}>
+                    {String(section.title)}
+                  </p>
+                ) : null}
+                <KpiGrid
+                  theme={theme}
+                  kpis={
+                    (Array.isArray(section.cards) ? (section.cards as Rec[]) : []).map((card) => ({
+                      ...card,
+                      key: card.card_id,
+                      display_value: card.value_display ?? card.display_value,
+                      supporting_text: Array.isArray(card.supporting_metrics)
+                        ? card.supporting_metrics
+                            .map((m: Rec) => `${String(m.label ?? "")}: ${String(m.value_display ?? m.value ?? "—")}`)
+                            .join(" · ")
+                        : card.status_label,
+                      status: undefined,
+                    }))
+                  }
+                  widgetId={widget.widget_id}
+                />
+              </div>
+            ))}
+            {typeof c.footnote === "string" && (
+              <p className="mt-3 text-[11px] leading-4" style={{ color: theme.colors.muted_text }}>
+                {c.footnote}
+              </p>
+            )}
+          </div>
+        );
+        break;
+      }
+      // ASTs ship two shapes: kpis[] (WGT-045, WGT-048, WGT-051) and
+      // items[] (WGT-003, WGT-016, WGT-031). Render either.
+      // WGT-031 drops the Planned Manpower and Manpower Variance % cards; the
+      // remaining four lay out one per row cell (grid-cols-4 via KpiGrid).
+      const kpis = (Array.isArray(c.kpis)
+        ? (c.kpis as Rec[])
+        : Array.isArray(c.cards)
+          ? (c.cards as Rec[])
+          : Array.isArray(c.items)
+            ? (c.items as Rec[])
+            : []
+      ).filter(
+        (k) =>
+          !(
+            widget.widget_id === "WGT-031" &&
+            ["planned manpower", "manpower variance %"].includes(String(k.label ?? "").trim().toLowerCase())
+          ),
+      );
       const notes = Array.isArray(c.observations) ? (c.observations as string[]) : [];
       const footnote = typeof c.footnote === "string" ? c.footnote : null;
       const summary = typeof c.summary === "string" ? c.summary : null;
@@ -456,16 +1356,14 @@ export function WidgetRenderer({
     }
 
     case "status_summary": {
-      if (widget.widget_id === "WGT-005") {
-        body = <EngineeringSubmissionsSummary theme={theme} ast={ast} />;
-        break;
-      }
-      // WGT-005 shape: kpis + components. WGT-047: metrics + table + distribution.
+      // WGT-047: metrics + table + distribution.
       // WGT-049: summary counts + movement groups + empty state.
-      const kpis = Array.isArray(c.kpis) ? (c.kpis as Rec[]) : Array.isArray(c.metrics) ? (c.metrics as Rec[]) : Array.isArray(c.summary) ? (c.summary as Rec[]) : [];
+      // WGT-005: summary_metrics + status_distribution donut.
+      const isWgt5 = widget.widget_id === "WGT-005";
+      const kpis = Array.isArray(c.kpis) ? (c.kpis as Rec[]) : Array.isArray(c.metrics) ? (c.metrics as Rec[]) : Array.isArray(c.summary) ? (c.summary as Rec[]) : isWgt5 && Array.isArray(c.summary_metrics) ? (c.summary_metrics as Rec[]) : [];
       const components = Array.isArray(c.components) ? (c.components as Rec[]) : [];
       const tableObj = c.table as Rec | undefined;
-      const distribution = c.distribution as Rec | undefined;
+      const distribution = (c.distribution ?? (isWgt5 ? c.status_distribution : undefined)) as Rec | undefined;
       const movementGroups = Array.isArray(c.movement_groups) ? (c.movement_groups as Rec[]) : [];
       const emptyState = c.empty_state as Rec | undefined;
       body = (
@@ -482,8 +1380,21 @@ export function WidgetRenderer({
           {distribution && Array.isArray(distribution.data) && (
             <div>
               <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
-                Distribution by category
+                {String(distribution.title ?? "Distribution by category")}
               </p>
+              {isWgt5 ? (
+                <DonutChart
+                  theme={theme}
+                  data={distribution.data as ChartDatum[]}
+                  categoryField={String(distribution.category_field ?? "status_code")}
+                  valueField="count"
+                  centerMetric={
+                    typeof distribution.status_count_total === "number"
+                      ? { label: "Submitted documents", value: distribution.status_count_total as number }
+                      : null
+                  }
+                />
+              ) : (
               <StackedBarChart
                 theme={theme}
                 data={distribution.data as ChartDatum[]}
@@ -495,6 +1406,7 @@ export function WidgetRenderer({
                 categoryLabelField="category_label"
                 horizontal
               />
+              )}
             </div>
           )}
           {components.map((comp) => {
@@ -560,7 +1472,13 @@ export function WidgetRenderer({
                 <p className="text-[12px] font-semibold mb-2" style={{ color: theme.colors.text_secondary }}>
                   {String(g.title ?? "")} ({Number(g.count ?? 0)})
                 </p>
-                <DataTable theme={theme} columns={columnsOf(g)} rows={g.items as ChartDatum[]} maxHeight={260} />
+                {/* WGT-049: no height cap — columns use the full widget height. */}
+                <DataTable
+                  theme={theme}
+                  columns={columnsOf(g)}
+                  rows={g.items as ChartDatum[]}
+                  maxHeight={widget.widget_id === "WGT-049" ? undefined : 260}
+                />
               </div>
             ) : null,
           )}
@@ -579,18 +1497,46 @@ export function WidgetRenderer({
 
     case "donut_chart": {
       // Two shapes: flat (data + series + center/central metric — WGT-022/023/024)
-      // and multi-component (components[] — WGT-006).
+      // and multi-component (components[]).
       const comps = Array.isArray(c.components) ? (c.components as Rec[]) : null;
       if (!comps) {
         const series = seriesOf(c);
         const valueField = String(c.value_field ?? series[0]?.value_field ?? "count");
         const center = (c.center_metric ?? c.central_metric) as { label: string; value: number | string } | undefined;
-        const isTransmittalDonut = ["WGT-022", "WGT-023", "WGT-024"].includes(widget.widget_id);
-        const Donut = isTransmittalDonut ? TransmittalDonutChart : DonutChart;
+        const isTransmittalDonut =
+          widget.widget_id === "WGT-022" || widget.widget_id === "WGT-023" || widget.widget_id === "WGT-024";
+        if (isTransmittalDonut) {
+          const total =
+            typeof c.total_transmittals === "number"
+              ? (c.total_transmittals as number)
+              : typeof c.center_total === "number"
+                ? (c.center_total as number)
+                : typeof center?.value === "number"
+                  ? center.value
+                  : undefined;
+          const ringRows: ChartDatum[] = Array.isArray(c.status_ring?.data)
+            ? (c.status_ring.data as ChartDatum[])
+            : (Array.isArray(c.data) ? (c.data as ChartDatum[]) : []);
+          body = (
+            <TransmittalDonutChart
+              theme={theme}
+              height={340}
+              data={ringRows}
+              categoryField={
+                ringRows.length && ringRows[0].status_code != null
+                  ? "status_code"
+                  : String(c.category_field ?? "status")
+              }
+              valueField={valueField}
+              centerMetric={total != null ? { label: String(c.center_label ?? "Total Transmittals"), value: total } : null}
+              plannedCount={plannedCountOf(c)}
+            />
+          );
+          break;
+        }
         body = (
           <div>
-            <Donut
-              height={isTransmittalDonut ? 280 : undefined}
+            <DonutChart
               theme={theme}
               data={Array.isArray(c.data) ? (c.data as ChartDatum[]) : []}
               categoryField={String(c.category_field ?? "status")}
@@ -654,8 +1600,8 @@ export function WidgetRenderer({
       const data = Array.isArray(c.data) ? (c.data as ChartDatum[]) : [];
       const series = seriesOf(c);
       const cat = String(c.category_field ?? "period_end");
-      // WGT-008 shows values at each point. WGT-009 shows values with no dots,
-      // clamped to 8 weeks before / 4 after the data date (default 3 / 1).
+      // WGT-009 renders as a smooth curve (no dots), clamped to 8 weeks before /
+      // 4 after the data date (default 3 / 1).
       const isWgt9 = widget.widget_id === "WGT-009";
       body = series.length ? (
         <div className="min-w-0">
@@ -666,6 +1612,7 @@ export function WidgetRenderer({
             categoryField={isWgt9 ? "period_end" : cat}
             showPointLabels={widget.widget_id === "WGT-008" || isWgt9}
             showDots={!isWgt9}
+            pointLabelSize={isWgt9 ? 10 : undefined}
             defaultBefore={isWgt9 ? 3 : 12}
             defaultAfter={isWgt9 ? 1 : 4}
             maxBefore={isWgt9 ? 8 : undefined}
@@ -678,56 +1625,130 @@ export function WidgetRenderer({
       break;
     }
 
+    case "bar_chart":
+    // "bar_chart" is the same grouped/planned-vs-actual shape as
+    // "grouped_bar_chart"; render both through one path.
     case "grouped_bar_chart": {
-      // WGT-013 renders as a full-width planned-vs-actual table: phases ordered
-      // MI, EN, CO, AUH, TC, HO (GN excluded), with an ahead/behind status pill.
-      if (widget.widget_id === "WGT-013") {
-        const data = Array.isArray(c.data) ? (c.data as Rec[]) : [];
-        const phaseOrder = ["MI", "EN", "CO", "AUH", "TC", "HO"];
-        const columns: TableColumn[] = [
-          { key: "phase_code", label: "Phase", alignment: "left" },
-          { key: "phase_label", label: "Description", alignment: "left" },
-          { key: "planned_percent_complete", label: "Planned %", alignment: "right", data_type: "percentage" },
-          { key: "actual_percent_complete", label: "Actual %", alignment: "right", data_type: "percentage" },
-          { key: "variance", label: "Variance (Actual - Planned)", alignment: "right", data_type: "percentage" },
-          { key: "status", label: "Status", alignment: "center" },
-        ];
-        const tableRows = data
-          .filter((d) => d.phase_code !== "GN")
-          .map((d, i) => {
-            const planned = typeof d.planned_percent_complete === "number" ? d.planned_percent_complete : null;
-            const actual = typeof d.actual_percent_complete === "number" ? d.actual_percent_complete : null;
-            const variance = planned != null && actual != null ? Number((actual - planned).toFixed(2)) : null;
-            return {
-              ...d,
-              row_id: d.phase_code ?? i,
-              variance,
-              status: variance == null ? "—" : variance >= 0 ? "ahead" : "behind",
-            } as Record<string, unknown>;
-          })
-          .sort((a, b) => {
-            const rank = (r: Record<string, unknown>) => phaseOrder.indexOf(String(r.phase_code));
-            return rank(a) - rank(b);
-          });
+      const data = filterKpiRows(Array.isArray(c.data) ? (c.data as ChartDatum[]) : []);
+      const series = seriesOf(c);
+      const cat = String(c.category_field ?? "week_num");
+      const orientation = String(c.orientation ?? "vertical");
+      const kpiVertical = widget.widget_id === "WGT-039" || widget.widget_id === "WGT-040";
+      // WGT-009 is typed grouped_bar_chart in recent updates but must render as
+      // a smooth curve: no dots, value labels, slider clamped to 8 weeks before
+      // / 4 after the data date (default 3 / 1).
+      // WGT-010: weekly variances derived from WGT-009's cumulative progress
+      // history — each week's planned/actual gain vs the previous week, plus
+      // their difference.
+      if (widget.widget_id === "WGT-032") {
         body = (
-          <div>
-            <DataTable theme={theme} columns={columns} rows={tableRows} maxHeight={420} />
-            <Observations theme={theme} notes={Array.isArray(c.notes) ? (c.notes as string[]) : []} />
-          </div>
+          <ResourceComparisonBarChart
+            theme={theme}
+            data={Array.isArray(c.data) ? (c.data as ChartDatum[]) : []}
+          />
         );
         break;
       }
-      // WGT-009 renders as a smooth curve (line chart with no dots) instead of bars.
+      if (widget.widget_id === "WGT-029") {
+        // QA/QC discipline breakdown ships a rows[] array (not data[]) plus a
+        // totals block; the series entries carry no value_field. Normalize the
+        // rows and append a "Total" category carrying the closed-items count
+        // (the only closed figure in the data — per-discipline counts don't
+        // exist in this update).
+        const wgt29Rows: ChartDatum[] = (Array.isArray(c.rows) ? (c.rows as Rec[]) : []).map((r) => ({
+          discipline_code: String(r.discipline_code ?? ""),
+          discipline_name: String(r.discipline_name ?? r.discipline_code ?? ""),
+          open_items_count: typeof r.open_items_count === "number" ? (r.open_items_count as number) : 0,
+          overdue_items_count: typeof r.overdue_items_count === "number" ? (r.overdue_items_count as number) : 0,
+        }));
+        const totals29 = (c.totals ?? {}) as Rec;
+        if (typeof totals29.closed_items_count === "number" && wgt29Rows.length) {
+          wgt29Rows.push({
+            discipline_code: "ALL",
+            discipline_name: "Total",
+            open_items_count: 0,
+            overdue_items_count: 0,
+            closed_items_count: totals29.closed_items_count as number,
+          } as ChartDatum);
+        }
+        const wgt29Series: ChartSeries[] = [
+          { name: "Open Items", value_field: "open_items_count", semantic_series: "warning", unit: "documents" },
+          { name: "Open Over 14 Days", value_field: "overdue_items_count", semantic_series: "overdue", unit: "documents" },
+          { name: "Closed Items", value_field: "closed_items_count", semantic_series: "on_track", unit: "documents" },
+        ];
+        body = wgt29Rows.length ? (
+          <div className="min-w-0">
+            <GroupedBarChart
+              theme={theme}
+              data={wgt29Rows}
+              series={wgt29Series}
+              categoryField="discipline_code"
+              categoryLabelField="discipline_name"
+              valueAxisLabel="Items"
+              showValueLabels
+              wholeNumbers
+              dataDate={dataDate}
+            />
+            <Observations theme={theme} notes={Array.isArray(c.notes) ? (c.notes as string[]) : []} />
+          </div>
+        ) : null;
+        break;
+      }
+      if (widget.widget_id === "WGT-010") {
+        const wgt9v = (allWidgets ?? []).find((w) => w.widget_id === "WGT-009");
+        const wgt9vc = (wgt9v?.widget_ast.content ?? {}) as Rec;
+        const weekly = Array.isArray(wgt9vc.data) ? (wgt9vc.data as Rec[]) : [];
+        let prevCp = 0;
+        let prevCa = 0;
+        const r4 = (v: number) => Math.round(v * 10000) / 10000;
+        const varianceRows: ChartDatum[] = weekly.map((r) => {
+          const cp = prevCp + (typeof r.planned_pp === "number" ? r.planned_pp : 0);
+          const ca = prevCa + (typeof r.actual_pp === "number" ? r.actual_pp : 0);
+          const plannedVar = r4(cp - prevCp);
+          const actualVar = r4(ca - prevCa);
+          const row = {
+            week_label: String(r.week_label ?? ""),
+            period_label: String(r.period_label ?? r.week_label ?? ""),
+            period_end: String(r.period_end ?? ""),
+            planned_variance_pp: plannedVar,
+            actual_variance_pp: actualVar,
+            weekly_variance_pp: r4(actualVar - plannedVar),
+          };
+          prevCp = cp;
+          prevCa = ca;
+          return row as ChartDatum;
+        });
+        const varianceSeries: ChartSeries[] = [
+          { name: "Planned Variance", value_field: "planned_variance_pp", semantic_series: "planned", unit: "pp" },
+          { name: "Actual Variance", value_field: "actual_variance_pp", semantic_series: "actual", unit: "pp" },
+          { name: "Weekly Variance", value_field: "weekly_variance_pp", semantic_series: "warning", unit: "pp" },
+        ];
+        body = varianceRows.length ? (
+          <div className="min-w-0">
+            <GroupedBarChart
+              theme={theme}
+              data={varianceRows}
+              series={varianceSeries}
+              categoryField="period_end"
+              categoryLabelField="period_label"
+              valueAxisLabel="Weekly change in cumulative progress (pp)"
+              defaultBefore={4}
+              defaultAfter={0}
+              dataDate={dataDate}
+            />
+            <Observations theme={theme} notes={Array.isArray(c.notes) ? (c.notes as string[]) : []} />
+          </div>
+        ) : null;
+        break;
+      }
       if (widget.widget_id === "WGT-009") {
-        const data = Array.isArray(c.data) ? (c.data as ChartDatum[]) : [];
-        const series = seriesOf(c);
         body = series.length ? (
           <div className="min-w-0">
             <LineChart
               theme={theme}
               data={data}
               series={series}
-              categoryField="period_end"
+              categoryField={cat}
               showPointLabels
               showDots={false}
               pointLabelSize={10}
@@ -742,62 +1763,6 @@ export function WidgetRenderer({
         ) : null;
         break;
       }
-      // WGT-010 gains a computed third bar: planned minus actual variance (pp).
-      if (widget.widget_id === "WGT-010") {
-        const data = Array.isArray(c.data) ? (c.data as ChartDatum[]) : [];
-        const series = seriesOf(c);
-        const cat = String(c.category_field ?? "week_num");
-        const varianceField = "variance_pp";
-        const isoWeek = (dateStr: string) => {
-          const d = new Date(dateStr);
-          if (Number.isNaN(d.getTime())) return null;
-          const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-          const day = t.getUTCDay() || 7;
-          t.setUTCDate(t.getUTCDate() + 4 - day);
-          const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-          return Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-        };
-        const varianceData = data.map((d) => ({
-          ...d,
-          week_num: typeof d.week_num === "number" ? d.week_num : isoWeek(String(d.period_end ?? "")),
-          [varianceField]:
-            typeof d.planned_variance_pp === "number" && typeof d.actual_variance_pp === "number"
-              ? Number((d.planned_variance_pp - d.actual_variance_pp).toFixed(4))
-              : null,
-        }));
-        series.push({
-          name: "Variance (Planned - Actual)",
-          value_field: varianceField,
-          semantic_series: "negative_variance",
-        });
-        body = series.length ? (
-          <div>
-            <GroupedBarChart
-              theme={theme}
-              data={varianceData}
-              series={series}
-              categoryField={cat}
-              categoryLabelField={CategoryLabel(cat, typeof c.category_label_field === "string" ? c.category_label_field : undefined)}
-              valueAxisLabel={typeof c.value_axis_label === "string" ? c.value_axis_label : undefined}
-              showValueLabels
-              valueLabelSize={10}
-              emphasizedField={varianceField}
-              defaultBefore={3}
-              defaultAfter={1}
-              maxBefore={8}
-              maxAfter={4}
-              dataDate={dataDate}
-            />
-            <Observations theme={theme} notes={Array.isArray(c.notes) ? (c.notes as string[]) : []} />
-          </div>
-        ) : null;
-        break;
-      }
-      const data = filterKpiRows(Array.isArray(c.data) ? (c.data as ChartDatum[]) : []);
-      const series = seriesOf(c);
-      const cat = String(c.category_field ?? "week_num");
-      const orientation = String(c.orientation ?? "vertical");
-      const kpiVertical = widget.widget_id === "WGT-039" || widget.widget_id === "WGT-040";
       body = series.length ? (
         <div className="min-w-0">
           {widget.widget_id === "WGT-038" && kpiPills}
@@ -884,12 +1849,20 @@ export function WidgetRenderer({
       break;
     }
 
-    case "photo_gallery": {
+    case "photo_gallery":
+    case "progress_photo_gallery": {
       body = <PhotoGallery theme={theme} c={c} />;
       break;
     }
 
+    case "narrative_summary":
+      body = <NarrativeSummary theme={theme} ast={ast} />;
+      break;
+
     case "exception_table":
+      body = <ExceptionTable theme={theme} ast={ast} />;
+      break;
+
     case "data_table":
     case "milestone_table":
     case "lookahead_table":
@@ -902,16 +1875,111 @@ export function WidgetRenderer({
       // happened, so they render in the planned/actual purple.
       const purplePastForecastDates =
         widget.widget_id === "WGT-017" || widget.widget_id === "WGT-019" || widget.widget_id === "WGT-020";
+      // WGT-020 stores each activity's progress in a nested
+      // progress_by_level[level_code] map; flatten it into the level:<code>
+      // cells the generic table expects. A planned/actual toggle picks which
+      // percentage each level cell shows. Activities are grouped under bold
+      // trade-name header rows, ordered by the feed's trade display order.
+      const wgt20Rows: ChartDatum[] | null =
+        widget.widget_id === "WGT-020" && Array.isArray(c.rows) && Array.isArray(c.columns)
+          ? (() => {
+              const flatten = (r: Rec, i: number): Rec => {
+                const out: Rec = {
+                  row_id: r.row_id,
+                  serial_no: r.serial_no ?? i + 1,
+                  activity_name:
+                    r.row_status === "conflict" ? `⚠ ${String(r.activity_name ?? "")}` : String(r.activity_name ?? ""),
+                };
+                const byLevel = (r.progress_by_level ?? {}) as Rec;
+                for (const col of c.columns as Rec[]) {
+                  if (col.value_source !== "progress_by_level") continue;
+                  const cell = (byLevel[String(col.level_code)] ?? {}) as Rec;
+                  const v = wgt20Mode === "actual" ? cell.actual_percent : cell.planned_percent;
+                  out[String(col.key)] = typeof v === "number" ? `${v.toFixed(1)}%` : "—";
+                }
+                return out;
+              };
+              const byTrade = new Map<string, { order: number; label: string; rows: Rec[] }>();
+              (c.rows as Rec[]).forEach((r, i) => {
+                const key = String(r.trade_group_key ?? r.trade_code ?? r.trade_label ?? "unclassified");
+                const label = String(r.trade_label ?? r.trade_name ?? key);
+                const order = typeof r.trade_display_order === "number" ? (r.trade_display_order as number) : 9999;
+                if (!byTrade.has(key)) byTrade.set(key, { order, label, rows: [] });
+                byTrade.get(key)!.rows.push(flatten(r, i));
+              });
+              const out: Rec[] = [];
+              for (const [key, group] of [...byTrade.entries()].sort((a, b) => a[1].order - b[1].order)) {
+                out.push({ __group: true, __label: group.label, row_id: `trade-group:${key}` });
+                out.push(...group.rows);
+              }
+              return out as ChartDatum[];
+            })()
+          : null;
+      const wgt20Toggle =
+        widget.widget_id === "WGT-020" ? (
+          <div className="mb-3 inline-flex items-center rounded-full border p-0.5" style={{ borderColor: theme.colors.subtle_border ?? "#D9D6E8", background: theme.colors.surface_secondary ?? "#F4F3F8" }}>
+            {(["planned", "actual"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setWgt20Mode(m)}
+                className="px-3.5 py-1.5 text-[12px] font-semibold rounded-full transition-colors"
+                style={{
+                  background: wgt20Mode === m ? theme.colors.surface_primary ?? "#FFFFFF" : "transparent",
+                  color:
+                    wgt20Mode === m
+                      ? m === "planned"
+                        ? theme.colors.planned ?? "#5741DF"
+                        : theme.colors.success ?? "#359D78"
+                      : theme.colors.text_secondary,
+                  cursor: "pointer",
+                }}
+              >
+                {m === "planned" ? "Planned %" : "Actual %"}
+              </button>
+            ))}
+          </div>
+        ) : null;
+      // WGT-035 names its columns header/column_id/value_field instead of
+      // label/key; normalize so the generic table can read them.
+      const wgt35Cols: TableColumn[] | null =
+        widget.widget_id === "WGT-035" && Array.isArray(c.columns)
+          ? (c.columns as Rec[]).map((col) => ({
+              key: String(col.column_id ?? col.value_field ?? col.key),
+              label: String(col.header ?? col.label ?? col.column_id ?? col.key),
+              alignment: col.alignment,
+              data_type: col.data_type,
+            }))
+          : null;
+      const wgt35Totals: Rec | null =
+        widget.widget_id === "WGT-035" && c.totals && typeof c.totals === "object"
+          ? Object.fromEntries(
+              Object.entries(c.totals as Rec).map(([k, v]) => [k, typeof v === "number" ? Math.round(v) : v]),
+            )
+          : null;
       body = (
         <div>
+          {wgt20Toggle}
           <DataTable
             theme={theme}
-            columns={columnsOf(c)}
-            rows={rowsOf(c)}
-            totals={totals}
+            columns={
+              wgt35Cols ??
+              (widget.widget_id === "WGT-020"
+                ? columnsOf(c).filter((col) => col.key !== "trade_label")
+                : columnsOf(c))
+            }
+            rows={wgt20Rows ?? rowsOf(c)}
+            totals={wgt35Totals ?? totals}
             maxHeight={420}
             dataDate={dataDate}
             purplePastDates={purplePastForecastDates}
+            percentColor={
+              widget.widget_id === "WGT-020"
+                ? wgt20Mode === "planned"
+                  ? theme.colors.planned ?? "#5741DF"
+                  : theme.colors.success ?? "#359D78"
+                : undefined
+            }
           />
           {typeof c.summary === "string" && (
             <p className="mt-3 text-[12px] leading-5" style={{ color: theme.colors.text_secondary }}>
@@ -945,10 +2013,11 @@ export function WidgetRenderer({
   return (
     <WidgetCard
       theme={theme}
-      title={widget.widget_title}
+      title={widget.widget_id === "WGT-032" ? "Planned vs Actual Manpower by Resource - Current Week" : widget.widget_title}
       widgetId={widget.widget_id}
-      dataStatus={widget.data_status}
-      eyebrow={widget.widget_id === "WGT-005" ? `${widget.widget_id} · ${widget.widget_type}` : undefined}
+      // WGT-020 is flagged "unavailable" in the feed but ships a full table;
+      // ignore the flag so the data renders.
+      dataStatus={widget.widget_id === "WGT-020" ? undefined : widget.data_status}
       className={gridClass}
       compact={widget.widget_id === "WGT-051"}
     >
@@ -958,7 +2027,6 @@ export function WidgetRenderer({
 }
 
 import { readStoredStrings, writeStoredStrings, useDashboardStorage } from "@/boltDashboard/utils/storedSelection";
-
 
 
 function GanttView({ theme, c }: { theme: ThemeTokens; c: Rec }) {

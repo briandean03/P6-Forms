@@ -14,7 +14,7 @@ The imported frontend lives under `src/boltDashboard`. It is loaded on demand an
 | Navigation | Existing sticky page menu, continuous report sections, week selector | Bolt's sticky section menu, mobile section pills, continuous sections, and week selector |
 | Interactions | Existing report-specific controls and layouts | Chart-range sliders, shared KPI filters, and trade filters; selections are stored separately per project/schema |
 | Design | Existing token resolver and typography/print helpers | Bolt token mapping for colors, radii, spacing, shadows, with its own font/rendering conventions |
-| Widget interpretation | Existing reporting rules and bespoke page composition | Bolt's widget-specific rules, including displaying WGT-013 phase comparison as a table, rounding WGT-034 values, and filtering the main progress KPI panel by known keys |
+| Widget interpretation | Existing reporting rules and bespoke page composition | Bolt's widget-specific layouts and support for composite progress, engineering, resource, narrative and exception data |
 | Printing | Existing reporting print styles; dedicated A3 Dashboard route provides A3 summary | Multi-section browser print report; this is an additional online view, not a replacement A3 export |
 | Unsupported/inconsistent data | Existing rendering/diagnostic behavior | Explicit unsupported-widget notices and warnings for missing, duplicate, or unmapped widgets |
 
@@ -52,3 +52,13 @@ Missing read grants/RLS access is reported with the schema/table name. Projects 
 `tests/bolt-dashboard.spec.ts` uses mocked requests for a non-ATGC project schema and tests two different weeks/designs, stringified database columns, custom SVG/KPI rendering, empty results, permission errors and retry, mobile sidebar behavior, print layout, and returning to the original dashboard. It verifies that all dashboard requests are reads and that the project/schema filters are present. The ready-state test saves a sample screenshot and PDF in Playwright’s test output directory. Live database data and a full real-world 49-widget report have not been verified here.
 
 Printing uses mixed A4 page orientations: widgets containing a table with six or more columns use landscape; compact tables and chart widgets use portrait. Tables print at full page width, with wrapping cells and repeating headers. Long tables can continue across multiple sheets. Modern Chrome/Edge support the named-page sizes; use browser Save as PDF with the CSS page sizes/default layout and scaling.
+
+## November 2026 Bolt UI refresh
+
+The updated Bolt export is integrated into the existing `src/boltDashboard` renderer. It adds narrative summaries, exception tables, composite progress panels, transmittal submission views, planned-versus-actual resource bars, grouped progress-by-level tables, financial formatting, and additional chart/widget AST shapes. Widgets can reference other widgets from the **same selected reporting week** where the exported layouts require them.
+
+The online view also follows the export's additional exclusions: WGT-006, WGT-034, WGT-035, WGT-045, and WGT-047. The previously excluded WGT-011/012/036/037 remain excluded. This does not delete source rows or change the separate A3 dashboard's visibility rules. Sections containing only excluded widgets are omitted.
+
+The export's standalone API, fixed report ID, environment file, deployment settings, and global styles are not imported. Existing schema/project isolation, week loading, the Construction Intelligence Dashboard title, Appendix storage, expandable hierarchies, persistent KPI selection controls, and mixed-orientation printing remain integrated with P6 Forms. The approval label now reflects the loaded structure's approval flag instead of a local-only selector.
+
+The mocked browser suite also covers the new narrative, exception, resource comparison, and progress-by-level toggle views alongside its existing week, permission, attachment, hierarchy, mobile, and PDF checks. These checks do not validate the contents of a live generated report or deploy any Supabase functions.

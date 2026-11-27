@@ -217,3 +217,10 @@
   .bolt-dashboard thead { display: table-header-group; }
   .bolt-dashboard tr { break-inside: avoid; }
 }
+
+@media print {
+  .bolt-dashboard .bolt-resource-bar {
+    opacity: 1 !important;
+    transition: none !important;
+  }
+}

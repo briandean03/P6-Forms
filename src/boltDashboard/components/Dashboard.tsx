@@ -1,6 +1,6 @@
 import { Appendix } from './Appendix';
 import { useEffect, useMemo, useRef, useState, useCallback, memo, type ComponentProps } from "react";
-import { ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
+import { CheckCircle2, ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
 import {
   ApprovedDesign,
   ApprovedStructure,
@@ -10,6 +10,8 @@ import {
 import { buildTheme, themeToCssVars, radius, shadow, space } from "@/boltDashboard/theme/designTheme";
 import { WidgetRenderer } from "@/boltDashboard/components/WidgetRenderer";
 import { readStoredStrings, writeStoredStrings } from "@/boltDashboard/utils/storedSelection";
+
+const ONLINE_HIDDEN_WIDGETS = new Set(["WGT-006", "WGT-034", "WGT-035", "WGT-045", "WGT-047"]);
 
 type WidgetProps = ComponentProps<typeof WidgetRenderer>;
 const StableWidget = memo(function StableWidget({ columnSpan, ...props }: Omit<WidgetProps, 'placement'> & { columnSpan?: number }) {
@@ -88,7 +90,6 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<LoadError | null>(null);
   const [activeSection, setActiveSection] = useState(0);
-  const [approvalStatus, setApprovalStatus] = useState<'Approved' | 'Draft'>('Approved');
   const [kpiSelection, setKpiSelection] = useState<string[] | null>(() => readStoredStrings(KPI_SELECTION_STORAGE_KEY));
   const setPersistedKpiSelection = useCallback((kpis: string[] | null) => {
     setKpiSelection(kpis);
@@ -130,7 +131,13 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
 
   const theme = useMemo(() => buildTheme(design ?? FALLBACK_DESIGN), [design]);
 
-  const pages = useMemo(() => [...(structure?.structure_plan?.pages ?? []).filter(page => page.page_id !== 'dashboard-appendix'), { page_id: 'dashboard-appendix', title: 'Appendix', widgets: [] }], [structure]);
+  const pages = useMemo(() => [
+    ...(structure?.structure_plan?.pages ?? [])
+      .filter(page => page.page_id !== 'dashboard-appendix')
+      .map(page => ({ ...page, widgets: page.widgets.filter(widget => !ONLINE_HIDDEN_WIDGETS.has(widget.widget_id)) }))
+      .filter(page => page.widgets.length > 0),
+    { page_id: 'dashboard-appendix', title: 'Appendix', widgets: [] },
+  ], [structure]);
 
   // Highlight the section currently in view while scrolling continuously.
   useEffect(() => {
@@ -160,6 +167,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
   const widgetsByPage = useMemo(() => {
     const map: Record<string, WidgetRow[]> = {};
     for (const w of widgets ?? []) {
+      if (ONLINE_HIDDEN_WIDGETS.has(w.widget_id)) continue;
       (map[w.page_id] ??= []).push(w);
     }
     for (const k of Object.keys(map)) map[k].sort((a, b) => a.widget_order - b.widget_order);
@@ -221,23 +229,13 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
           <span className="px-2 text-[14px] font-medium" style={{ color: theme.colors.text_secondary }}>
             Data Date: <strong style={{ color: theme.colors.text_primary }}>{formatReportDate(structure.data_date)}</strong>
           </span>
-          <label className="relative no-print">
-            <span className="sr-only">Approval status</span>
-            <select
-              value={approvalStatus}
-              onChange={(e) => setApprovalStatus(e.target.value as 'Approved' | 'Draft')}
-              className="appearance-none rounded-lg border py-2 pl-3 pr-9 text-[14px] font-medium outline-none transition-colors"
-              style={{
-                borderColor: approvalStatus === 'Approved' ? (theme.colors.success ?? "#359D78") : (theme.colors.subtle_border ?? "#D9D6E8"),
-                background: approvalStatus === 'Approved' ? (theme.colors.positive_bg ?? "#E6F5EF") : (theme.colors.surface_primary ?? "#FFFFFF"),
-                color: approvalStatus === 'Approved' ? (theme.colors.success ?? "#359D78") : theme.colors.text_primary,
-              }}
-            >
-              <option value="Approved">Approved</option>
-              <option value="Draft">Draft</option>
-            </select>
-            <ChevronDown size={16} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: approvalStatus === 'Approved' ? (theme.colors.success ?? "#359D78") : theme.colors.text_secondary }} />
-          </label>
+          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-semibold"
+            style={{
+              background: structure.is_approved === true ? theme.colors.positive_bg ?? '#E6F5EF' : theme.colors.surface_secondary ?? '#F4F3F8',
+              color: structure.is_approved === true ? theme.colors.success ?? '#359D78' : theme.colors.text_secondary,
+            }}>
+            {structure.is_approved === true && <CheckCircle2 size={15} />} {structure.is_approved === true ? 'Approved' : structure.is_approved === false ? 'Draft' : 'Approval not recorded'}
+          </span>
           <label className="relative no-print">
             <span className="sr-only">Select reporting week</span>
             <select
@@ -364,6 +362,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                           <div className="contents bolt-print-item" key={`${w.widget_record_id ?? w.widget_id}:${w.id}`}>
                           <p className="hidden bolt-print-context">Construction Intelligence Dashboard · {p.title} · Week {structure.week_num} · {structure.data_date}</p>
                           <StableWidget
+                            allWidgets={widgets ?? []}
                             theme={theme}
                             widget={w}
                             columnSpan={placement?.grid?.column_span}

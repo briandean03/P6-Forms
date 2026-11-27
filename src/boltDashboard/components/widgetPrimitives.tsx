@@ -118,6 +118,9 @@ export function StatusBadge({
     overdue: { bg: theme.colors.negative_bg ?? "#FBE9E5", fg: theme.colors.overdue ?? "#DB694F" },
     delayed: { bg: theme.colors.negative_bg ?? "#FBE9E5", fg: theme.colors.overdue ?? "#DB694F" },
     neutral: { bg: theme.colors.surface_secondary ?? "#F4F3F8", fg: theme.colors.text_secondary ?? "#6B6D7B" },
+    received: { bg: theme.colors.positive_bg ?? "#E6F5EF", fg: theme.colors.success ?? "#359D78" },
+    certified: { bg: theme.colors.alert_info_bg ?? "#E7E3FA", fg: theme.colors.planned ?? "#5741DF" },
+    under_review: { bg: theme.colors.warning_bg ?? "#FBF1DF", fg: theme.colors.warning ?? "#D99A39" },
     in_progress: { bg: theme.colors.alert_info_bg ?? "#E7E3FA", fg: theme.colors.planned ?? "#5741DF" },
     ahead: { bg: theme.colors.positive_bg ?? "#E6F5EF", fg: theme.colors.success ?? "#359D78" },
     behind: { bg: theme.colors.negative_bg ?? "#FBE9E5", fg: theme.colors.overdue ?? "#DB694F" },
@@ -153,6 +156,10 @@ export function formatCellValue(value: unknown, dataType?: string): string {
     const n = typeof value === "number" ? value : parseFloat(String(value));
     if (!isNaN(n)) return `${n.toFixed(1)}%`;
   }
+  if (dataType === "currency" || dataType === "money") {
+    const n = typeof value === "number" ? value : parseFloat(String(value));
+    if (!isNaN(n)) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
   if (dataType === "count" || dataType === "number" || dataType === "integer") {
     const n = typeof value === "number" ? value : parseFloat(String(value));
     if (!isNaN(n)) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -172,6 +179,7 @@ export function DataTable({
   totals,
   dataDate,
   purplePastDates = false,
+  percentColor,
 }: {
   theme: ThemeTokens;
   columns: TableColumn[];
@@ -180,6 +188,8 @@ export function DataTable({
   totals?: Record<string, unknown> | null;
   dataDate?: string;
   purplePastDates?: boolean;
+  /** When set, percentage cells (e.g. "42.5%") render in this color. */
+  percentColor?: string;
 }) {
   if (!rows.length) {
     return (
@@ -240,14 +250,31 @@ export function DataTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
+          {rows.map((row, i) => {
+            // Group header rows (e.g. WGT-020 trade groups) span the full width.
+            if ((row as Record<string, unknown>).__group === true) {
+              return (
+                <tr key={`group-${String((row as Record<string, unknown>).__label ?? i)}`} style={{ background: theme.colors.surface_secondary ?? "#F4F3F8" }}>
+                  <td
+                    colSpan={columns.length}
+                    className="px-3 py-2 text-[12px] font-bold uppercase tracking-wide whitespace-nowrap"
+                    style={{ color: theme.colors.text_primary }}
+                  >
+                    {String((row as Record<string, unknown>).__label ?? "")}
+                  </td>
+                </tr>
+              );
+            }
+            return (
             <tr
               key={String(row.row_id ?? i)}
               style={{ borderBottom: `1px solid ${theme.colors.subtle_border ?? "#ECEAF6"}` }}
             >
               {columns.map((col) => {
                 const raw = row[col.key];
-                const statusVal = col.key === "status" || col.key.endsWith("_status") ? raw : null;
+                const isStatusKey = col.key === "status" || col.key.endsWith("_status") || col.key === "exception_severity";
+                const statusVal =
+                  isStatusKey && typeof raw === "string" ? raw : typeof raw === "string" && ["high", "critical", "medium", "low"].includes(raw.toLowerCase()) ? raw : null;
                 const isDate = col.data_type === "date" || (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw));
                 const actualized =
                   purplePastDates &&
@@ -256,14 +283,23 @@ export function DataTable({
                   /start|finish/i.test(col.key) &&
                   typeof raw === "string" &&
                   new Date(raw).getTime() < new Date(dataDate).getTime();
+                const isPercent =
+                  percentColor != null &&
+                  col.data_type === "percentage" &&
+                  typeof raw === "string" &&
+          /^\d+(\.\d+)?%$/.test(raw);
                 return (
                   <td
                     key={col.key}
                     className="px-3 py-2.5 whitespace-nowrap"
                     style={{
                       textAlign: alignFor(col),
-                      color: actualized ? theme.colors.planned ?? "#5741DF" : theme.colors.text_primary,
-                      fontWeight: actualized ? 600 : undefined,
+                      color: actualized
+                        ? theme.colors.planned ?? "#5741DF"
+                        : isPercent
+                          ? percentColor
+                          : theme.colors.text_primary,
+                      fontWeight: actualized || isPercent ? 600 : undefined,
                     }}
                   >
                     {statusVal && typeof statusVal === "string" ? (
@@ -275,7 +311,8 @@ export function DataTable({
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
           {renderTotals()}
         </tbody>
       </table>

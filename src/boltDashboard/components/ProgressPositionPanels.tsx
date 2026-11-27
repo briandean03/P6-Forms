@@ -29,7 +29,7 @@ function DetailLine({ children, theme }: { children: React.ReactNode; theme: The
   );
 }
 
-function ProgressKpiCard({ theme, kpi }: { theme: ThemeTokens; kpi: Rec }) {
+function ProgressKpiCard({ theme, kpi, compact = false }: { theme: ThemeTokens; kpi: Rec; compact?: boolean }) {
   const previous = typeof kpi.comparison_value === "number" ? kpi.comparison_display_value ?? formatCellValue(kpi.comparison_value, kpi.data_type) : null;
   const variance = kpi.variance_display_value ?? (typeof kpi.variance === "number" ? `${kpi.variance.toFixed(2)} ${kpi.variance_unit ?? ""}`.trim() : null);
   return (
@@ -39,13 +39,13 @@ function ProgressKpiCard({ theme, kpi }: { theme: ThemeTokens; kpi: Rec }) {
         background: cardFill(theme, String(kpi.key), kpi.status, kpi.semantic_series),
         border: `1px solid ${theme.colors.subtle_border ?? "#D9D6E8"}`,
         borderRadius: radius(theme, "kpi_card"),
-        minHeight: 248,
+        minHeight: compact ? 190 : 248,
       }}
     >
       <span className="break-words text-[12px] font-semibold uppercase leading-4" style={{ color: theme.colors.text_secondary, letterSpacing: "0.04em" }}>
         {String(kpi.label ?? kpi.key ?? "")}
       </span>
-      <span className="break-words text-[32px] font-semibold leading-9 tabular-nums" style={{ color: theme.colors.text_primary, overflowWrap: "anywhere" }}>
+      <span className={`break-words font-semibold tabular-nums ${compact ? "text-[26px] leading-8" : "text-[32px] leading-9"}`} style={{ color: theme.colors.text_primary, overflowWrap: "anywhere" }}>
         {valueText(kpi)}
         {kpi.unit && kpi.data_type !== "date" && kpi.data_type !== "text" && !String(kpi.display_value ?? "").includes(String(kpi.unit)) ? (
           <span className="ml-1 text-[18px] font-medium" style={{ color: theme.colors.text_secondary }}>
@@ -79,6 +79,13 @@ function ScheduleKpiCard({ theme, kpi }: { theme: ThemeTokens; kpi: Rec }) {
   const dateComparison = kpi.data_type === "date" && kpi.comparison_value ? `${String(kpi.comparison_label ?? "Planned completion")}: ${String(kpi.comparison_value)}` : null;
   const variance = typeof kpi.variance === "number" && kpi.variance_unit ? `${Math.round(kpi.variance)} ${String(kpi.variance_unit)}` : null;
   const status = kpi.status === "behind" || kpi.status === "critical" ? "delayed" : kpi.status;
+  const rawSupport = kpi.supporting_text ? String(kpi.supporting_text) : "";
+  // The data feed labels the forecast method as "Completion forecast basis:
+  // MAX_EARLY_FINISH(...)". That is internal jargon — show a plain-language
+  // note instead of the raw basis string.
+  const supportingText = /^(completion\s+)?forecast basis:/i.test(rawSupport)
+    ? "Forecast reflects the latest expected finish across remaining schedule activities"
+    : rawSupport;
   return (
     <div
       className="flex min-w-0 flex-col gap-3 overflow-hidden p-5"
@@ -104,7 +111,7 @@ function ScheduleKpiCard({ theme, kpi }: { theme: ThemeTokens; kpi: Rec }) {
       <div className="mt-auto flex flex-col gap-1.5 border-t pt-3" style={{ borderColor: theme.colors.subtle_border ?? "#D9D6E8" }}>
         {variance && <DetailLine theme={theme}>{variance} beyond plan</DetailLine>}
         {dateComparison && <DetailLine theme={theme}>{dateComparison}</DetailLine>}
-        {kpi.supporting_text && <DetailLine theme={theme}>{String(kpi.supporting_text)}</DetailLine>}
+        {supportingText && <DetailLine theme={theme}>{supportingText}</DetailLine>}
       </div>
     </div>
   );
@@ -113,10 +120,26 @@ function ScheduleKpiCard({ theme, kpi }: { theme: ThemeTokens; kpi: Rec }) {
 export function ProgressPositionPanel({ theme, ast }: { theme: ThemeTokens; ast: WidgetAst }) {
   const content = (ast.content ?? {}) as Rec;
   const kpis = Array.isArray(content.kpis) ? (content.kpis as Rec[]) : [];
-  const visible = kpis.filter((k) => ["cumulative_planned_progress", "cumulative_actual_progress", "planned_vs_actual_variance"].includes(String(k.key)));
+  const observations = Array.isArray(content.observations) ? (content.observations as string[]) : [];
+  // Cumulative pair emphasized on top; variance and weekly increments below.
+  const emphasizedKeys = ["cumulative_planned_progress", "cumulative_actual_progress"];
+  const emphasized = kpis.filter((k) => emphasizedKeys.includes(String(k.key)));
+  const secondary = kpis.filter((k) => !emphasizedKeys.includes(String(k.key)));
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
-      {visible.map((kpi) => <ProgressKpiCard key={String(kpi.key)} theme={theme} kpi={kpi} />)}
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
+        {emphasized.map((kpi) => <ProgressKpiCard key={String(kpi.key)} theme={theme} kpi={kpi} />)}
+      </div>
+      {secondary.length > 0 && (
+        <div className="grid min-w-0 grid-cols-2 gap-4 md:grid-cols-3">
+          {secondary.map((kpi) => <ProgressKpiCard key={String(kpi.key)} theme={theme} kpi={kpi} compact />)}
+        </div>
+      )}
+      {observations.map((note, i) => (
+        <p key={i} className="break-words text-[12px] leading-5" style={{ color: theme.colors.text_secondary, overflowWrap: "anywhere" }}>
+          {note}
+        </p>
+      ))}
     </div>
   );
 }
@@ -155,6 +178,7 @@ export function PositionWidget({ theme, ast, widgetId, title, widgetType, dataSt
     </WidgetCard>
   );
 }
+
 
 // WGT-021 — submission KPIs in the WGT-002 card style. The total-transmittal
 // card spans wider; the per-status cards (A/B/C/D/UR) sit in a narrower row.

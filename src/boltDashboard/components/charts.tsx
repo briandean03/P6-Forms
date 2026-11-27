@@ -84,6 +84,7 @@ export function LineChart({
   data,
   series,
   categoryField,
+  categoryLabelField,
   height = 220,
   showPointLabels = false,
   showDots = true,
@@ -98,6 +99,7 @@ export function LineChart({
   data: ChartDatum[];
   series: ChartSeries[];
   categoryField: string;
+  categoryLabelField?: string;
   height?: number;
   showPointLabels?: boolean;
   showDots?: boolean;
@@ -170,13 +172,13 @@ export function LineChart({
     const labelEvery = Math.ceil(view.length / 8);
     const xLabels = view
       .map((d, i) => {
-        const label = String(d[categoryField] ?? d.period_end ?? "");
+        const label = String(d[categoryLabelField ?? categoryField] ?? d.period_end ?? "");
         const weekNum = typeof d.week_num === "number" ? d.week_num : null;
         return { i, label, weekNum };
       })
       .filter((_, i) => i % labelEvery === 0);
     return { pts, yMax, xLabels };
-  }, [view, series, categoryField, H, M.left, M.right, M.top, M.bottom]);
+  }, [view, series, categoryField, categoryLabelField, H, M.left, M.right, M.top, M.bottom]);
 
   const gridlines = 4;
 
@@ -327,7 +329,7 @@ export function LineChart({
           onChange={(w) => setRange(clampWindow(w))}
           labelFor={(i) => {
             const d = data[i];
-            return String(d?.[categoryField] ?? d?.period_end ?? `#${i + 1}`);
+            return String(d?.[categoryLabelField ?? categoryField] ?? d?.period_end ?? `#${i + 1}`);
           }}
         />
       )}
@@ -623,6 +625,7 @@ export function StackedBarChart({
   categoryLabelField,
   height = 220,
   horizontal = false,
+  wholeNumbers = false,
   verticalLabels = false,
 }: {
   theme: ThemeTokens;
@@ -667,12 +670,12 @@ export function StackedBarChart({
                     transition: `transform 0.7s cubic-bezier(0.22, 1, 0.36, 1) ${i * 0.04}s`,
                     transform: inView ? "scaleX(1)" : "scaleX(0)",
                   }}
-                  title={`${p.name}: ${p.v.toLocaleString()}`}
+                  title={`${p.name}: ${fmtBarValue(p.v, wholeNumbers)}`}
                 />
               ))}
             </div>
             <span className="w-10 text-right text-[11px] tabular-nums" style={{ color: theme.colors.text_primary }}>
-              {r.total.toLocaleString()}
+              {fmtBarValue(r.total, wholeNumbers)}
             </span>
           </div>
         ))}
@@ -733,6 +736,97 @@ export function StackedBarChart({
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+export function ResourceComparisonBarChart({
+  theme,
+  data,
+  height = 32,
+}: {
+  theme: ThemeTokens;
+  data: ChartDatum[];
+  height?: number;
+}) {
+  const { ref: inViewRef, inView } = useInView<HTMLDivElement>();
+  const rows = data
+    .map((row) => {
+      const planned = typeof row.planned_manpower === "number" ? row.planned_manpower : 0;
+      const actual = typeof row.actual_manpower === "number" ? row.actual_manpower : 0;
+      return {
+        label: String(row.resource_name ?? ""),
+        planned,
+        actual,
+        total: planned + actual,
+      };
+    })
+    .filter((row) => row.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const maxTotal = Math.max(...rows.map((row) => row.total), 1);
+  const plannedColor = semanticColor(theme, "planned");
+  const actualColor = semanticColor(theme, "actual");
+
+  return (
+    <div ref={inViewRef} className="min-w-0">
+      <Legend
+        theme={theme}
+        items={[
+          { name: "Planned Manpower", color: plannedColor },
+          { name: "Actual Manpower", color: actualColor },
+        ]}
+      />
+      <div className="flex flex-col gap-2.5">
+        {rows.map((row, index) => (
+          <div
+            key={row.label}
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[11rem_minmax(10rem,1fr)_8.5rem]"
+          >
+            <span
+              className="col-span-2 min-w-0 truncate text-[13px] leading-5 sm:col-span-1"
+              style={{ color: theme.colors.text_secondary }}
+              title={row.label}
+            >
+              {row.label}
+            </span>
+            <div
+              className="flex w-full min-w-0 overflow-hidden rounded-md"
+              style={{ height, background: theme.colors.empty_data_bg ?? "#F4F3F8" }}
+              role="img"
+              aria-label={`${row.label}: planned ${row.planned.toFixed(3)}, actual ${row.actual.toFixed(3)}`}
+            >
+              <div
+                className="bolt-resource-bar h-full shrink-0 transition-[width] duration-700 ease-out"
+                style={{
+                  width: `${(row.planned / maxTotal) * 100}%`,
+                  background: plannedColor,
+                  opacity: inView ? 1 : 0,
+                  transitionDelay: `${index * 35}ms`,
+                }}
+              />
+              <div
+                className="bolt-resource-bar h-full shrink-0 transition-[width] duration-700 ease-out"
+                style={{
+                  width: `${(row.actual / maxTotal) * 100}%`,
+                  background: actualColor,
+                  opacity: inView ? 1 : 0,
+                  transitionDelay: `${index * 35 + 70}ms`,
+                }}
+              />
+            </div>
+            <span className="flex shrink-0 items-center justify-end gap-2.5 text-[13px] tabular-nums">
+              <span className="inline-flex items-center gap-1" style={{ color: plannedColor }}>
+                <span className="h-2 w-2 rounded-sm shrink-0" style={{ background: plannedColor }} />
+                {row.planned.toFixed(1)}
+              </span>
+              <span className="inline-flex items-center gap-1" style={{ color: actualColor }}>
+                <span className="h-2 w-2 rounded-sm shrink-0" style={{ background: actualColor }} />
+                {row.actual.toFixed(1)}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -836,6 +930,7 @@ export function TransmittalDonutChart({
   categoryField,
   valueField,
   centerMetric,
+  plannedCount,
   height = 280,
 }: {
   theme: ThemeTokens;
@@ -843,40 +938,34 @@ export function TransmittalDonutChart({
   categoryField: string;
   valueField: string;
   centerMetric?: { label: string; value: number | string } | null;
+  /** Planned (to date) transmittals drawn as the inner purple ring. */
+  plannedCount?: number | null;
   height?: number;
 }) {
   const submitted = data.reduce((a, d) => a + (typeof d[valueField] === "number" ? (d[valueField] as number) : 0), 0);
   const totalTransmittals = typeof centerMetric?.value === "number" ? centerMetric.value : submitted;
-  const notSubmitted = Math.max(0, totalTransmittals - submitted);
 
-  // Pale track so the unfilled part of the ring reads as empty space.
-  const gray = theme.colors.empty_data_bg ?? "#F4F3F8";
-  // Rows ship no color token of their own; statuses map to the same semantic
-  // palette the generic donut used. B and D are swapped per the approved spec.
+  // Outer base ring: the full transmittal total, semi-transparent gray.
+  const baseRing = "rgba(120, 122, 138, 0.22)";
+  // Inner approved ring: single light transparent purple.
+  const innerRing = theme.colors.planned ?? "#5741DF";
+  // Status A reads orange, B green; C/D/UR keep their semantic palette.
   const statusColor = (label: string): string => {
     const semantic: Record<string, string> = {
-      A: theme.colors.semantic_planned ?? theme.colors.primary ?? "#5741DF",
-      B: theme.colors.semantic_on_track ?? theme.colors.success ?? "#359D78",
+      A: "#E07B39",
+      B: theme.colors.success ?? "#359D78",
       C: theme.colors.semantic_warning ?? theme.colors.warning ?? "#D99A39",
       D: theme.colors.semantic_overdue ?? theme.colors.critical ?? "#DB694F",
       UR: theme.colors.semantic_neutral ?? theme.colors.chart_neutral ?? "#8A8C98",
     };
     const key = label.trim().toUpperCase();
-    if (semantic[key]) return semantic[key];
-    return semanticColor(theme, undefined);
+    return semantic[key] ?? semanticColor(theme, undefined);
   };
   const cats = data.map((d) => ({
     label: String(d[categoryField] ?? ""),
     value: typeof d[valueField] === "number" ? (d[valueField] as number) : 0,
     color: statusColor(String(d[categoryField] ?? "")),
   }));
-  const idxB = cats.findIndex((a) => /^B\b/i.test(a.label.trim()));
-  const idxD = cats.findIndex((a) => /^D\b/i.test(a.label.trim()));
-  if (idxB >= 0 && idxD >= 0) {
-    const tmp = cats[idxB].color;
-    cats[idxB].color = cats[idxD].color;
-    cats[idxD].color = tmp;
-  }
 
   const R = 70;
   const C = 2 * Math.PI * R;
@@ -888,10 +977,27 @@ export function TransmittalDonutChart({
     return arc;
   });
 
+  // Inner ring: planned (to date) as a single partial ring; the incomplete
+  // part stays empty (no track underneath).
+  const rInner = 50;
+  const cInner = 2 * Math.PI * rInner;
+  const plannedFrac =
+    plannedCount != null && totalTransmittals > 0
+      ? Math.max(0, Math.min(1, plannedCount / totalTransmittals))
+      : null;
+  const plannedDash =
+    plannedFrac != null && plannedFrac > 0
+      ? `${plannedFrac * cInner} ${cInner - plannedFrac * cInner}`
+      : undefined;
+
   return (
-    <div className="flex items-center gap-6 flex-wrap" style={{ minHeight: height }}>
-      <svg viewBox="0 0 160 160" style={{ width: height, height }} className="shrink-0">
-        <circle cx="80" cy="80" r={R} fill="none" stroke={gray} strokeWidth="18" />
+    <div className="flex items-center gap-5 flex-wrap" style={{ minHeight: height }}>
+      <svg
+        viewBox="0 0 160 160"
+        style={{ width: "100%", maxWidth: height, height: "auto" }}
+        className="shrink-0"
+      >
+        <circle cx="80" cy="80" r={R} fill="none" stroke={baseRing} strokeWidth="16" />
         <g transform="rotate(-90 80 80)">
           {arcs.map((a, i) => (
             <circle
@@ -901,12 +1007,26 @@ export function TransmittalDonutChart({
               r={R}
               fill="none"
               stroke={a.color}
-              strokeWidth="18"
+              strokeWidth="16"
               strokeDasharray={a.dash}
               strokeDashoffset={a.offset}
             />
           ))}
         </g>
+        {plannedDash != null && (
+          <g transform="rotate(-90 80 80)">
+            <circle
+              cx="80"
+              cy="80"
+              r={rInner}
+              fill="none"
+              stroke={innerRing}
+              strokeWidth="10"
+              strokeOpacity={0.35}
+              strokeDasharray={plannedDash}
+            />
+          </g>
+        )}
         {centerMetric && (
           <>
             <text x="80" y="76" textAnchor="middle" fontSize="18" fontWeight="700" fill={theme.colors.muted_text}>
@@ -918,7 +1038,7 @@ export function TransmittalDonutChart({
           </>
         )}
       </svg>
-      <div className="flex flex-col gap-1.5 min-w-[120px]">
+      <div className="flex flex-col gap-1.5 min-w-[130px] flex-1">
         {arcs.map((a, i) => (
           <span key={i} className="inline-flex items-center gap-2 text-[12px]" style={{ color: theme.colors.text_secondary }}>
             <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: a.color }} />
@@ -929,13 +1049,29 @@ export function TransmittalDonutChart({
             <span className="tabular-nums text-[11px]">{(a.frac * 100).toFixed(0)}%</span>
           </span>
         ))}
-        <span className="inline-flex items-center gap-2 text-[12px]" style={{ color: theme.colors.text_secondary }}>
-          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: theme.colors.chart_neutral ?? "#8A8C98" }} />
-          <span className="truncate">Not submitted</span>
-          <span className="tabular-nums font-medium" style={{ color: theme.colors.text_primary }}>
-            {notSubmitted.toLocaleString()}
+        {plannedCount != null && plannedFrac != null && (
+          <span className="inline-flex items-center gap-2 text-[12px]" style={{ color: theme.colors.text_secondary }}>
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: innerRing, opacity: 0.35 }} />
+            <span className="truncate">Planned (to date)</span>
+            <span className="tabular-nums font-medium" style={{ color: theme.colors.text_primary }}>
+              {plannedCount.toLocaleString()}
+            </span>
+            <span className="tabular-nums text-[11px]">{((plannedFrac ?? 0) * 100).toFixed(0)}%</span>
           </span>
-        </span>
+        )}
+        {(() => {
+          const notSubmitted = Math.max(0, totalTransmittals - submitted);
+          if (notSubmitted <= 0) return null;
+          return (
+            <span className="inline-flex items-center gap-2 text-[12px]" style={{ color: theme.colors.text_secondary }}>
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: baseRing }} />
+              <span className="truncate">Not submitted</span>
+              <span className="tabular-nums font-medium" style={{ color: theme.colors.text_primary }}>
+                {notSubmitted.toLocaleString()}
+              </span>
+            </span>
+          );
+        })()}
       </div>
     </div>
   );
