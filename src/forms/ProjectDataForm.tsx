@@ -51,6 +51,7 @@ const WEBHOOKS = [
   { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
   { id: '62', label: 'Webhook 62', url: 'https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d', method: 'POST' as const },
   { id: '146', label: 'Generate Weekly Activity Report', url: 'https://pmc2p2c.app.n8n.cloud/webhook/47c2c01f-c886-4071-9a7a-f0591fefe6ss', method: 'POST' as const },
+  { id: '153', label: 'Webhook 153', url: 'https://pmc2p2c.app.n8n.cloud/webhook/61ca6c70-31af-42dc-927b-9faddea892c8' },
 ] as const
 
 interface WeeklyReportRow {
@@ -656,7 +657,7 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
           <button
             disabled={reportSyncRunning}
             onClick={() => {
-              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle', '146': 'idle' })
+              setWebhookStatus({ '51': 'idle', '52': 'idle', '53': 'idle', '55': 'idle', '62': 'idle', '146': 'idle', '153': 'idle' })
               setWebhookModal(true)
             }}
             className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded hover:bg-gray-200 flex items-center gap-2"
