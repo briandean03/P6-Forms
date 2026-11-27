@@ -1,8 +1,7 @@
+import { BOLT_WIDGET_WIDTHS } from '../theme/boltWidgetWidths';
 import type { StructureWidgetPlacement, WidgetRow } from '../api/dashboardApi';
 
 type LayoutWidget = Pick<WidgetRow, 'widget_id' | 'widget_type' | 'widget_ast'>;
-const FULL_WIDTH_IDS = new Set(['WGT-005', 'WGT-007', 'WGT-014', 'WGT-015', 'WGT-016', 'WGT-018', 'WGT-021', 'WGT-026', 'WGT-038', 'WGT-045', 'WGT-046', 'WGT-051']);
-const HALF_WIDTH_IDS = new Set(['WGT-013', 'WGT-032', 'WGT-033', 'WGT-039', 'WGT-040']);
 
 function hasWideTable(content: unknown): boolean {
   if (!content || typeof content !== 'object') return false;
@@ -15,17 +14,18 @@ function hasWideTable(content: unknown): boolean {
   });
 }
 
-/** JSON spans are preferences, with frontend minimums for content readability. */
+/** The Bolt reference controls known widgets; generated widths are fallbacks for new widget IDs. */
 export function preferredWidgetSpan(widget: LayoutWidget, requested?: number): number {
-  if (FULL_WIDTH_IDS.has(widget.widget_id) ||
-      ['trade_schedule_gantt', 'lookahead_table', 'narrative_summary'].includes(widget.widget_type) ||
+  const boltWidth = BOLT_WIDGET_WIDTHS[widget.widget_id];
+  if (boltWidth) return boltWidth;
+  if (['trade_schedule_gantt', 'lookahead_table', 'narrative_summary'].includes(widget.widget_type) ||
       hasWideTable(widget.widget_ast?.content)) return 12;
   const valid = Number.isFinite(requested) && Number(requested) > 0;
   const span = valid ? Math.max(3, Math.min(12, Math.round(Number(requested)))) : 6;
-  return HALF_WIDTH_IDS.has(widget.widget_id) ? Math.max(6, span) : span;
+  return span;
 }
 
-/** Pack in report order and share spare columns within each row. No DOM reads. */
+/** Preserve Bolt pairings; fill spare columns only on rows made entirely of new widgets. */
 export function resolveWidgetSpans(widgets: LayoutWidget[], placements: StructureWidgetPlacement[]): number[] {
   const requested = new Map(placements.map(p => [p.widget_id, p.grid]));
   const spans = widgets.map(widget => {
@@ -35,7 +35,7 @@ export function resolveWidgetSpans(widgets: LayoutWidget[], placements: Structur
   let row: number[] = [], used = 0;
   const fillRow = () => {
     // Grow the narrowest card first so partial rows remain balanced.
-    while (used < 12 && row.length) {
+    while (used < 12 && row.length && row.every(index => !BOLT_WIDGET_WIDTHS[widgets[index].widget_id])) {
       const next = row.reduce((smallest, index) => spans[index] < spans[smallest] ? index : smallest);
       spans[next]++;
       used++;

@@ -1,3 +1,13 @@
+.bolt-dashboard {
+  font-family: var(--dt-font, 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media screen {
+  /* The standalone Bolt layout already supplies its own content gutters. */
+  .report-workspace.bolt-report-workspace { padding: 0; }
+}
+
 .bolt-dashboard .wgt-051-kpi-grid {
   --kpi-count: 1;
 }

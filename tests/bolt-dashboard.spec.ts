@@ -6,7 +6,7 @@ const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-0000000000
 const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=online_weekly_dashboard`
 const structures = [56, 55].map(week => ({
   is_approved: true, created_at: '2026-11-27T04:00:00Z', id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
-  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-014', 'WGT-018', 'WGT-038', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037', 'WGT-007', 'WGT-021', 'WGT-032', 'WGT-020', 'WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: ['WGT-014', 'WGT-018'].includes(id) ? 3 : 12 } })) }] }),
+  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-009', 'WGT-010', 'WGT-013', 'WGT-014', 'WGT-018', 'WGT-038', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037', 'WGT-007', 'WGT-021', 'WGT-032', 'WGT-020', 'WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: ['WGT-014', 'WGT-018'].includes(id) ? 3 : 12 } })) }] }),
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
@@ -102,7 +102,15 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
         widgets.push({ widget_id: 'WGT-032', widget_type: 'grouped_bar_chart', widget_title: 'Manpower comparison', content: {
           data: [{ resource_name: 'Steel fixers', planned_manpower: 25, actual_manpower: 20 }],
         } } as typeof widgets[number])
-        widgets.push({ widget_id: 'WGT-014', widget_type: 'trade_schedule_gantt', widget_title: 'Trade schedule width check', content: {
+        widgets.push({ widget_id: 'WGT-009', widget_type: 'line_chart', widget_title: 'Weekly planned actual', content: {
+          category_field: 'period_end', series: [{ name: 'Actual', value_field: 'actual_pp' }], data: [{ period_end: '2026-10-01', actual_pp: 1 }, { period_end: '2026-10-12', actual_pp: 2 }],
+        } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-010', widget_type: 'grouped_bar_chart', widget_title: 'Weekly variance', content: {} } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-013', widget_type: 'data_table', widget_title: 'Phase width check', content: {
+          columns: [{ key: 'phase', label: 'Phase' }, { key: 'planned', label: 'Planned Progress %' }, { key: 'actual', label: 'Actual Progress %' }],
+          rows: [{ phase: 'Construction', planned: 21, actual: 22 }],
+        } } as typeof widgets[number])
+        widgets.push({ widget_id: 'WGT-014' , widget_type: 'trade_schedule_gantt', widget_title: 'Trade schedule width check', content: {
           time_axis: { start: '2026-01-01', end: '2026-12-31' },
           data: [{ row_id: 'ST', trade_code: 'ST', trade_label: 'Structural Works', planned_start: '2026-01-01', planned_finish: '2026-12-31' }],
         } } as typeof widgets[number])
@@ -125,7 +133,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
             { period_end: '2026-09-22', materials: 20 },
           ],
         } } as typeof widgets[number])
-        data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: index < 2 ? `s${week}` : `s${week}-previous`, report_id: `r${week}`, project_id: 'P2', page_id: index < 2 ? `overview-${week}` : `previous-layout-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
+        data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: index < 2 ? `s${week}` : `s${week}-previous`, report_id: `r${week}`, project_id: 'P2', page_id: index < 2 ? `overview-${week}` : `previous-layout-${week}`, widget_order: ['WGT-008','WGT-009','WGT-010','WGT-013','WGT-014'].includes(widget.widget_id) ? ['WGT-008','WGT-009','WGT-010','WGT-013','WGT-014'].indexOf(widget.widget_id) - 10 : index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
@@ -153,11 +161,31 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(page.getByRole('region', { name: 'Key risks' })).toContainText('Cladding procurement')
     await expect(page.getByRole('img', { name: 'Steel fixers: planned 25.000, actual 20.000' })).toBeVisible()
     for (const id of ['WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047']) await expect(page.getByRole('region', { name: `Hidden ${id}` })).toHaveCount(0)
-    for (const title of ['Trade schedule width check', 'Lookahead width check']) {
-      const widthRatio = await page.getByRole('region', { name: title, exact: true }).evaluate(card =>
-        card.getBoundingClientRect().width / card.closest('.bolt-widget-grid')!.getBoundingClientRect().width)
-      expect(widthRatio).toBeGreaterThan(0.98)
+    const rectangles = await Promise.all(['Weekly planned actual', 'Weekly variance', 'Phase width check', 'Trade schedule width check'].map(title =>
+      page.getByRole('region', { name: title, exact: true }).evaluate(card => {
+        const r = card.getBoundingClientRect(), grid = card.closest('.bolt-widget-grid')!.getBoundingClientRect()
+        return { width: r.width, top: r.top, gridWidth: grid.width, titleSize: getComputedStyle(card.querySelector('h3')!).fontSize }
+      })))
+    expect(rectangles[0].top).toBe(rectangles[1].top)
+    expect(rectangles[2].top).toBe(rectangles[3].top)
+    expect(rectangles[2].top).toBeGreaterThan(rectangles[0].top)
+    for (const r of rectangles) {
+      expect(r.width / r.gridWidth).toBeGreaterThan(0.47)
+      expect(r.width / r.gridWidth).toBeLessThan(0.51)
+      expect(r.titleSize).toBe('14px')
     }
+    await expect(page.locator('.bolt-report-workspace')).toHaveCSS('padding-left', '0px')
+    await expect(page.locator('.bolt-dashboard')).toHaveCSS('font-family', /Inter/)
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    const frameWidth = await page.locator('.bolt-dashboard').evaluate(el => el.getBoundingClientRect().width)
+    expect(frameWidth).toBeGreaterThan(1800)
+    const phaseBox = await page.getByRole('region', { name: 'Phase width check', exact: true }).boundingBox()
+    const ganttBox = await page.getByRole('region', { name: 'Trade schedule width check', exact: true }).boundingBox()
+    expect(phaseBox!.y).toBe(ganttBox!.y)
+    expect(phaseBox!.width).toBeGreaterThan(750)
+    expect(Math.abs(phaseBox!.width - ganttBox!.width)).toBeLessThan(2)
+    await page.setViewportSize({ width: 1280, height: 720 })
+
     const levelProgress = page.getByRole('region', { name: 'Trade progress by level' })
     await expect(levelProgress).toContainText('45.0%')
     await levelProgress.getByRole('button', { name: 'Planned %', exact: true }).click()
@@ -265,6 +293,10 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Show navigation', exact: true })).toBeVisible()
+    const mobilePhase = await page.getByRole('region', { name: 'Phase width check', exact: true }).boundingBox()
+    const mobileGantt = await page.getByRole('region', { name: 'Trade schedule width check', exact: true }).boundingBox()
+    expect(mobileGantt!.y).toBeGreaterThan(mobilePhase!.y)
+    expect(Math.abs(mobileGantt!.width - mobilePhase!.width)).toBeLessThan(2)
     if (mode === 'ready') await page.screenshot({ path: testInfo.outputPath('bolt-mobile.png'), fullPage: true })
     expect(reads.some(read => read.table.endsWith('_widgets') && read.report === 'eq.r55')).toBe(true)
   }

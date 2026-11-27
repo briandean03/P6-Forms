@@ -1,16 +1,21 @@
+import { readFileSync } from 'node:fs'
+const referenceWidths: Record<string, number> = JSON.parse(readFileSync(new URL('./fixtures/bolt-reference-widths.json', import.meta.url), 'utf8'))
 import { test, expect } from '@playwright/test'
 import type { StructureWidgetPlacement, WidgetRow } from '../src/boltDashboard/api/dashboardApi'
 import { preferredWidgetSpan, resolveWidgetSpans } from '../src/boltDashboard/utils/widgetLayout'
 const widget = (id: string, type = 'kpi_group', content: Record<string, unknown> = {}) => ({ widget_id: id, widget_type: type, widget_ast: { type, title: id, content } })
 const placement = (id: string, span: number) => ({ widget_id: id, grid: { column_span: span } }) as StructureWidgetPlacement
 
-test('Gantt and lookahead widgets stay wide despite narrow or invalid JSON widths', () => {
-  for (const span of [3, 6, -1, NaN]) {
-    expect(preferredWidgetSpan(widget('WGT-014'), span)).toBe(12)
-    expect(preferredWidgetSpan(widget('WGT-018'), span)).toBe(12)
+test('all 49 known widget widths match the uploaded Bolt reference despite generated JSON', () => {
+  expect(Object.keys(referenceWidths)).toHaveLength(49)
+  for (const [id, expected] of Object.entries(referenceWidths)) {
+    for (const requested of [3, 6, 12, NaN]) expect(preferredWidgetSpan(widget(id), requested)).toBe(expected)
   }
-  expect(preferredWidgetSpan(widget('FUTURE-GANTT', 'trade_schedule_gantt'), 3)).toBe(12)
-  expect(preferredWidgetSpan(widget('FUTURE-LOOKAHEAD', 'lookahead_table'), 4)).toBe(12)
+})
+test('progress charts and phase/Gantt pairs keep the same rows as Bolt', () => {
+  const ids = ['WGT-008', 'WGT-009', 'WGT-010', 'WGT-013', 'WGT-014', 'WGT-044']
+  const widgets = ids.map(id => widget(id))
+  expect(resolveWidgetSpans(widgets as WidgetRow[], ids.map(id => placement(id, 12)))).toEqual([12, 6, 6, 6, 6, 12])
 })
 test('wide tables including nested composite tables get a full row', () => {
   const columns = Array.from({ length: 6 }, (_, index) => ({ key: String(index) }))

@@ -832,7 +832,7 @@ function App() {
         </header>
 
         {/* Content */}
-        <main className={`print-main flex-1 overflow-y-auto${isFullWidthTab ? ' report-workspace' : ' px-6 py-6'}`}>
+        <main className={`print-main flex-1 overflow-y-auto${isFullWidthTab ? ` report-workspace${activeTab === 'online_weekly_dashboard' ? ' bolt-report-workspace' : ''}` : ' px-6 py-6'}`}>
           <Suspense fallback={<p className="p-4 text-gray-500" role="status">Loading page…</p>}>{renderTabContent()}</Suspense>
         </main>
 
