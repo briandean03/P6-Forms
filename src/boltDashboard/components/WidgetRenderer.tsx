@@ -1,3 +1,4 @@
+import { preferredWidgetSpan, widgetSpanClass } from '../utils/widgetLayout';
 import { repeatsAcrossFloors } from '../utils/repeatingFloors';
 import { MajorExceptionsPanel } from "./MajorExceptionsPanel";
 import { EngineeringSubmissionsSummary } from "./EngineeringSubmissionsSummary";
@@ -305,27 +306,7 @@ export function WidgetRenderer({
   const type = widget.widget_type;
   const isKpiWidget =
     widget.widget_id === "WGT-038" || widget.widget_id === "WGT-039" || widget.widget_id === "WGT-040";
-  // WGT-038 full width; WGT-039 and WGT-040 share the row beneath it, same size.
-  const span =
-    widget.widget_id === "WGT-051" ||
-    widget.widget_id === "WGT-016" ||
-    widget.widget_id === "WGT-021" ||
-    widget.widget_id === "WGT-026" ||
-    widget.widget_id === "WGT-038" ||
-    widget.widget_id === "WGT-005"
-      ? 12
-      // WGT-032 sits beside WGT-033 on one row; WGT-013 and WGT-014 also pair up;
-      // WGT-045/046 full width.
-      : widget.widget_id === "WGT-013" ||
-          widget.widget_id === "WGT-014" ||
-          widget.widget_id === "WGT-032" ||
-          widget.widget_id === "WGT-033"
-        ? 6
-        : widget.widget_id === "WGT-045" || widget.widget_id === "WGT-046"
-          ? 12
-          : widget.widget_id === "WGT-039" || widget.widget_id === "WGT-040"
-            ? 6
-            : (placement?.column_span ?? 6);
+  const span = preferredWidgetSpan(widget, placement?.column_span);
 
   const kpiNames = isKpiWidget
     ? Array.from(new Set((Array.isArray(c.data) ? (c.data as Rec[]) : []).map(kpiNameOf).filter(Boolean)))
@@ -336,16 +317,7 @@ export function WidgetRenderer({
       ? rows.filter((r) => activeKpis.includes(kpiNameOf(r)))
       : rows;
 
-  const gridClass =
-    span >= 12
-      ? "md:col-span-12 min-w-0"
-      : span >= 8
-        ? "md:col-span-8 min-w-0"
-        : span >= 6
-          ? "md:col-span-6 min-w-0"
-          : span >= 4
-            ? "md:col-span-4 min-w-0"
-            : "md:col-span-3 min-w-0";
+  const gridClass = widgetSpanClass(span);
 
   if (widget.widget_id === "WGT-021" && ["kpi_group", "kpi_grid", "status_summary"].includes(type)) {
     return (
@@ -409,7 +381,7 @@ export function WidgetRenderer({
         title="Engineering Submissions Status by Transmittal Type"
         widgetId={widget.widget_id}
         dataStatus={widget.data_status}
-        className="md:col-span-12 min-w-0"
+        className={gridClass}
       >
         {tableRows.length ? (
           <table className="w-full border-collapse text-[13px]">
@@ -515,7 +487,7 @@ export function WidgetRenderer({
         widgetId={widget.widget_id}
         dataStatus={widget.data_status}
         eyebrow={`${widget.widget_id} · narrative summary`}
-        className="md:col-span-12 min-w-0"
+        className={gridClass}
       >
         <NarrativeSummary theme={theme} ast={ast} />
       </WidgetCard>
@@ -581,7 +553,7 @@ export function WidgetRenderer({
         title={widget.widget_title}
         widgetId={widget.widget_id}
         dataStatus={widget.data_status}
-        className="md:col-span-12 min-w-0"
+        className={gridClass}
       >
         {body}
       </WidgetCard>
@@ -658,7 +630,7 @@ export function WidgetRenderer({
         title={widget.widget_title}
         widgetId={widget.widget_id}
         dataStatus={widget.data_status}
-        className="md:col-span-6 min-w-0"
+        className={gridClass}
       >
         {body}
       </WidgetCard>

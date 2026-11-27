@@ -1,3 +1,4 @@
+import { resolveWidgetSpans } from '../utils/widgetLayout';
 import { Appendix } from './Appendix';
 import { useEffect, useMemo, useRef, useState, useCallback, memo, type ComponentProps } from "react";
 import { CheckCircle2, ChevronDown, Loader2, Printer, AlertTriangle, RefreshCw } from "lucide-react";
@@ -343,6 +344,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
             {/* All sections stacked for continuous scrolling */}
             {pages.map((p, i) => {
               const pageWidgets = widgets && !widgetsLoading ? (widgetsByPage[p.page_id] ?? []) : [];
+              const spans = resolveWidgetSpans(pageWidgets, p.widgets ?? []);
               return (
                 <section
                   key={p.page_id}
@@ -356,8 +358,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                   </h2>
                   {p.page_id === 'dashboard-appendix' ? <Appendix key={`${schemaName}:${projectTextId}:${structure.report_id || structure.structure_id}:${structure.data_date}`} schemaName={schemaName} projectId={projectTextId} reportId={`week-${structure.week_num ?? structure.data_date}`} dataDate={structure.data_date || `week-${structure.week_num}`} /> : pageWidgets.length > 0 ? (
                     <div className="bolt-widget-grid grid grid-cols-1 md:grid-cols-12 gap-4 min-w-0" style={{ rowGap: space(theme, "gap_xl") }}>
-                      {pageWidgets.map((w) => {
-                        const placement = (p.widgets ?? []).find((pl) => pl.widget_id === w.widget_id);
+                      {pageWidgets.map((w, widgetIndex) => {
                         return (
                           <div className="contents bolt-print-item" key={`${w.widget_record_id ?? w.widget_id}:${w.id}`}>
                           <p className="hidden bolt-print-context">Construction Intelligence Dashboard · {p.title} · Week {structure.week_num} · {structure.data_date}</p>
@@ -365,7 +366,7 @@ export default function Dashboard({ schemaName, projectTextId }: { schemaName: s
                             allWidgets={widgets ?? []}
                             theme={theme}
                             widget={w}
-                            columnSpan={placement?.grid?.column_span}
+                            columnSpan={spans[widgetIndex]}
                             dataDate={structure?.data_date}
                             kpiSelection={kpiSelection}
                             onKpiSelectionChange={setPersistedKpiSelection}

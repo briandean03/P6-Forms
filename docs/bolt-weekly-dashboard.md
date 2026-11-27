@@ -66,3 +66,9 @@ The mocked browser suite also covers the new narrative, exception, resource comp
 Week selection also handles regenerated structures: one selector entry per report, newest approved layout preferred, widgets read by project/report and mapped to the selected layout by widget ID. Regression fixtures include a newer unapproved duplicate structure and widgets split across old/new structure and page IDs.
 
 WGT-020 always hides activities that do not repeat across at least two distinct physical floors, before trade groups are constructed. This is a frontend rule for all weeks and both progress modes, including printing; stored rows are unchanged. Zero-percent progress and unresolved source conflicts still count as presence. The `All` bucket is not a physical floor. Older report shapes without a floor map use their generated `level_count`. Empty trade groups disappear.
+
+## Adaptive online widget widths
+
+`src/boltDashboard/utils/widgetLayout.ts` resolves screen widths before rendering. WGT-014 and WGT-018 always use a full row. Gantt and lookahead types, narrative summaries and tables with five or more columns (including nested composite tables) also have a full-row minimum, even if generated JSON requests a narrower span. Existing full-width KPI panels and paired KPI minimums remain supported.
+
+Within each section, widgets keep their report order. Each partial row grows its narrowest widgets until it uses all 12 columns, including the final row; hidden widgets are excluded before packing. Explicit wider JSON spans are honored, and invalid widths fall back safely. Mobile stays single-column. No element measurement, resize polling, Supabase edits or content calculations are introduced. This fills horizontal row space; it does not rearrange cards to eliminate vertical gaps between widgets of different heights. Mixed portrait/landscape print sizing remains controlled by the existing print styles.
