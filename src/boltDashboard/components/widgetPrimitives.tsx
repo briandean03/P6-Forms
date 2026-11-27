@@ -1,4 +1,5 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 import type { ThemeTokens } from "@/boltDashboard/theme/designTheme";
 import { radius, shadow, space } from "@/boltDashboard/theme/designTheme";
@@ -171,6 +172,25 @@ export function formatCellValue(value: unknown, dataType?: string): string {
   return String(value);
 }
 
+function MatrixPrintOnly({ children }: { children: ReactNode }) {
+  const [printing, setPrinting] = useState(() => window.matchMedia('print').matches);
+  useEffect(() => {
+    const media = window.matchMedia('print');
+    const update = () => setPrinting(media.matches);
+    // Browser print snapshots need the tables mounted before beforeprint returns.
+    const before = () => flushSync(() => setPrinting(true));
+    media.addEventListener('change', update);
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', update);
+    return () => {
+      media.removeEventListener('change', update);
+      window.removeEventListener('beforeprint', before);
+      window.removeEventListener('afterprint', update);
+    };
+  }, []);
+  return <div className="bolt-matrix-print">{printing ? children : null}</div>;
+}
+
 export function DataTable({
   theme,
   columns,
@@ -180,6 +200,8 @@ export function DataTable({
   dataDate,
   purplePastDates = false,
   percentColor,
+  printMatrix = false,
+  matrixBand = false,
 }: {
   theme: ThemeTokens;
   columns: TableColumn[];
@@ -190,6 +212,8 @@ export function DataTable({
   purplePastDates?: boolean;
   /** When set, percentage cells (e.g. "42.5%") render in this color. */
   percentColor?: string;
+  printMatrix?: boolean;
+  matrixBand?: boolean;
 }) {
   if (!rows.length) {
     return (
@@ -197,6 +221,39 @@ export function DataTable({
         No rows for this reporting update
       </p>
     );
+  }
+
+  // Keep the interactive matrix intact; print manageable floor bands with
+  // the identity columns repeated, without copying empty floor-only rows.
+  const levelColumns = columns.filter(col => col.key.startsWith('level:'));
+  if (printMatrix && levelColumns.length) {
+    const identity = columns.filter(col => !col.key.startsWith('level:'));
+    const bands = [];
+    for (let start = 0; start < levelColumns.length; start += 10) {
+      const floors = levelColumns.slice(start, start + 10);
+      const bandRows: Record<string, unknown>[] = [];
+      let group: Record<string, unknown> | undefined;
+      for (const row of rows) {
+        if (row.__group === true) { group = row; continue; }
+        if (!floors.some(col => (Array.isArray(row.__present_levels) && row.__present_levels.includes(col.key.slice('level:'.length))) ||
+          (row[col.key] != null && !['', '—'].includes(String(row[col.key]))))) continue;
+        if (group) { bandRows.push(group); group = undefined; }
+        bandRows.push(row);
+      }
+      if (bandRows.length) bands.push({ floors, rows: bandRows });
+    }
+    const shared = { theme, totals, dataDate, purplePastDates, percentColor };
+    return <>
+      <div className="bolt-matrix-screen">
+        <DataTable {...shared} columns={columns} rows={rows} maxHeight={maxHeight} />
+      </div>
+      <MatrixPrintOnly>
+        {bands.map((band, index) => <section className="bolt-matrix-band" key={band.floors[0].key}>
+          <p className="bolt-matrix-band-label">Activity progress by floor · {band.floors[0].label} – {band.floors[band.floors.length - 1].label} · Part {index + 1} of {bands.length}</p>
+          <DataTable {...shared} matrixBand columns={[...identity, ...band.floors]} rows={band.rows} />
+        </section>)}
+      </MatrixPrintOnly>
+    </>;
   }
 
   const alignFor = (col: TableColumn) =>
@@ -224,7 +281,8 @@ export function DataTable({
       className="print-collapse overflow-x-auto"
       style={{ maxHeight: maxHeight ? `${maxHeight}px` : undefined, overflowY: maxHeight ? "auto" : undefined }}
     >
-      <table className="w-full border-collapse text-[13px]">
+      <table className={`w-full border-collapse text-[13px]${matrixBand ? ' bolt-matrix-table' : ''}`}>
+        {matrixBand && <colgroup>{columns.map(col => <col key={col.key} style={{ width: col.key === 'activity_name' ? '75mm' : col.key === 'serial_no' ? '10mm' : undefined }} />)}</colgroup>}
         <thead>
           <tr style={{ background: theme.colors.table_header_bg ?? "#F4F3F8" }}>
             {columns.map((col) => (

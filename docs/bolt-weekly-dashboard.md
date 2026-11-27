@@ -76,3 +76,11 @@ The earlier automatic full-width rules were too broad for matching the Bolt desi
 The online dashboard uses its own Bolt content gutters without the additional P6 report workspace padding or the shared 1800px report width cap. Its font family and smoothing match the export; fixed pixel font sizes are retained without adding zoom or transforms. Other report routes keep their existing workspace styles.
 
 Regression checks cover the width contract for all 49 reference widgets, paired rows at desktop size, 14px widget titles, font inheritance, workspace padding, mobile navigation and PDF printing. These checks use mocked data and do not establish the user's browser zoom or which commit is deployed on Vercel.
+
+## Printing the floor matrix
+
+WGT-020 keeps its complete scrollable matrix on screen. Printing uses A4 landscape tables with up to ten floor columns per band and repeats the identity columns (including a fixed 75mm activity-name column) in each band. Headers repeat on continuation pages. Rows with no activity on the floors in a band, and trade headings with no remaining rows, are omitted from that band; zero-percent values and unresolved source conflicts are retained. No stored data or progress values are modified.
+
+Print tables use compact line spacing rather than the screen's line height. This avoids letter-by-letter names and oversized rows caused by squeezing forty-plus columns into equal widths. The band tables mount only for print media/beforeprint and unmount afterwards, avoiding a second large matrix in the normal screen DOM. Existing portrait/landscape handling for other widgets is retained.
+
+The PDF regression case uses 211 repeating activities across 45 floors, verifies first/last activity and floor coverage, checks that all 9,495 percentage values survive printing, checks name-column width and row height, and bounds the synthetic report's page count. Real report page counts depend on the number and length of saved records in every widget.

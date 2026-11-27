@@ -1864,6 +1864,7 @@ export function WidgetRenderer({
                     r.row_status === "conflict" ? `⚠ ${String(r.activity_name ?? "")}` : String(r.activity_name ?? ""),
                 };
                 const byLevel = (r.progress_by_level ?? {}) as Rec;
+                out.__present_levels = Object.keys(byLevel);
                 for (const col of c.columns as Rec[]) {
                   if (col.value_source !== "progress_by_level") continue;
                   const cell = (byLevel[String(col.level_code)] ?? {}) as Rec;
@@ -1941,6 +1942,7 @@ export function WidgetRenderer({
                 ? columnsOf(c).filter((col) => col.key !== "trade_label")
                 : columnsOf(c))
             }
+            printMatrix={widget.widget_id === "WGT-020"}
             rows={wgt20Rows ?? rowsOf(c)}
             totals={wgt35Totals ?? totals}
             maxHeight={420}

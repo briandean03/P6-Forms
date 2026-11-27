@@ -9,7 +9,7 @@ const structures = [56, 55].map(week => ({
   structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-009', 'WGT-010', 'WGT-013', 'WGT-014', 'WGT-018', 'WGT-038', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037', 'WGT-007', 'WGT-021', 'WGT-032', 'WGT-020', 'WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: ['WGT-014', 'WGT-018'].includes(id) ? 3 : 12 } })) }] }),
 }))
 
-for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
+for (const mode of ['ready', 'empty', 'denied', 'matrix'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
   const attachments = new Map<string, string>()
   let removals = 0
   let denyRemoval = true
@@ -133,6 +133,13 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
             { period_end: '2026-09-22', materials: 20 },
           ],
         } } as typeof widgets[number])
+        if (mode === 'matrix') {
+          const matrix = widgets.find(widget => widget.widget_id === 'WGT-020')!.content as any
+          matrix.columns.unshift({ key: 'serial_no', label: 'No.' })
+          for (let floor = 1; floor <= 45; floor++) matrix.columns.push({ key: `level:L${String(floor).padStart(2, '0')}`, label: `L${String(floor).padStart(2, '0')}`, data_type: 'percentage', value_source: 'progress_by_level', level_code: `L${String(floor).padStart(2, '0')}` })
+          matrix.rows.push({ row_id: 'conflict', activity_name: 'Unresolved multi-floor activity', trade_label: 'Electrical', progress_by_level: { L01: { data_status: 'conflict', source_activity_ids: ['a', 'b'], actual_percent: null }, L02: { data_status: 'conflict', source_activity_ids: ['c', 'd'], actual_percent: null } } })
+          for (let row = 1; row <= 211; row++) matrix.rows.push({ row_id: `matrix-${row}`, serial_no: row, activity_name: `Activity ${row}: Cable Tray, Trunking and Accessories Installation`, trade_label: 'Electrical', progress_by_level: Object.fromEntries(Array.from({ length: 45 }, (_, i) => [`L${String(i + 1).padStart(2, '0')}`, { actual_percent: 100, planned_percent: 100 }])) })
+        }
         data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: index < 2 ? `s${week}` : `s${week}-previous`, report_id: `r${week}`, project_id: 'P2', page_id: index < 2 ? `overview-${week}` : `previous-layout-${week}`, widget_order: ['WGT-008','WGT-009','WGT-010','WGT-013','WGT-014'].includes(widget.widget_id) ? ['WGT-008','WGT-009','WGT-010','WGT-013','WGT-014'].indexOf(widget.widget_id) - 10 : index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
@@ -193,6 +200,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(levelProgress).not.toContainText('Single-floor lift installation')
     await expect(levelProgress).not.toContainText('Project-wide activity')
     await expect(levelProgress).not.toContainText('Conveying')
+    await expect(levelProgress.locator('.bolt-matrix-band')).toHaveCount(0)
     const trend = page.getByRole('img', { name: 'Materials weekly submission trend', exact: true })
     await expect(trend).toContainText('2026-09-08')
     await expect(trend).toContainText('2026-09-22')
@@ -271,7 +279,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(page.locator('.bolt-dashboard > header')).toBeHidden()
     const clipped = await wide.locator('table').evaluate(table => table.scrollWidth > table.clientWidth + 2)
     expect(clipped).toBe(false)
-    if (mode === 'ready') {
+    if (mode === 'ready' || mode === 'matrix') {
       const path = testInfo.outputPath('bolt-report.pdf')
       await page.pdf({ path, preferCSSPageSize: true, printBackground: true })
       const orientations: boolean[] = []
@@ -288,8 +296,25 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
       expect(pdf.text).toContain('R34-C9')
       expect(pdf.text).not.toContain('Single-floor lift installation')
       expect(pdf.text).not.toContain('Project-wide activity')
+      if (mode === 'matrix') {
+        expect(pdf.numpages).toBeLessThan(70)
+        expect(pdf.text).toContain('L45')
+        expect(pdf.text).toContain('Activity 211: Cable Tray')
+        expect(pdf.text).toContain('Unresolved multi-floor activity')
+        expect((pdf.text.match(/100\.0%/g) ?? []).length).toBeGreaterThanOrEqual(211 * 45)
+        const matrixPrint = page.getByRole('region', { name: 'Trade progress by level', exact: true })
+        await expect(matrixPrint.locator('.bolt-matrix-screen')).toBeHidden()
+        await expect(matrixPrint.locator('.bolt-matrix-band')).toHaveCount(5)
+        const firstBand = matrixPrint.locator('.bolt-matrix-band').first()
+        const metrics = await firstBand.locator('tbody tr:not(:has(td[colspan]))').first().evaluate(row => ({ height: row.getBoundingClientRect().height, nameWidth: row.querySelector('td:nth-child(2)')!.getBoundingClientRect().width }))
+        expect(metrics.height).toBeLessThan(70)
+        expect(metrics.nameWidth).toBeGreaterThan(250)
+        console.log(`211 activities × 45 floors: complete test report prints ${pdf.numpages} A4 pages`)
+      }
+
     }
     await page.emulateMedia({ media: 'screen' })
+    await expect(page.locator('.bolt-matrix-band')).toHaveCount(0)
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Show navigation', exact: true })).toBeVisible()

@@ -221,6 +221,7 @@
     min-width: 0 !important;
     padding: 1.5mm !important;
     font-size: 8pt !important;
+    line-height: 1.25 !important;
     position: static !important;
   }
   .bolt-dashboard td > span { max-width: 100%; min-width: 0; }
@@ -233,4 +234,26 @@
     opacity: 1 !important;
     transition: none !important;
   }
+}
+
+/* Wide floor matrices print in A4 landscape bands, never 40 tiny columns. */
+.bolt-dashboard .bolt-matrix-print { display: none; }
+@media print {
+  .bolt-dashboard .bolt-matrix-screen { display: none !important; }
+  .bolt-dashboard .bolt-matrix-print { display: block !important; }
+  .bolt-dashboard .bolt-print-item:has(.bolt-matrix-print) {
+    page: online-landscape;
+    width: 273mm !important;
+  }
+  .bolt-dashboard .bolt-matrix-band { break-before: page; }
+  .bolt-dashboard .bolt-matrix-band:first-child { break-before: auto; }
+  .bolt-dashboard .bolt-matrix-band-label { font-size: 9pt; margin-bottom: 3mm; break-after: avoid; }
+  .bolt-dashboard .bolt-matrix-table th,
+  .bolt-dashboard .bolt-matrix-table td {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    padding: 1mm !important;
+    line-height: 1.15 !important;
+  }
+  .bolt-dashboard .bolt-matrix-table th { white-space: nowrap !important; }
 }
