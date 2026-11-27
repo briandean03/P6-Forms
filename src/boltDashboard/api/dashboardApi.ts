@@ -60,6 +60,7 @@ export interface StructurePlan {
 
 export interface ApprovedStructure {
   is_approved?: boolean;
+  created_at?: string;
   id: number;
   structure_id: string;
   report_id: string;
@@ -124,9 +125,22 @@ export function createDashboardSource(schema: string, project: string) {
     async listStructures(): Promise<ApprovedStructure[]> {
       if (!project) return [];
       const rows = await checked<ApprovedStructure[]>('dbp6_0008_dashboard_structures', db.from('dbp6_0008_dashboard_structures')
-        .select('structure_id,report_id,project_id,week_num,data_date,dashboard_title,structure_version,design_id')
+        .select('structure_id,report_id,project_id,week_num,data_date,dashboard_title,structure_version,design_id,is_approved,created_at')
         .eq('project_id', project).order('data_date', { ascending: false }));
-      return rows ?? [];
+      // Regenerating a layout can leave multiple structures for the same report.
+      // Prefer the newest approved layout; keep one week-selector entry per report.
+      const ordered = [...(rows ?? [])].sort((a, b) =>
+        b.data_date.localeCompare(a.data_date) ||
+        Number(b.is_approved === true) - Number(a.is_approved === true) ||
+        (b.created_at ?? '').localeCompare(a.created_at ?? '') ||
+        b.structure_id.localeCompare(a.structure_id));
+      const reports = new Set<string>();
+      return ordered.filter(row => {
+        const key = row.report_id || row.structure_id;
+        if (reports.has(key)) return false;
+        reports.add(key);
+        return true;
+      });
     },
     async load(structureId: string) {
       const table = 'dbp6_0008_dashboard_structures';
@@ -142,10 +156,19 @@ export function createDashboardSource(schema: string, project: string) {
       designQuery = designId ? designQuery.eq('design_id', designId) : designQuery.eq('is_approved', true).eq('is_default', true);
       const [design, rows] = await Promise.all([
         checked<ApprovedDesign | null>(designTable, designQuery.maybeSingle()),
-        checked<WidgetRow[]>('dbp6_0008_dashboard_widgets', db.from('dbp6_0008_dashboard_widgets').select('*').eq('project_id', project).eq('structure_id', structureId).order('widget_order')),
+        checked<WidgetRow[]>('dbp6_0008_dashboard_widgets', db.from('dbp6_0008_dashboard_widgets').select('*').eq('project_id', project).eq('report_id', structure.report_id).order('widget_order')),
       ]);
       if (!design) throw new Error(designId ? `Linked dashboard design ${designId} was not found.` : 'No approved default dashboard design is available.');
-      const widgets = (rows ?? []).filter(row => isDashboardWidgetVisible(row.widget_id)).map(row => ({ ...row, widget_ast: decode<WidgetAst>(row.widget_ast, { type: row.widget_type, title: row.widget_title, content: {} }) }));
+      // Widget records are unique by report_id + widget_id, and can still refer
+      // to an earlier structure after a layout is regenerated. Placement comes
+      // from the selected structure, never from the older widget page_id.
+      const placementPages = new Map(structure.structure_plan.pages.flatMap(page =>
+        page.widgets.map(widget => [widget.widget_id, page.page_id] as const)));
+      const widgets = (rows ?? []).filter(row => isDashboardWidgetVisible(row.widget_id)).map(row => ({
+        ...row,
+        page_id: placementPages.get(row.widget_id) ?? row.page_id,
+        widget_ast: decode<WidgetAst>(row.widget_ast, { type: row.widget_type, title: row.widget_title, content: {} }),
+      }));
       const spec = decode<Partial<DesignSpecification>>(design.design_specification, {});
       const normalizedDesign = { ...design, design_specification: {
         radii: {}, shadows: {}, spacing: {}, navigation: {}, typography: {}, chart_styles: {}, color_tokens: {}, semantic_colors: {}, table_styles: {}, print_specification: {}, responsive_breakpoints: {}, design_name: design.design_name, design_version: design.design_version, ...spec,

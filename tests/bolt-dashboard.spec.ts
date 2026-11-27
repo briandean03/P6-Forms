@@ -5,8 +5,8 @@ import { test, expect } from '@playwright/test'
 const project = { dgt_dbp6bd00projectdataid: '00000000-0000-0000-0000-000000000001', dgt_projectid: 'P2', dgt_projectname: 'Test Project' }
 const url = `/?view=app&project=${project.dgt_dbp6bd00projectdataid}&schema=other_project&tab=online_weekly_dashboard`
 const structures = [56, 55].map(week => ({
-  id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
-  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037', 'WGT-007', 'WGT-021', 'WGT-032', 'WGT-020', 'WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
+  is_approved: true, created_at: '2026-11-27T04:00:00Z', id: week, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', week_num: week, data_date: week === 56 ? '2026-10-12' : '2026-10-05', dashboard_title: `Construction intelligence week ${week}`, structure_version: '1', design_id: `d${week}`,
+  structure_plan: JSON.stringify({ pages: [{ page_id: `overview-${week}`, title: `Executive overview ${week}`, widgets: ['WGT-002', 'WGT-008', 'WGT-NEW', 'WGT-025', 'WGT-027', 'WGT-WIDE', 'WGT-026', 'WGT-038', 'WGT-011', 'WGT-012', 'WGT-036', 'WGT-037', 'WGT-007', 'WGT-021', 'WGT-032', 'WGT-020', 'WGT-006', 'WGT-034', 'WGT-035', 'WGT-045', 'WGT-047'].map((id, index) => ({ widget_id: id, display_order: index, grid: { column_span: 12 } })) }] }),
 }))
 
 for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: ${mode}`, async ({ page }, testInfo) => {
@@ -16,7 +16,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
   let deny = mode === 'denied'
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  const reads: { table: string; structure?: string | null }[] = []
+  const reads: { table: string; report?: string | null }[] = []
   await page.route('https://sample.supabase.co/**', async route => {
     const request = route.request(), uri = new URL(request.url()), table = uri.pathname.split('/').pop()!
     if (uri.pathname.includes('/storage/v1/')) {
@@ -52,14 +52,14 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     if (table.startsWith('dbp6_0008_dashboard')) {
       expect(request.method()).toBe('GET')
       expect(request.headers()['accept-profile']).toBe('other_project')
-      reads.push({ table, structure: uri.searchParams.get('structure_id') })
+      reads.push({ table, report: uri.searchParams.get('report_id') })
       if (table !== 'dbp6_0008_dashboard_designs') expect(uri.searchParams.get('project_id')).toBe('eq.P2')
       if (deny) {
         await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ code: '42501', message: 'permission denied for table dbp6_0008_dashboard_structures' }) })
         return
       }
       if (table === 'dbp6_0008_dashboard_structures') {
-        data = mode === 'empty' ? [] : structures
+        data = mode === 'empty' ? [] : [{ ...structures[0], structure_id: 's56-obsolete', is_approved: false, created_at: '2026-11-28T04:00:00Z' }, ...structures]
         if (uri.searchParams.has('structure_id')) data = structures.filter(row => `eq.${row.structure_id}` === uri.searchParams.get('structure_id'))
       }
       if (table === 'dbp6_0008_dashboard_designs') {
@@ -67,7 +67,9 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
         data = [{ id: 1, design_id: id, design_name: 'Bolt test theme', design_version: id, design_specification: JSON.stringify({ color_tokens: { primary: { hex: id === 'd56' ? '#5741DF' : '#087F5B' }, text_primary: { hex: '#24252D' }, text_secondary: { hex: '#666675' } } }) }]
       }
       if (table === 'dbp6_0008_dashboard_widgets') {
-        const week = uri.searchParams.get('structure_id') === 'eq.s56' ? 56 : 55
+        expect(uri.searchParams.has('structure_id')).toBe(false)
+        expect(['eq.r56', 'eq.r55']).toContain(uri.searchParams.get('report_id'))
+        const week = uri.searchParams.get('report_id') === 'eq.r56' ? 56 : 55
         const widgets = [
           { widget_id: 'WGT-002', widget_type: 'kpi_group', widget_title: 'Progress summary', content: { kpis: [{ key: 'cumulative_actual_progress', label: 'Overall actual progress', value: week, unit: '%' }] } },
           { widget_id: 'WGT-008', widget_type: 'line_chart', widget_title: 'Progress trend', content: { category_field: 'date', series: [{ name: 'Actual', value_field: 'actual', color_token: 'primary' }], data: [{ date: '2026-10-01', actual: 20 }, { date: '2026-10-12', actual: week }] } },
@@ -115,7 +117,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
             { period_end: '2026-09-22', materials: 20 },
           ],
         } } as typeof widgets[number])
-        data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: `s${week}`, report_id: `r${week}`, project_id: 'P2', page_id: `overview-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
+        data = widgets.map((widget, index) => ({ ...widget, id: index, widget_record_id: `w${week}-${index}`, structure_id: index < 2 ? `s${week}` : `s${week}-previous`, report_id: `r${week}`, project_id: 'P2', page_id: index < 2 ? `overview-${week}` : `previous-layout-${week}`, widget_order: index, widget_ast: JSON.stringify({ type: widget.widget_type, title: widget.widget_title, content: widget.content }) }))
       }
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
@@ -136,6 +138,9 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     }
     await expect(page.getByRole('heading', { name: 'Construction Intelligence Dashboard' })).toBeVisible()
     await expect(page.getByText('Overall actual progress', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Select reporting week').locator('option')).toHaveCount(2)
+    await expect(page.getByLabel('Select reporting week')).toHaveValue('s56')
+    await expect(page.getByText('Widgets without a matching section:', { exact: false })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Weekly narrative' })).toContainText(`Concrete pour week 56`)
     await expect(page.getByRole('region', { name: 'Key risks' })).toContainText('Cladding procurement')
     await expect(page.getByRole('img', { name: 'Steel fixers: planned 25.000, actual 20.000' })).toBeVisible()
@@ -243,7 +248,7 @@ for (const mode of ['ready', 'empty', 'denied'] as const) test(`Bolt dashboard: 
     await expect(page.getByRole('heading', { name: 'Executive overview 55' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Show navigation', exact: true })).toBeVisible()
     if (mode === 'ready') await page.screenshot({ path: testInfo.outputPath('bolt-mobile.png'), fullPage: true })
-    expect(reads.some(read => read.table.endsWith('_widgets') && read.structure === 'eq.s55')).toBe(true)
+    expect(reads.some(read => read.table.endsWith('_widgets') && read.report === 'eq.r55')).toBe(true)
   }
   await page.getByRole('button', { name: 'Show navigation', exact: true }).click()
   await page.getByRole('button', { name: 'Weekly Report', exact: true }).click()

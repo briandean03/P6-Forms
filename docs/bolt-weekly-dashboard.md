@@ -24,7 +24,7 @@ The two views can show different arrangements, decimal precision, KPI subsets, a
 
 The ZIP's frontend expected a separate `VITE_DASHBOARD_API_URL` with design, structure, diagnostics, and scoped-widget response envelopes. Its included edge function hardcoded the `atgc` schema and particular design/structure records, returned a different response shape, and did not implement all frontend resources. Copying that API unchanged would not provide correct multi-project week selection.
 
-The integration replaces that API dependency with the existing `schemaClient(schemaName)` and its existing authentication/RLS context. Structures and widgets are scoped to the selected text project ID and structure ID. Selecting a different week loads that week's structure, linked design (or approved default), and widgets together; stale asynchronous responses are ignored. No service-role key, uploaded `.env`, Bolt project configuration, or edge function was copied or deployed.
+The integration replaces that API dependency with the existing `schemaClient(schemaName)` and its existing authentication/RLS context. Structures are scoped to the selected project. Widgets are scoped to its selected report ID and placed by widget ID in the selected structure, including when regeneration has left widget rows linked to an older structure. The week selector prefers the newest approved structure for each report. Selecting a different week loads that week's structure, linked design (or approved default), and widgets together; stale asynchronous responses are ignored. No service-role key, uploaded `.env`, Bolt project configuration, or edge function was copied or deployed.
 
 Additional corrections:
 
@@ -49,7 +49,7 @@ Existing read access is required to these tables in the selected project schema:
 
 Missing read grants/RLS access is reported with the schema/table name. Projects without generated structures show an empty state; there is no fabricated demonstration data.
 
-`tests/bolt-dashboard.spec.ts` uses mocked requests for a non-ATGC project schema and tests two different weeks/designs, stringified database columns, custom SVG/KPI rendering, empty results, permission errors and retry, mobile sidebar behavior, print layout, and returning to the original dashboard. It verifies that all dashboard requests are reads and that the project/schema filters are present. The ready-state test saves a sample screenshot and PDF in Playwright’s test output directory. Live database data and a full real-world 49-widget report have not been verified here.
+`tests/bolt-dashboard.spec.ts` uses mocked requests for a non-ATGC project schema and tests two different weeks/designs, stringified database columns, custom SVG/KPI rendering, empty results, permission errors and retry, mobile sidebar behavior, print layout, and returning to the original dashboard. It verifies that all dashboard requests are reads and that the project/schema/report filters are present. The ready-state test saves a sample screenshot and PDF in Playwright’s test output directory. Live database data and a full real-world 49-widget report have not been verified here.
 
 Printing uses mixed A4 page orientations: widgets containing a table with six or more columns use landscape; compact tables and chart widgets use portrait. Tables print at full page width, with wrapping cells and repeating headers. Long tables can continue across multiple sheets. Modern Chrome/Edge support the named-page sizes; use browser Save as PDF with the CSS page sizes/default layout and scaling.
 
@@ -62,3 +62,5 @@ The online view also follows the export's additional exclusions: WGT-006, WGT-03
 The export's standalone API, fixed report ID, environment file, deployment settings, and global styles are not imported. Existing schema/project isolation, week loading, the Construction Intelligence Dashboard title, Appendix storage, expandable hierarchies, persistent KPI selection controls, and mixed-orientation printing remain integrated with P6 Forms. The approval label now reflects the loaded structure's approval flag instead of a local-only selector.
 
 The mocked browser suite also covers the new narrative, exception, resource comparison, and progress-by-level toggle views alongside its existing week, permission, attachment, hierarchy, mobile, and PDF checks. These checks do not validate the contents of a live generated report or deploy any Supabase functions.
+
+Week selection also handles regenerated structures: one selector entry per report, newest approved layout preferred, widgets read by project/report and mapped to the selected layout by widget ID. Regression fixtures include a newer unapproved duplicate structure and widgets split across old/new structure and page IDs.
