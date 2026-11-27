@@ -51,7 +51,7 @@ const WEBHOOKS = [
   { id: '55', label: 'Webhook 55', url: 'https://pmc2p2c.app.n8n.cloud/webhook/95f75293-0ad2-49e4-b7d1-b75abd0803ba' },
   { id: '62', label: 'Webhook 62', url: 'https://pmc2p2c.app.n8n.cloud/webhook/35e376a6-155d-4cb7-9ba2-b38e1533f15d', method: 'POST' as const },
   { id: '146', label: 'Generate Weekly Activity Report', url: 'https://pmc2p2c.app.n8n.cloud/webhook/47c2c01f-c886-4071-9a7a-f0591fefe6ss', method: 'POST' as const },
-  { id: '153', label: 'Webhook 153', url: 'https://pmc2p2c.app.n8n.cloud/webhook/61ca6c70-31af-42dc-927b-9faddea892c8' },
+  { id: '153', label: 'Webhook 153', url: 'https://pmc2p2c.app.n8n.cloud/webhook/61ca6c70-31af-42dc-927b-9faddea892c8', method: 'POST' as const },
 ] as const
 
 interface WeeklyReportRow {
@@ -492,6 +492,13 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         })
         setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
         setReportPolling(true)
+      } else if (id === '153') {
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flow_parameters: { schema: schemaName, project_id: projectTextId } }),
+        })
+        setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
       } else {
         const params = new URLSearchParams({ project_id: projectTextId, schema: schemaName, t: Date.now().toString() })
         await fetch(`${url}?${params}`, { method })
