@@ -493,10 +493,25 @@ export function ProjectDataForm({ projectId, projectTextId, schemaName }: { proj
         setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
         setReportPolling(true)
       } else if (id === '153') {
+        const projectRow = data[0]
+        const weekNum = projectRow?.dgt_current_weeknum
+        if (!weekNum) throw new Error('No current week number found for this project.')
+        const { data: reportRow, error: reportErr } = await supabase
+          .from('dbp6_0008_weekly_reports_calculations')
+          .select('report_id')
+          .eq('project_id', projectTextId)
+          .eq('week_num', weekNum)
+          .eq('report_type', 'Weekly Progress Report')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .returns<{ report_id: string }[]>()
+          .maybeSingle()
+        if (reportErr) throw new Error('Could not fetch report ID: ' + reportErr.message)
+        if (!reportRow?.report_id) throw new Error('No report found for the current week. Run workflows 149/149B first.')
         await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ flow_parameters: { schema: schemaName, project_id: projectTextId } }),
+          body: JSON.stringify({ flow_parameters: { schema: schemaName, project_id: projectTextId, report_id: reportRow.report_id } }),
         })
         setWebhookStatus(prev => ({ ...prev, [id]: 'success' }))
       } else {
