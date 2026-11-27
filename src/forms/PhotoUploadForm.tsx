@@ -23,6 +23,7 @@ function blobDisplayUrl(blobName: string) {
 interface QueuedFile {
   file: File
   previewUrl: string
+  description: string
 }
 
 interface Photo {
@@ -32,6 +33,7 @@ interface Photo {
   photoDate: string
   url: string
   serialNumber: string
+  description: string
 }
 
 interface SupabasePhotoRow {
@@ -40,6 +42,7 @@ interface SupabasePhotoRow {
   photodate: string | null
   imageurl: string | null
   serialnumber: string | null
+  description: string | null
 }
 
 export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; schemaName: string }) {
@@ -53,6 +56,9 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
   const [deleteTarget, setDeleteTarget] = useState<Photo | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [lightbox, setLightbox] = useState<Photo | null>(null)
+  const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null)
+  const [descriptionDraft, setDescriptionDraft] = useState('')
+  const [savingDescription, setSavingDescription] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadCounterRef = useRef(1)
   const { notification, showSuccess, showError, hideNotification } = useNotification()
@@ -80,6 +86,7 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
           photoDate: row.photodate ? row.photodate.split('T')[0] : '',
           url: blobDisplayUrl(blobName),
           serialNumber: row.serialnumber ?? '',
+          description: row.description ?? '',
         }
       })
       setPhotos(result)
@@ -105,6 +112,7 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
     const newItems: QueuedFile[] = imageFiles.map(file => ({
       file,
       previewUrl: URL.createObjectURL(file),
+      description: '',
     }))
     setFileQueue(prev => [...prev, ...newItems])
   }, [])
@@ -132,7 +140,7 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
     const failedNames: string[] = []
 
     for (let i = 0; i < fileQueue.length; i++) {
-      const { file, previewUrl } = fileQueue[i]
+      const { file, previewUrl, description } = fileQueue[i]
       setUploadProgress({ current: i + 1, total: fileQueue.length })
       try {
         const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : ''
@@ -147,13 +155,13 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
         })
 
         // 2. Save metadata to Supabase
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const insertPayload: Record<string, string> = {
+        const insertPayload: Record<string, string | null> = {
           filename: displayName,
           photodate: photoDate,
           imageurl: `${BLOB_BASE}/${blobName}`,
           serialnumber: String(serial),
           dgt_projectid: projectId,
+          description: description.trim() || null,
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: insertError } = await (db as any)
@@ -186,6 +194,30 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
     }
 
     setUploading(false)
+  }
+
+  const handleSaveDescription = async (photo: Photo) => {
+    setSavingDescription(true)
+    const description = descriptionDraft.trim()
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (db as any)
+        .from('p6forms_photoupload')
+        .update({ description: description || null })
+        .eq('id', photo.supabaseId)
+        .select('id, description')
+        .single()
+      if (error) throw error
+      if (!data) throw new Error('The description was not saved. Please refresh and try again.')
+      const saved = data.description ?? ''
+      setPhotos(prev => prev.map(p => p.supabaseId === photo.supabaseId ? { ...p, description: saved } : p))
+      setLightbox(prev => prev?.supabaseId === photo.supabaseId ? { ...prev, description: saved } : prev)
+      setEditingPhotoId(null)
+      showSuccess('Photo description saved')
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Failed to save photo description')
+    }
+    setSavingDescription(false)
   }
 
   const handleDelete = async () => {
@@ -232,6 +264,9 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
       {/* Lightbox */}
       {lightbox && (
         <div
+          role="dialog"
+          aria-label="Photo preview"
+          aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setLightbox(null)}
         >
@@ -244,8 +279,10 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
             <div className="mt-2 text-center text-white text-sm">
               <span className="font-medium">{formatDate(lightbox.photoDate)}</span>
               <span className="text-white/60 ml-2">— {lightbox.fileName}</span>
+              {lightbox.description && <p className="mt-2 whitespace-pre-wrap break-words">{lightbox.description}</p>}
             </div>
             <button
+              aria-label="Close photo preview"
               onClick={() => setLightbox(null)}
               className="absolute -top-3 -right-3 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100"
             >
@@ -277,6 +314,8 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
             <input
               ref={fileInputRef}
               type="file"
+              aria-label="Choose photos"
+              disabled={uploading}
               accept="image/*"
               multiple
               className="hidden"
@@ -293,23 +332,24 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
           {fileQueue.length > 0 && (
             <div>
               <p className="text-xs text-gray-500 mb-2">{fileQueue.length} file{fileQueue.length !== 1 ? 's' : ''} selected</p>
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {fileQueue.map((item, i) => (
-                  <div key={i} className="relative group aspect-square">
-                    <img
-                      src={item.previewUrl}
-                      alt={item.file.name}
-                      className="w-full h-full object-cover rounded-lg border border-gray-200"
+                  <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <img src={item.previewUrl} alt={item.file.name} className="w-16 h-16 rounded object-cover" />
+                      <p className="min-w-0 flex-1 text-sm break-words">{item.file.name}</p>
+                      <button type="button" disabled={uploading} onClick={() => removeFromQueue(i)} aria-label={`Remove ${item.file.name}`} className="text-red-600 text-sm disabled:opacity-50">Remove</button>
+                    </div>
+                    <label htmlFor={`queued-description-${i}`} className="block text-xs font-medium text-gray-600">Description for {item.file.name} (optional)</label>
+                    <textarea
+                      id={`queued-description-${i}`}
+                      value={item.description}
+                      onChange={e => setFileQueue(prev => prev.map((entry, index) => index === i ? { ...entry, description: e.target.value } : entry))}
+                      disabled={uploading}
+                      rows={3}
+                      placeholder="Describe the work or location shown in this photo"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
                     />
-                    <button
-                      type="button"
-                      onClick={() => removeFromQueue(i)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow"
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
                   </div>
                 ))}
               </div>
@@ -319,8 +359,9 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
           {/* Date + submit row */}
           <div className="flex flex-wrap gap-4 items-end">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Photo Date</label>
+              <label htmlFor="photo-upload-date" className="block text-xs font-medium text-gray-600 mb-1">Photo Date</label>
               <input
+                id="photo-upload-date"
                 type="date"
                 value={photoDate}
                 onChange={e => setPhotoDate(e.target.value)}
@@ -381,6 +422,22 @@ export function PhotoUploadForm({ projectId, schemaName }: { projectId: string; 
                 <div className="p-2">
                   <p className="text-xs font-medium text-gray-700">{formatDate(photo.photoDate)}</p>
                   <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.fileName}>{photo.fileName}</p>
+                  {editingPhotoId === photo.supabaseId ? (
+                    <div className="mt-2 space-y-2">
+                      <label htmlFor={`saved-description-${photo.supabaseId}`} className="block text-xs font-medium text-gray-600">Photo description</label>
+                      <textarea id={`saved-description-${photo.supabaseId}`} value={descriptionDraft} onChange={e => setDescriptionDraft(e.target.value)} disabled={savingDescription} rows={3} className="w-full rounded border border-gray-300 px-2 py-1 text-sm" />
+                      <div className="flex gap-3 text-xs">
+                        <button type="button" disabled={savingDescription} onClick={() => handleSaveDescription(photo)} className="text-blue-600 disabled:opacity-50">{savingDescription ? 'Saving…' : 'Save description'}</button>
+                        <button type="button" disabled={savingDescription} onClick={() => setEditingPhotoId(null)} className="text-gray-600">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {photo.description && <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap break-words line-clamp-3" title={photo.description}>{photo.description}</p>}
+                      <button type="button" disabled={savingDescription} onClick={() => { setEditingPhotoId(photo.supabaseId); setDescriptionDraft(photo.description) }} className="mt-2 text-xs text-blue-600">{photo.description ? 'Edit description' : 'Add description'}</button>
+                    </>
+                  )}
+
                 </div>
               </div>
             ))}
